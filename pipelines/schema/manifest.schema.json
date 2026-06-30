@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/neuroforge/neuroforge/blob/main/pipelines/schema/manifest.schema.json",
+  "title": "NeuroForge Pipeline Manifest",
+  "description": "Schema for YAML pipeline manifests. Each manifest describes how to invoke one containerized neuroimaging tool.",
+  "type": "object",
+  "required": ["id", "display_name", "description", "container", "inputs", "outputs", "parameters"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "description": "Unique identifier (snake_case). Used as a stable key in the database."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name shown in the UI."
+    },
+    "description": {
+      "type": "string",
+      "description": "Short plain-language description of what this pipeline does."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the tool's official documentation."
+    },
+    "container": {
+      "type": "object",
+      "required": ["image", "tag", "engine"],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "Docker image name without tag (e.g. nipreps/mriqc)."
+        },
+        "tag": {
+          "type": "string",
+          "description": "Pinned image tag. Never 'latest'.",
+          "not": { "enum": ["latest"] }
+        },
+        "digest": {
+          "type": "string",
+          "description": "Optional SHA256 digest for fully reproducible pinning.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["docker"],
+          "description": "Container engine. Only 'docker' is supported in v1."
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Expected input types (e.g. ['bids_dataset'])."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Expected output directories relative to the derivatives root."
+    },
+    "parameters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/parameter" },
+      "description": "Ordered list of user-configurable parameters rendered in the run wizard."
+    },
+    "known_errors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/known_error" },
+      "description": "Regex-based error patterns with plain-language explanations."
+    },
+    "command_template": {
+      "type": "string",
+      "description": "Template string for the Docker command. Use {placeholders} for dynamic values."
+    },
+    "deprecated_params": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Map of old param name → new param name for migration across manifest versions."
+    }
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "CLI flag name (without leading dashes)."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "integer", "float", "boolean", "file_path", "directory_path", "multiselect", "select"],
+          "description": "Parameter value type, used to render the correct form control."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "default": {
+          "description": "Default value; must be compatible with the parameter's type."
+        },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed values for 'select' and 'multiselect' types."
+        },
+        "help": {
+          "type": "string",
+          "description": "Plain-language explanation shown as a tooltip in the UI."
+        },
+        "advanced": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the parameter is hidden under an 'Advanced options' disclosure."
+        }
+      }
+    },
+    "known_error": {
+      "type": "object",
+      "required": ["pattern", "explanation"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Python-compatible regex matched against stdout/stderr lines."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Plain-language explanation of what this error means."
+        },
+        "fix_hint": {
+          "type": "string",
+          "description": "Actionable suggestion for how to resolve the error."
+        }
+      }
+    }
+  }
+}

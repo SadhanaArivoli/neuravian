@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+*.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local data volume
+data/
+
+# Env files
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
