@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,7 +18,7 @@ class Run(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending")
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     logs: Mapped[list["RunLog"]] = relationship("RunLog", back_populates="run")
     provenance_events: Mapped[list["ProvenanceEvent"]] = relationship(
@@ -44,6 +44,6 @@ class ProvenanceEvent(Base):
     run_id: Mapped[int] = mapped_column(Integer, ForeignKey("runs.id"), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text)  # JSON blob
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     run: Mapped["Run"] = relationship("Run", back_populates="provenance_events")
