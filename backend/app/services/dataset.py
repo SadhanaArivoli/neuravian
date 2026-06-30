@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.dataset import Dataset
 from app.schemas.dataset import (
     DatasetCreate,
@@ -18,8 +19,26 @@ from app.services.bids_patterns import run_pattern_checks
 
 logger = logging.getLogger(__name__)
 
+_CONTAINER_DATASETS_PATH = Path("/host-data")
+
 # Suffixes to ignore when reporting invalid BIDS filenames (not every file needs to be BIDS)
 _NON_BIDS_SUFFIXES = {".json", ".tsv", ".txt", ".md", ".bvec", ".bval", ".gz"}
+
+
+def _translate_host_path(path: Path) -> Path:
+    """
+    If HOST_DATASETS_MOUNT is set and the given path starts with that prefix,
+    rewrite it to the container-side /host-data equivalent so users can paste
+    their normal Mac paths without knowing about Docker volume mounts.
+    """
+    if not settings.host_datasets_mount:
+        return path
+    host_mount = Path(settings.host_datasets_mount)
+    try:
+        relative = path.relative_to(host_mount)
+        return _CONTAINER_DATASETS_PATH / relative
+    except ValueError:
+        return path
 
 
 def _validate_with_bids_validator(root: Path) -> list[str]:
@@ -101,10 +120,16 @@ class DatasetService:
         return self.register(DatasetCreate(path=path))
 
     def register(self, payload: DatasetCreate) -> DatasetRead:
-        root = Path(payload.path).resolve()
+        raw = Path(payload.path)
+        root = _translate_host_path(raw).resolve()
 
         if not root.exists():
-            raise FileNotFoundError(f"Path does not exist: {root}")
+            # Give a helpful message that names both the received path and
+            # the container path so the user can diagnose mount issues.
+            detail = f"Path does not exist: {payload.path}"
+            if root != raw.resolve():
+                detail += f" (looked for it inside the container at {root})"
+            raise FileNotFoundError(detail)
         if not root.is_dir():
             raise NotADirectoryError(f"Path is not a directory: {root}")
 

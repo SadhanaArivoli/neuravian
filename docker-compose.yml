@@ -7,8 +7,14 @@ services:
     volumes:
       # Persist the SQLite DB across restarts
       - ./data:/app/data
+      # Mount the host datasets directory read-only at /host-data.
+      # Set HOST_DATASETS_DIR in .env (see .env.example).
+      - ${HOST_DATASETS_DIR:-~/Documents}:/host-data:ro
     environment:
       DATABASE_URL: sqlite:////app/data/neuroforge.db
+      # Tell the backend what host prefix maps to /host-data so it can
+      # transparently translate paths the user pastes from their Mac.
+      HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

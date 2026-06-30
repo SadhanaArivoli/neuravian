@@ -12,6 +12,10 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://frontend:3000",
     ]
+    # The host path that is mounted at /host-data inside the container.
+    # When set, the backend rewrites paths transparently so users can paste
+    # their normal Mac paths into the import form.
+    host_datasets_mount: str | None = None
 
 
 settings = Settings()

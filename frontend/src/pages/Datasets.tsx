@@ -37,9 +37,16 @@ export default function Datasets() {
             Import a BIDS dataset
           </h3>
           <p className="mb-4 text-xs text-gray-400">
-            Enter the absolute path to a BIDS dataset directory on this machine.
-            The folder will be validated against the BIDS specification —
-            your files are never modified.
+            Type the full path to your BIDS dataset folder exactly as it appears on
+            your Mac — for example{" "}
+            <code className="bg-surface-overlay px-1 rounded">
+              /Users/you/Documents/my-study
+            </code>
+            . The path must be inside the directory set as{" "}
+            <code className="bg-surface-overlay px-1 rounded">HOST_DATASETS_DIR</code>{" "}
+            in your <code className="bg-surface-overlay px-1 rounded">.env</code> file
+            (default: <code className="bg-surface-overlay px-1 rounded">~/Documents</code>).
+            Your files are never modified.
           </p>
           <DatasetImportForm onImported={handleImported} />
         </div>
