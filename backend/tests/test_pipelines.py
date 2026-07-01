@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -34,8 +35,9 @@ def api_client():
     Session = sessionmaker(bind=engine)
     session = Session()
     app.dependency_overrides[get_db] = lambda: session
-    with TestClient(app) as client:
-        yield client
+    with patch("app.services.run.seed_pipeline_registry"):
+        with TestClient(app) as client:
+            yield client
     app.dependency_overrides.clear()
     session.close()
 

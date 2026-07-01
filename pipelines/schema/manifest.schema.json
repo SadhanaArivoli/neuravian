@@ -116,6 +116,16 @@
           "type": "boolean",
           "default": false,
           "description": "If true, the parameter is hidden under an 'Advanced options' disclosure."
+        },
+        "positional_index": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "If set, this parameter is emitted as a positional CLI argument at the given position (1-based) after the fixed dataset/output args, rather than as a --flag value pair. Used for tools like MRIQC where analysis_level is positional."
+        },
+        "multiple": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true and type is 'string', the user's space-separated input is split into multiple separate CLI arguments. Used for flags that accept repeated values (e.g. --participant-label 01 02 03)."
         }
       }
     },

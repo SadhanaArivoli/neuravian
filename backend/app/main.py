@@ -1,12 +1,27 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
 from app.api.pipelines import router as pipelines_router
+from app.api.runs import router as runs_router
 from app.core.config import settings
+from app.core.database import SessionLocal
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Seed the pipelines DB table from loaded manifests so runs.pipeline_id
+    # FK can always be satisfied without manual DB inserts.
+    from app.services.run import seed_pipeline_registry
+    with SessionLocal() as db:
+        seed_pipeline_registry(db)
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,3 +34,4 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api")
 app.include_router(datasets_router, prefix="/api")
 app.include_router(pipelines_router, prefix="/api")
+app.include_router(runs_router, prefix="/api")

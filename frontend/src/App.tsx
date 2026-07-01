@@ -3,6 +3,7 @@ import { Sidebar } from "./components/primitives/Sidebar";
 import DatasetDetail from "./pages/DatasetDetail";
 import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
+import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/datasets/:id" element={<DatasetDetail />} />
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/runs" element={<Runs />} />
+          <Route path="/runs/:id" element={<RunDetail />} />
         </Routes>
       </main>
     </div>

@@ -1,0 +1,320 @@
+"""DockerExecutor — v1 concrete implementation of the Executor interface.
+
+Builds Docker commands from pipeline manifests + user params, runs them via the
+Docker SDK for Python (using the host Docker daemon via socket mount), and streams
+logs back line-by-line through an async callback.
+
+Path translation: the backend runs inside a Docker container, so dataset and output
+paths are container-internal (e.g. /host-data/..., /app/data/...). The Docker daemon
+on the host needs HOST paths for volume mounts. We resolve this by introspecting the
+current container's own mounts at runtime to find source paths for each volume.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+from app.execution.executor import Executor, ResourceWarning, RunContext
+
+log = logging.getLogger(__name__)
+
+# MRIQC-specific resource minimums (apply to any pipeline unless overridden in manifest)
+_MIN_RAM_WARN_GB = 6.0
+_MIN_DISK_WARN_GB = 5.0
+
+
+def _is_running_in_docker() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+def _get_container_mounts() -> dict[str, str]:
+    """
+    Return {container_path: host_source_path} for all mounts on the current container.
+    Only meaningful when running inside Docker. Returns empty dict otherwise.
+    """
+    if not _is_running_in_docker():
+        return {}
+    try:
+        import docker
+        import socket
+
+        client = docker.from_env()
+        hostname = socket.gethostname()
+        container = client.containers.get(hostname)
+        mounts = {}
+        for m in container.attrs.get("Mounts", []):
+            dest = m.get("Destination", "").rstrip("/")
+            src = m.get("Source", "")
+            if dest and src:
+                mounts[dest] = src
+        return mounts
+    except Exception as exc:
+        log.warning("Could not introspect container mounts: %s", exc)
+        return {}
+
+
+_MOUNTS: dict[str, str] | None = None
+
+
+def _resolve_mounts() -> dict[str, str]:
+    global _MOUNTS
+    if _MOUNTS is None:
+        _MOUNTS = _get_container_mounts()
+    return _MOUNTS
+
+
+def to_host_path(container_path: str) -> str:
+    """
+    Translate a container-internal path to the equivalent host path, so that
+    the Docker daemon (running on the host) can use it in volume mounts.
+
+    When not running inside Docker (local dev), the path is already a host path
+    and is returned unchanged.
+    """
+    if not _is_running_in_docker():
+        return container_path
+
+    mounts = _resolve_mounts()
+    # Find the longest matching mount prefix
+    best_dest = ""
+    best_src = ""
+    for dest, src in mounts.items():
+        if (container_path == dest or container_path.startswith(dest + "/")) and len(dest) > len(best_dest):
+            best_dest = dest
+            best_src = src
+
+    if best_dest:
+        relative = container_path[len(best_dest):]
+        return best_src + relative
+
+    log.warning("No mount found for container path %s — using as-is", container_path)
+    return container_path
+
+
+@dataclass
+class _SdkParams:
+    image: str
+    command: list[str]
+    volumes: dict[str, dict[str, str]]  # {host_path: {"bind": ..., "mode": ...}}
+
+
+class DockerExecutor(Executor):
+    """Runs pipeline containers via the Docker SDK for Python."""
+
+    def _build_sdk_params(self, ctx: RunContext) -> _SdkParams:
+        manifest = ctx.manifest
+        params = ctx.params
+        container = manifest["container"]
+
+        dataset_host = to_host_path(ctx.dataset_path)
+        output_host = to_host_path(ctx.output_dir)
+
+        volumes: dict[str, dict[str, str]] = {
+            dataset_host: {"bind": "/data", "mode": "ro"},
+            output_host: {"bind": "/out", "mode": "rw"},
+        }
+
+        # work-dir: mount if provided, remap to /work inside the container
+        work_dir_val = str(params.get("work-dir", "")).strip()
+        if work_dir_val:
+            work_dir_host = to_host_path(work_dir_val)
+            volumes[work_dir_host] = {"bind": "/work", "mode": "rw"}
+
+        # Build the tool command (everything after the image name)
+        cmd: list[str] = ["/data", "/out"]
+
+        # Positional parameters (sorted by positional_index)
+        positionals = sorted(
+            [p for p in manifest["parameters"] if p.get("positional_index") is not None],
+            key=lambda p: p["positional_index"],
+        )
+        for p in positionals:
+            val = params.get(p["name"])
+            if not val and val != 0:
+                val = p.get("default")
+            if val is not None and val != "":
+                cmd.append(str(val))
+
+        # Flag parameters
+        for p in manifest["parameters"]:
+            if p.get("positional_index") is not None:
+                continue  # already handled above
+
+            name = p["name"]
+            ptype = p["type"]
+
+            # work-dir is handled via volume mount; remap the CLI flag to /work
+            if name == "work-dir":
+                if work_dir_val:
+                    cmd += ["--work-dir", "/work"]
+                continue
+
+            raw_val = params.get(name)
+
+            if ptype == "boolean":
+                # Emit --flag only if explicitly true; false = omit entirely
+                effective = raw_val if raw_val is not None else p.get("default", False)
+                if effective is True or effective == "true":
+                    cmd.append(f"--{name}")
+
+            elif ptype == "multiselect":
+                val = raw_val if raw_val is not None else p.get("default", [])
+                if val:
+                    cmd += [f"--{name}"] + list(val)
+
+            elif p.get("multiple"):
+                # String param that accepts space-separated repeated values
+                val = str(raw_val or "").strip()
+                if not val:
+                    val = str(p.get("default", "")).strip()
+                if val:
+                    cmd += [f"--{name}"] + val.split()
+
+            else:
+                val = raw_val
+                if val is None or val == "":
+                    val = p.get("default")
+                if val is not None and val != "":
+                    cmd += [f"--{name}", str(val)]
+
+        return _SdkParams(
+            image=f"{container['image']}:{container['tag']}",
+            command=cmd,
+            volumes=volumes,
+        )
+
+    def build_command(self, ctx: RunContext) -> list[str]:
+        """Full CLI representation — used for command_preview display."""
+        sdk = self._build_sdk_params(ctx)
+        cli = ["docker", "run", "--rm"]
+        for host_path, bind in sdk.volumes.items():
+            mode = bind.get("mode", "rw")
+            cli += ["-v", f"{host_path}:{bind['bind']}:{mode}"]
+        cli.append(sdk.image)
+        cli.extend(sdk.command)
+        return cli
+
+    async def run(
+        self,
+        ctx: RunContext,
+        log_callback: Callable[[str], None],
+    ) -> tuple[int, str | None]:
+        import docker
+
+        sdk = self._build_sdk_params(ctx)
+        client = docker.from_env()
+
+        loop = asyncio.get_event_loop()
+        exit_code = 1
+        digest: str | None = None
+
+        def _run_sync() -> None:
+            nonlocal exit_code, digest
+
+            log.info(
+                "Starting container %s for run %d", sdk.image, ctx.run_id
+            )
+            container = client.containers.run(
+                sdk.image,
+                command=sdk.command,
+                volumes=sdk.volumes,
+                detach=True,
+                remove=False,  # we remove after capturing exit code
+            )
+
+            # Capture image digest for provenance
+            try:
+                img = client.images.get(sdk.image)
+                repo_digests = img.attrs.get("RepoDigests", [])
+                if repo_digests:
+                    digest = repo_digests[0]
+            except Exception:
+                pass
+
+            # Stream logs line-by-line back to the async callback
+            for chunk in container.logs(stream=True, follow=True):
+                raw = chunk.decode("utf-8", errors="replace")
+                for line in raw.splitlines():
+                    stripped = line.rstrip()
+                    if stripped:
+                        loop.call_soon_threadsafe(log_callback, stripped)
+
+            result = container.wait()
+            nonlocal_exit_code = result.get("StatusCode", 1)
+
+            try:
+                container.remove()
+            except Exception:
+                pass
+
+            nonlocal exit_code
+            exit_code = nonlocal_exit_code
+
+        await loop.run_in_executor(None, _run_sync)
+        return exit_code, digest
+
+    def check_resources(self, ctx: RunContext) -> list[ResourceWarning]:
+        warnings: list[ResourceWarning] = []
+        try:
+            import psutil
+
+            # RAM check
+            available_gb = psutil.virtual_memory().available / (1024 ** 3)
+            if available_gb < _MIN_RAM_WARN_GB:
+                warnings.append(ResourceWarning(
+                    level="warn",
+                    message=(
+                        f"Only {available_gb:.1f} GB RAM available. "
+                        f"MRIQC recommends at least {_MIN_RAM_WARN_GB:.0f} GB free. "
+                        "The run may be slow or fail on larger datasets."
+                    ),
+                ))
+
+            # Disk check (check the output dir's filesystem)
+            output_parent = Path(ctx.output_dir).parent
+            output_parent.mkdir(parents=True, exist_ok=True)
+            free_gb = psutil.disk_usage(str(output_parent)).free / (1024 ** 3)
+            if free_gb < _MIN_DISK_WARN_GB:
+                warnings.append(ResourceWarning(
+                    level="warn",
+                    message=(
+                        f"Only {free_gb:.1f} GB disk space available. "
+                        f"MRIQC outputs require at least {_MIN_DISK_WARN_GB:.0f} GB. "
+                        "The run may fail partway through."
+                    ),
+                ))
+        except ImportError:
+            log.warning("psutil not installed; skipping resource pre-check")
+        except Exception as exc:
+            log.warning("Resource pre-check failed: %s", exc)
+
+        return warnings
+
+
+def translate_errors(
+    log_text: str,
+    known_errors: list[dict[str, str]],
+) -> str | None:
+    """
+    Scan log_text against the manifest's known_errors patterns.
+    Returns the first match's plain-language explanation, or None if no match.
+    """
+    for entry in known_errors:
+        pattern = entry.get("pattern", "")
+        if not pattern:
+            continue
+        try:
+            if re.search(pattern, log_text, re.IGNORECASE | re.MULTILINE):
+                explanation = entry.get("explanation", "")
+                fix_hint = entry.get("fix_hint", "")
+                if fix_hint:
+                    return f"{explanation}\n\nSuggested fix: {fix_hint}"
+                return explanation
+        except re.error:
+            log.warning("Invalid regex in known_errors: %r", pattern)
+    return None

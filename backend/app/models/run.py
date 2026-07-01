@@ -16,6 +16,9 @@ class Run(Base):
     container_digest: Mapped[str | None] = mapped_column(String(128))
     params_json: Mapped[str | None] = mapped_column(Text)  # JSON blob of user params
     status: Mapped[str] = mapped_column(String(32), default="pending")
+    command_preview: Mapped[str | None] = mapped_column(Text)
+    output_dir: Mapped[str | None] = mapped_column(String(1024))
+    error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

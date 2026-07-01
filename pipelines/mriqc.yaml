@@ -22,6 +22,7 @@ parameters:
     type: select
     required: true
     default: participant
+    positional_index: 1
     options:
       - participant
       - group
@@ -33,23 +34,26 @@ parameters:
   - name: participant-label
     type: string
     required: false
+    multiple: true
     help: >
-      Restrict processing to one or more subjects, e.g. "01 02 03".
-      Leave blank to process every subject in the dataset.
+      Restrict processing to one or more subjects, e.g. "01 02 03"
+      (space-separated). Leave blank to process every subject.
 
   - name: session-id
     type: string
     required: false
+    multiple: true
     help: >
-      Only process a specific session, e.g. "baseline". Leave blank to
-      include all sessions.
+      Only process specific sessions, e.g. "baseline followup"
+      (space-separated). Leave blank to include all sessions.
 
   - name: task-id
     type: string
     required: false
+    multiple: true
     help: >
-      Only process a specific functional task, e.g. "rest". Leave blank
-      to include all tasks.
+      Only process specific functional tasks, e.g. "rest nback"
+      (space-separated). Leave blank to include all tasks.
 
   - name: modalities
     type: multiselect

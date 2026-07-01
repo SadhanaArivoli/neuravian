@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # When set, the backend rewrites paths transparently so users can paste
     # their normal Mac paths into the import form.
     host_datasets_mount: str | None = None
+    # Directory used for run logs and pipeline derivatives output.
+    # In Docker this maps to the data volume (/app/data). In local dev it
+    # defaults to ./data relative to the working directory.
+    data_dir: str = "./data"
 
 
 settings = Settings()

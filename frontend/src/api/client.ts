@@ -132,3 +132,53 @@ export function fetchPipelines(): Promise<PipelineSummary[]> {
 export function fetchPipeline(id: string): Promise<Pipeline> {
   return apiFetch<Pipeline>(`/pipelines/${id}`);
 }
+
+// ------------------------------------------------------------------ //
+// Runs                                                                 //
+// ------------------------------------------------------------------ //
+
+export interface ResourceWarning {
+  level: string;
+  message: string;
+}
+
+export interface RunSummary {
+  id: number;
+  pipeline_manifest_id: string;
+  pipeline_version: string;
+  dataset_id: number;
+  status: "pending" | "running" | "success" | "failed";
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface Run extends RunSummary {
+  params: Record<string, unknown>;
+  command_preview: string | null;
+  output_dir: string | null;
+  error_message: string | null;
+  resource_warnings: ResourceWarning[];
+}
+
+export interface RunCreate {
+  pipeline_id: string;
+  dataset_id: number;
+  params: Record<string, unknown>;
+}
+
+export function createRun(body: RunCreate): Promise<Run> {
+  return apiFetch<Run>("/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchRuns(): Promise<RunSummary[]> {
+  return apiFetch<RunSummary[]>("/runs");
+}
+
+export function fetchRun(id: number): Promise<Run> {
+  return apiFetch<Run>(`/runs/${id}`);
+}

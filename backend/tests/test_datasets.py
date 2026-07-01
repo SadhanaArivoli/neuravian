@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
 from app.main import app
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.services.bids_patterns import (
     check_entity_order,
@@ -59,8 +59,10 @@ def db_session():
 @pytest.fixture()
 def api_client(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
-    with TestClient(app) as client:
-        yield client
+    # Patch the lifespan's seed call so it doesn't try to hit the real DB.
+    with patch("app.services.run.seed_pipeline_registry"):
+        with TestClient(app) as client:
+            yield client
     app.dependency_overrides.clear()
 
 

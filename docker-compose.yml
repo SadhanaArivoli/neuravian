@@ -5,15 +5,20 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persist the SQLite DB across restarts
+      # Persist the SQLite DB, run logs, and derivatives across restarts
       - ./data:/app/data
       # Pipeline manifests live at the repo root, not inside backend/
       - ./pipelines:/pipelines:ro
       # Mount the host datasets directory read-only at /host-data.
       # Set HOST_DATASETS_DIR in .env (see .env.example).
       - ${HOST_DATASETS_DIR:-~/Documents}:/host-data:ro
+      # Docker socket — lets the backend spawn sibling containers (Docker outside
+      # of Docker). The backend never runs code on the host; it only builds and
+      # submits docker run commands on behalf of the user.
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       DATABASE_URL: sqlite:////app/data/neuroforge.db
+      DATA_DIR: /app/data
       # Tell the backend what host prefix maps to /host-data so it can
       # transparently translate paths the user pastes from their Mac.
       HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
