@@ -16,6 +16,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
 from app.main import app
+from unittest.mock import patch
+
 from app.services.bids_patterns import (
     check_entity_order,
     check_missing_dataset_description,
@@ -23,7 +25,7 @@ from app.services.bids_patterns import (
     check_nifti_without_sidecar,
     check_subject_label_mismatch,
 )
-from app.services.dataset import DatasetService
+from app.services.dataset import DatasetService, _translate_host_path
 
 FIXTURES = Path(__file__).parent / "fixtures"
 VALID_BIDS = FIXTURES / "valid_bids"
@@ -60,6 +62,46 @@ def api_client(db_session):
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+# ------------------------------------------------------------------ #
+# _translate_host_path unit tests                                     #
+# ------------------------------------------------------------------ #
+
+
+def test_translate_host_path_rewrites_mac_path():
+    """The exact real-world case: paste a Mac path, get a /host-data path."""
+    with patch("app.services.dataset.settings") as mock_settings:
+        mock_settings.host_datasets_mount = "/Users/arivolitirouvingadame/Documents"
+        result = _translate_host_path(
+            Path("/Users/arivolitirouvingadame/Documents/bids-examples/ds001")
+        )
+    assert result == Path("/host-data/bids-examples/ds001")
+
+
+def test_translate_host_path_leaves_container_path_unchanged():
+    """A path already inside /host-data should pass through unchanged."""
+    with patch("app.services.dataset.settings") as mock_settings:
+        mock_settings.host_datasets_mount = "/Users/arivolitirouvingadame/Documents"
+        result = _translate_host_path(Path("/host-data/bids-examples/ds001"))
+    # /host-data doesn't start with the host mount prefix, so no rewrite
+    assert result == Path("/host-data/bids-examples/ds001")
+
+
+def test_translate_host_path_no_op_when_mount_unset():
+    """Without a mount configured the path is returned unchanged."""
+    with patch("app.services.dataset.settings") as mock_settings:
+        mock_settings.host_datasets_mount = None
+        result = _translate_host_path(Path("/Users/alice/Documents/my-study"))
+    assert result == Path("/Users/alice/Documents/my-study")
+
+
+def test_translate_host_path_no_op_when_outside_mount():
+    """A path that doesn't start with the mount prefix is returned unchanged."""
+    with patch("app.services.dataset.settings") as mock_settings:
+        mock_settings.host_datasets_mount = "/Users/alice/Documents"
+        result = _translate_host_path(Path("/Volumes/ExternalDrive/my-study"))
+    assert result == Path("/Volumes/ExternalDrive/my-study")
 
 
 # ------------------------------------------------------------------ #

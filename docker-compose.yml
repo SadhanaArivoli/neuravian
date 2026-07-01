@@ -16,7 +16,7 @@ services:
       # transparently translate paths the user pastes from their Mac.
       HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
