@@ -19,7 +19,11 @@ log = logging.getLogger(__name__)
 
 # Resolved at import time so the registry can be built before the FastAPI
 # app starts accepting requests.
-_PIPELINES_DIR = Path(__file__).parent.parent.parent.parent / "pipelines"
+# In Docker the volume is mounted at /pipelines. For local dev (uv run from
+# backend/) the manifests are at ../../pipelines relative to this file.
+_DOCKER_PIPELINES = Path("/pipelines")
+_LOCAL_PIPELINES = Path(__file__).parent.parent.parent.parent / "pipelines"
+_PIPELINES_DIR = _DOCKER_PIPELINES if _DOCKER_PIPELINES.is_dir() else _LOCAL_PIPELINES
 _SCHEMA_PATH = _PIPELINES_DIR / "schema" / "manifest.schema.json"
 
 

@@ -7,6 +7,8 @@ services:
     volumes:
       # Persist the SQLite DB across restarts
       - ./data:/app/data
+      # Pipeline manifests live at the repo root, not inside backend/
+      - ./pipelines:/pipelines:ro
       # Mount the host datasets directory read-only at /host-data.
       # Set HOST_DATASETS_DIR in .env (see .env.example).
       - ${HOST_DATASETS_DIR:-~/Documents}:/host-data:ro
