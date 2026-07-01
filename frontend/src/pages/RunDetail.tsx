@@ -49,6 +49,8 @@ export default function RunDetail() {
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "closed">(
     "connecting"
   );
+  const [lastActivityAt, setLastActivityAt] = useState<Date | null>(null);
+  const [silentSeconds, setSilentSeconds] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -57,6 +59,8 @@ export default function RunDetail() {
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     setWsStatus("connecting");
+    setLastActivityAt(null);
+    setSilentSeconds(0);
 
     ws.onopen = () => setWsStatus("connected");
 
@@ -64,9 +68,14 @@ export default function RunDetail() {
       const msg: LogMessage = JSON.parse(ev.data);
       if (msg.type === "log") {
         setLogLines((prev) => [...prev, msg.line]);
+        setLastActivityAt(new Date());
+        setSilentSeconds(0);
+      } else if (msg.type === "heartbeat") {
+        // Server is alive — update activity timestamp so users know the
+        // connection is healthy even during quiet processing phases.
+        setLastActivityAt(new Date());
       } else if (msg.type === "done") {
         setWsStatus("closed");
-        // Refresh run data to get final status + error_message
         refetch();
       }
     };
@@ -78,6 +87,15 @@ export default function RunDetail() {
       ws.close();
     };
   }, [runId, refetch]);
+
+  // Tick a "quiet for Xs" counter whenever connected and no new log lines.
+  useEffect(() => {
+    if (wsStatus !== "connected" || !lastActivityAt) return;
+    const interval = setInterval(() => {
+      setSilentSeconds(Math.floor((Date.now() - lastActivityAt.getTime()) / 1000));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [wsStatus, lastActivityAt]);
 
   // Auto-scroll to bottom as new log lines arrive
   useEffect(() => {
@@ -174,7 +192,9 @@ export default function RunDetail() {
             {wsStatus === "connected" && isActive ? (
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                live
+                {silentSeconds >= 10
+                  ? `live · quiet for ${silentSeconds < 60 ? `${silentSeconds}s` : `${Math.floor(silentSeconds / 60)}m ${silentSeconds % 60}s`}`
+                  : "live"}
               </span>
             ) : wsStatus === "closed" ? (
               "stream ended"
@@ -196,6 +216,15 @@ export default function RunDetail() {
               {line}
             </div>
           ))}
+          {wsStatus === "connected" && isActive && silentSeconds >= 30 && (
+            <div className="mt-2 text-gray-600 italic">
+              — pipeline is running, no new output for{" "}
+              {silentSeconds < 60
+                ? `${silentSeconds}s`
+                : `${Math.floor(silentSeconds / 60)}m ${silentSeconds % 60}s`}{" "}
+              —
+            </div>
+          )}
           <div ref={logEndRef} />
         </div>
       </div>
