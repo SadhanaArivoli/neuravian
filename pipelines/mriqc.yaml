@@ -1,0 +1,157 @@
+id: mriqc
+display_name: MRIQC
+description: >
+  Automatic quality assessment of structural and functional MRI data.
+  Extracts image quality metrics (IQMs) and produces individual and group
+  visual reports — no manual scoring required.
+homepage: https://mriqc.readthedocs.io/en/24.0.2/
+container:
+  image: nipreps/mriqc
+  tag: "24.0.2"
+  engine: docker
+
+inputs:
+  - bids_dataset
+
+outputs:
+  - mriqc
+
+parameters:
+  # ── Basic ──────────────────────────────────────────────────────────
+  - name: analysis_level
+    type: select
+    required: true
+    default: participant
+    options:
+      - participant
+      - group
+    help: >
+      Run quality metrics per subject ("participant") or aggregate them
+      into a group-level report ("group"; run after all participant runs
+      are complete).
+
+  - name: participant-label
+    type: string
+    required: false
+    help: >
+      Restrict processing to one or more subjects, e.g. "01 02 03".
+      Leave blank to process every subject in the dataset.
+
+  - name: session-id
+    type: string
+    required: false
+    help: >
+      Only process a specific session, e.g. "baseline". Leave blank to
+      include all sessions.
+
+  - name: task-id
+    type: string
+    required: false
+    help: >
+      Only process a specific functional task, e.g. "rest". Leave blank
+      to include all tasks.
+
+  - name: modalities
+    type: multiselect
+    required: false
+    options:
+      - T1w
+      - T2w
+      - bold
+    help: >
+      Limit which MRI modalities MRIQC inspects. Leave blank to process
+      all modalities found in the dataset.
+
+  # ── Performance ────────────────────────────────────────────────────
+  - name: nprocs
+    type: integer
+    required: false
+    default: 1
+    help: >
+      Number of parallel processes. Increase to speed up multi-subject
+      runs on machines with several CPU cores.
+
+  - name: mem
+    type: float
+    required: false
+    help: >
+      Upper memory limit in GB. MRIQC will try to stay within this
+      budget when scheduling parallel work.
+
+  - name: omp-nthreads
+    type: integer
+    required: false
+    default: 1
+    advanced: true
+    help: >
+      Number of threads each process may use for OpenMP-based tools
+      (ANTs, FSL). Usually safe to leave at 1.
+
+  - name: float32
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Cast input data to 32-bit float before processing. Halves memory
+      usage at the cost of slight numeric precision.
+
+  # ── Outputs ────────────────────────────────────────────────────────
+  - name: work-dir
+    type: directory_path
+    required: false
+    advanced: true
+    help: >
+      Directory for intermediate working files. Useful if you want to
+      inspect nipype workflow outputs or resume an interrupted run.
+
+  - name: verbose-reports
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Include additional plots and diagnostic figures in the HTML
+      reports (increases report file size).
+
+  - name: reports-only
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Skip metric computation and only regenerate HTML reports from a
+      previous run's outputs.
+
+known_errors:
+  - pattern: "No such file or directory.*dataset_description\\.json"
+    explanation: The selected folder is not a valid BIDS dataset — it is missing dataset_description.json at the root.
+    fix_hint: Make sure you selected the top-level BIDS directory (the one that contains dataset_description.json, not a subdirectory).
+
+  - pattern: "Cannot allocate memory|MemoryError|Killed"
+    explanation: MRIQC ran out of memory during processing.
+    fix_hint: Reduce the number of parallel processes ("nprocs") or lower the "mem" ceiling, then re-run.
+
+  - pattern: "No NIfTI files found|No functional runs found"
+    explanation: MRIQC found no images to process. This usually means the modality or task filter excluded everything.
+    fix_hint: Check your "modalities" and "task-id" settings. Leave them blank to process all available data.
+
+  - pattern: "FileNotFoundError.*license\\.txt|FREESURFER_HOME"
+    explanation: MRIQC could not find a FreeSurfer license file. FreeSurfer is required for some structural metrics.
+    fix_hint: Place your FreeSurfer license.txt in the output directory or bind-mount it into the container and set the FREESURFER_HOME environment variable.
+
+  - pattern: "ERROR.*runtime error.*nipype"
+    explanation: An internal nipype workflow node failed. This is often caused by corrupted input files or an out-of-disk-space condition.
+    fix_hint: Check the log above this line for the node name, then inspect the file it was processing. Ensure you have enough disk space in the working directory.
+
+command_template: >
+  docker run --rm
+  -v {bids_dir}:/data:ro
+  -v {output_dir}:/out
+  {work_dir_mount}
+  nipreps/mriqc:24.0.2
+  /data /out {analysis_level}
+  {flags}
+
+deprecated_params:
+  run-id: bids-filter-file

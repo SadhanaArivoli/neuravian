@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
+from app.api.pipelines import router as pipelines_router
 from app.core.config import settings
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -17,3 +18,4 @@ app.add_middleware(
 
 app.include_router(health_router, prefix="/api")
 app.include_router(datasets_router, prefix="/api")
+app.include_router(pipelines_router, prefix="/api")

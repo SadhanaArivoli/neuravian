@@ -81,3 +81,54 @@ export function fetchDatasets(): Promise<DatasetSummary[]> {
 export function fetchDataset(id: number): Promise<Dataset> {
   return apiFetch<Dataset>(`/datasets/${id}`);
 }
+
+// ------------------------------------------------------------------ //
+// Pipelines                                                            //
+// ------------------------------------------------------------------ //
+
+export interface PipelineContainer {
+  image: string;
+  tag: string;
+  digest?: string;
+  engine: string;
+}
+
+export interface PipelineParameter {
+  name: string;
+  type: "string" | "integer" | "float" | "boolean" | "file_path" | "directory_path" | "multiselect" | "select";
+  required?: boolean;
+  default?: unknown;
+  options?: string[];
+  help?: string;
+  advanced?: boolean;
+}
+
+export interface PipelineKnownError {
+  pattern: string;
+  explanation: string;
+  fix_hint?: string;
+}
+
+export interface PipelineSummary {
+  id: string;
+  display_name: string;
+  description: string;
+  homepage?: string;
+  container: PipelineContainer;
+}
+
+export interface Pipeline extends PipelineSummary {
+  inputs: string[];
+  outputs: string[];
+  parameters: PipelineParameter[];
+  known_errors?: PipelineKnownError[];
+  command_template?: string;
+}
+
+export function fetchPipelines(): Promise<PipelineSummary[]> {
+  return apiFetch<PipelineSummary[]>("/pipelines");
+}
+
+export function fetchPipeline(id: string): Promise<Pipeline> {
+  return apiFetch<Pipeline>(`/pipelines/${id}`);
+}
