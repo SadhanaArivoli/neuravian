@@ -288,7 +288,32 @@ class DockerExecutor(Executor):
     def check_resources(self, ctx: RunContext) -> list[ResourceWarning]:
         warnings: list[ResourceWarning] = []
         try:
+            import platform
+
             import psutil
+
+            # Architecture mismatch: x86_64 image on ARM host (Apple Silicon)
+            host_arch = platform.machine().lower()
+            if host_arch in ("arm64", "aarch64"):
+                try:
+                    client_tmp = __import__("docker").from_env()
+                    img_info = client_tmp.images.get(
+                        f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}"
+                    )
+                    img_arch = img_info.attrs.get("Architecture", "")
+                    if img_arch == "amd64":
+                        warnings.append(ResourceWarning(
+                            level="warn",
+                            message=(
+                                f"This pipeline image ({ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}) "
+                                "is x86_64 only and will run under Rosetta 2 emulation on your Apple Silicon Mac. "
+                                "Expect 5-10× slower processing and higher memory usage than native. "
+                                "Keep nprocs=1 and omp-nthreads=1 to avoid memory exhaustion. "
+                                "A single T1w subject will take approximately 30-90 minutes."
+                            ),
+                        ))
+                except Exception:
+                    pass
 
             # RAM check
             available_gb = psutil.virtual_memory().available / (1024 ** 3)

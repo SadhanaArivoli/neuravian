@@ -45,16 +45,17 @@ parameters:
     required: false
     multiple: true
     help: >
-      Only process specific sessions, e.g. "baseline followup"
-      (space-separated). Leave blank to include all sessions.
+      Filter by session label (the part after "ses-"), e.g. "baseline followup".
+      Only needed if your dataset has session folders (ses-*). Leave blank for
+      datasets without session structure (most single-session datasets).
 
   - name: task-id
     type: string
     required: false
     multiple: true
     help: >
-      Only process specific functional tasks, e.g. "rest nback"
-      (space-separated). Leave blank to include all tasks.
+      Filter by functional task name (the part after "task-"), e.g. "rest nback".
+      Leave blank to include all tasks.
 
   - name: modalities
     type: multiselect
@@ -71,11 +72,14 @@ parameters:
   - name: nprocs
     type: integer
     required: false
-    default: 4
+    default: 1
     help: >
-      Number of subjects to process in parallel. Each process uses roughly
-      4-6 GB of RAM. Default 4 is a good starting point for a machine with
-      16+ GB RAM and 8+ cores. Reduce to 1-2 on machines with less memory.
+      Number of subjects to process in parallel. Each nipype worker process
+      loads the full pipeline (including PyTorch for skull-stripping), so
+      memory scales linearly with this value. Default 1 is safe on all
+      machines. Increase to 2-4 only on x86 machines with 16+ GB RAM free
+      for Docker. On Apple Silicon Macs the MRIQC image runs under x86
+      emulation — keep nprocs=1 to avoid memory exhaustion.
 
   - name: mem
     type: float
@@ -87,12 +91,22 @@ parameters:
   - name: omp-nthreads
     type: integer
     required: false
-    default: 2
+    default: 1
     advanced: true
     help: >
-      Threads per process for OpenMP tools (ANTs, FSL). Set to 2-4 for
-      faster single-subject runs. Keep nprocs × omp-nthreads ≤ total CPU
-      cores to avoid oversubscription.
+      Threads per process for OpenMP tools (ANTs, FSL). Keep at 1 on Apple
+      Silicon (x86 emulation makes extra threads expensive). On native x86
+      with 8+ cores, 2-4 speeds up ANTs registration noticeably.
+
+  - name: ants-float
+    type: boolean
+    required: false
+    default: true
+    advanced: true
+    help: >
+      Use 32-bit float precision inside ANTs. Halves ANTs memory usage
+      (from ~3 GB to ~1.5 GB) with negligible effect on IQM accuracy.
+      Strongly recommended on machines with limited Docker memory.
 
   - name: float32
     type: boolean
