@@ -36,8 +36,9 @@ parameters:
     required: false
     multiple: true
     help: >
-      Restrict processing to one or more subjects, e.g. "01 02 03"
-      (space-separated). Leave blank to process every subject.
+      Restrict processing to one or more subjects, e.g. "01" or "01 02 03"
+      (space-separated). Leave blank to process every subject in the dataset
+      — on large datasets this can take hours.
 
   - name: session-id
     type: string
@@ -70,26 +71,28 @@ parameters:
   - name: nprocs
     type: integer
     required: false
-    default: 1
+    default: 4
     help: >
-      Number of parallel processes. Increase to speed up multi-subject
-      runs on machines with several CPU cores.
+      Number of subjects to process in parallel. Each process uses roughly
+      4-6 GB of RAM. Default 4 is a good starting point for a machine with
+      16+ GB RAM and 8+ cores. Reduce to 1-2 on machines with less memory.
 
   - name: mem
     type: float
     required: false
     help: >
       Upper memory limit in GB. MRIQC will try to stay within this
-      budget when scheduling parallel work.
+      budget when scheduling parallel work. Leave blank for no cap.
 
   - name: omp-nthreads
     type: integer
     required: false
-    default: 1
+    default: 2
     advanced: true
     help: >
-      Number of threads each process may use for OpenMP-based tools
-      (ANTs, FSL). Usually safe to leave at 1.
+      Threads per process for OpenMP tools (ANTs, FSL). Set to 2-4 for
+      faster single-subject runs. Keep nprocs × omp-nthreads ≤ total CPU
+      cores to avoid oversubscription.
 
   - name: float32
     type: boolean
@@ -126,6 +129,8 @@ parameters:
     help: >
       Skip metric computation and only regenerate HTML reports from a
       previous run's outputs.
+
+max_runtime_hours: 6
 
 known_errors:
   - pattern: "No such file or directory.*dataset_description\\.json"

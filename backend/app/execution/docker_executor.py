@@ -60,6 +60,9 @@ def _get_container_mounts() -> dict[str, str]:
 
 _MOUNTS: dict[str, str] | None = None
 
+# run_id → running container ID, so the watchdog can stop it by ID
+_active_containers: dict[int, str] = {}
+
 
 def _resolve_mounts() -> dict[str, str]:
     global _MOUNTS
@@ -216,16 +219,16 @@ class DockerExecutor(Executor):
         def _run_sync() -> None:
             nonlocal exit_code, digest
 
-            log.info(
-                "Starting container %s for run %d", sdk.image, ctx.run_id
-            )
+            log.info("Starting container %s for run %d", sdk.image, ctx.run_id)
             container = client.containers.run(
                 sdk.image,
                 command=sdk.command,
                 volumes=sdk.volumes,
                 detach=True,
                 remove=False,  # we remove after capturing exit code
+                labels={"neuroforge_run_id": str(ctx.run_id)},
             )
+            _active_containers[ctx.run_id] = container.id
 
             # Capture image digest for provenance
             try:
@@ -255,7 +258,31 @@ class DockerExecutor(Executor):
             nonlocal exit_code
             exit_code = nonlocal_exit_code
 
-        await loop.run_in_executor(None, _run_sync)
+        max_hours: float | None = ctx.manifest.get("max_runtime_hours")
+
+        async def _watchdog() -> None:
+            assert max_hours is not None
+            await asyncio.sleep(max_hours * 3600)
+            cid = _active_containers.get(ctx.run_id)
+            if cid:
+                log.warning("Run %d exceeded max runtime of %.1fh — stopping container %s", ctx.run_id, max_hours, cid[:12])
+                try:
+                    client.containers.get(cid).stop(timeout=30)
+                except Exception:
+                    pass
+            loop.call_soon_threadsafe(
+                log_callback,
+                f"[neuroforge] Run stopped automatically after {max_hours:.0f}h maximum runtime.",
+            )
+
+        watchdog: asyncio.Task | None = asyncio.ensure_future(_watchdog()) if max_hours else None
+        try:
+            await loop.run_in_executor(None, _run_sync)
+        finally:
+            if watchdog:
+                watchdog.cancel()
+            _active_containers.pop(ctx.run_id, None)
+
         return exit_code, digest
 
     def check_resources(self, ctx: RunContext) -> list[ResourceWarning]:

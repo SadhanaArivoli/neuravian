@@ -13,11 +13,10 @@ from app.core.database import SessionLocal
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Seed the pipelines DB table from loaded manifests so runs.pipeline_id
-    # FK can always be satisfied without manual DB inserts.
-    from app.services.run import seed_pipeline_registry
+    from app.services.run import recover_interrupted_runs, seed_pipeline_registry
     with SessionLocal() as db:
         seed_pipeline_registry(db)
+        await recover_interrupted_runs(db)
     yield
 
 

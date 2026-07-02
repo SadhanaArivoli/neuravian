@@ -66,6 +66,11 @@
       "items": { "$ref": "#/$defs/parameter" },
       "description": "Ordered list of user-configurable parameters rendered in the run wizard."
     },
+    "max_runtime_hours": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "If set, the container is forcibly stopped after this many hours and the run is marked failed. Prevents indefinitely hung runs."
+    },
     "known_errors": {
       "type": "array",
       "items": { "$ref": "#/$defs/known_error" },

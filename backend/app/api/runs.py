@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, get_db
 from app.models.run import Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
-from app.services.run import RunService, get_log_buffer, subscribe, unsubscribe
+from app.services.run import RunService, get_log_history, subscribe, unsubscribe
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
@@ -57,8 +57,9 @@ def get_run_logs(run_id: int, svc: RunService = Depends(_svc)) -> dict:
 async def stream_run_logs(websocket: WebSocket, run_id: int) -> None:
     await websocket.accept()
 
-    # Send buffered history first so a late-connecting client catches up
-    history = get_log_buffer(run_id)
+    # Send history first — in-memory buffer if available, otherwise the
+    # partial log file (covers page-refresh mid-run or post-restart reconnect)
+    history = get_log_history(run_id)
     for line in history:
         await websocket.send_text(json.dumps({"type": "log", "line": line}))
 

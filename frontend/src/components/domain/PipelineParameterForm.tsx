@@ -139,6 +139,20 @@ export default function PipelineParameterForm({ pipeline }: Props) {
   const set = (name: string, val: string | boolean | string[]) =>
     setValues((prev) => ({ ...prev, [name]: val }));
 
+  const selectedDataset = (datasets ?? []).find((ds) => ds.id === selectedDatasetId);
+  const participantLabelEmpty = !String(values["participant-label"] ?? "").trim();
+  const subjectCount = selectedDataset?.subject_count ?? 0;
+
+  function estimateRuntime(subjects: number, nprocsVal: unknown): string {
+    const procs = Math.max(1, Number(nprocsVal) || 1);
+    // ~20 min per parallel batch (conservative: T1w + functional)
+    const totalMin = Math.ceil(subjects / procs) * 20;
+    if (totalMin < 60) return `~${totalMin} min`;
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
@@ -266,6 +280,19 @@ export default function PipelineParameterForm({ pipeline }: Props) {
         <p className="rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
           {submitError}
         </p>
+      )}
+
+      {participantLabelEmpty && selectedDataset && subjectCount > 1 && (
+        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <span className="font-medium">⚠ No participant label set</span> — MRIQC will process
+          all {subjectCount} subjects in this dataset. Estimated runtime:{" "}
+          <span className="font-medium">
+            {estimateRuntime(subjectCount, values["nprocs"])}
+          </span>{" "}
+          at nprocs={String(values["nprocs"] ?? 4)}.{" "}
+          Enter a participant label above (e.g. <code className="font-mono text-xs">01</code>) to
+          run on a single subject first.
+        </div>
       )}
 
       <div className="pt-2">
