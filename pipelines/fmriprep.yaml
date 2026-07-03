@@ -64,6 +64,16 @@ parameters:
       Filter by functional task name (the part after "task-"), e.g.
       "rest" or "rest nback". Leave blank to process all tasks.
 
+  - name: run-id
+    type: string
+    required: false
+    multiple: true
+    help: >
+      Filter to specific BOLD run numbers (the part after "run-"), e.g.
+      "01" to process only the first run. Useful when a subject has
+      multiple runs per task and you want to test end-to-end on one
+      before committing hours to all of them.
+
   - name: ignore
     type: multiselect
     required: false
@@ -141,11 +151,25 @@ parameters:
   - name: mem
     type: integer
     required: false
+    default: 6000
     help: >
-      Memory budget for fMRIPrep in megabytes (MB), not GB. Example: 8000
-      for 8 GB, 16000 for 16 GB. fMRIPrep will try to stay within this
-      limit when scheduling parallel work. Recommended minimum: 8000.
-      Leave blank to use all available container memory.
+      Memory budget for fMRIPrep in megabytes (MB), not GB. Example: 6000
+      for 6 GB, 16000 for 16 GB. fMRIPrep uses this hint to schedule
+      memory-heavy nodes sequentially rather than concurrently. Default 6000
+      is calibrated for this machine's 7.8 GB Docker allocation — leaves
+      ~1.8 GB headroom for the container runtime. Increase only if Docker
+      Desktop is configured with more memory.
+
+  - name: low-mem
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Attempt to reduce peak memory use by writing intermediate arrays to
+      disk as memory-mapped files instead of holding them in RAM. Useful
+      when Docker memory is below 8 GB. Adds disk I/O overhead so runs
+      may be slower, but prevents OOM kills on memory-constrained machines.
 
   # ── BOLD preprocessing options ─────────────────────────────────────
   - name: dummy-scans
@@ -196,7 +220,7 @@ parameters:
       If left blank, fMRIPrep creates a temporary directory that is deleted
       on completion.
 
-max_runtime_hours: 12
+max_runtime_hours: 24
 
 known_errors:
   - pattern: "a valid license file is required for FreeSurfer"
