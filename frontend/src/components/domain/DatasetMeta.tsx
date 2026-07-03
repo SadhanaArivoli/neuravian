@@ -1,4 +1,7 @@
-import type { Dataset } from "../../api/client";
+import { useState } from "react";
+import type { Dataset, DatasetScan } from "../../api/client";
+import { useDatasetScans } from "../../hooks/useDatasets";
+import NiivueViewer from "./NiivueViewer";
 import { ValidationResults, ValidationStatusBanner } from "./ValidationResults";
 
 function MetaRow({ label, value }: { label: string; value: string | number }) {
@@ -25,6 +28,121 @@ function Chips({ items }: { items: string[] }) {
         </span>
       ))}
     </div>
+  );
+}
+
+const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
+
+function scanFileUrl(datasetId: number, filePath: string): string {
+  return `${BASE_URL}/datasets/${datasetId}/files/${filePath}`;
+}
+
+// Suffix → human label
+const SUFFIX_LABELS: Record<string, string> = {
+  T1w: "T1w structural",
+  T2w: "T2w structural",
+  bold: "BOLD functional",
+  inplaneT2: "In-plane T2",
+  dwi: "Diffusion (DWI)",
+  flair: "FLAIR",
+  angio: "Angio",
+};
+
+function ScanBrowser({ datasetId }: { datasetId: number }) {
+  const { data, isLoading, isError } = useDatasetScans(datasetId);
+  const [viewerFile, setViewerFile] = useState<DatasetScan | null>(null);
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
+
+  if (isLoading) {
+    return (
+      <p className="text-xs text-gray-500 animate-pulse">Loading scan files…</p>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <p className="text-xs text-gray-500">Could not load scan file list.</p>
+    );
+  }
+  if (data.scans.length === 0) {
+    return (
+      <p className="text-xs text-gray-500">No NIfTI files found in this dataset.</p>
+    );
+  }
+
+  // Group by subject
+  const bySubject = new Map<string, DatasetScan[]>();
+  for (const scan of data.scans) {
+    const list = bySubject.get(scan.subject) ?? [];
+    list.push(scan);
+    bySubject.set(scan.subject, list);
+  }
+
+  const toggleSubject = (sub: string) => {
+    setExpandedSubjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(sub)) next.delete(sub);
+      else next.add(sub);
+      return next;
+    });
+  };
+
+  return (
+    <>
+      {viewerFile && (
+        <NiivueViewer
+          fileUrl={scanFileUrl(datasetId, viewerFile.path)}
+          fileName={viewerFile.path.split("/").pop() ?? viewerFile.path}
+          onClose={() => setViewerFile(null)}
+        />
+      )}
+      <div className="space-y-1">
+        {Array.from(bySubject.entries()).map(([subject, scans]) => {
+          const expanded = expandedSubjects.has(subject);
+          return (
+            <div key={subject} className="rounded border border-white/10 overflow-hidden">
+              <button
+                onClick={() => toggleSubject(subject)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-surface-raised hover:bg-surface-overlay text-sm text-gray-200 text-left"
+              >
+                <span className="font-mono">sub-{subject}</span>
+                <span className="text-xs text-gray-500">
+                  {scans.length} file{scans.length !== 1 ? "s" : ""}{" "}
+                  {expanded ? "▲" : "▼"}
+                </span>
+              </button>
+              {expanded && (
+                <div className="divide-y divide-white/5">
+                  {scans.map((scan) => (
+                    <div
+                      key={scan.path}
+                      className="flex items-center justify-between px-3 py-2 bg-gray-950/30 gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-300 font-mono truncate">
+                          {scan.path.split("/").pop()}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {scan.datatype}
+                          {scan.session ? ` · ses-${scan.session}` : ""}
+                          {" · "}
+                          {SUFFIX_LABELS[scan.suffix] ?? scan.suffix}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setViewerFile(scan)}
+                        className="shrink-0 rounded border border-blue-700 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-900/40 transition-colors"
+                      >
+                        View
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -98,6 +216,12 @@ export function DatasetMeta({ dataset }: Props) {
           <ValidationResults issues={dataset.validation_issues} />
         </div>
       )}
+
+      {/* Scan browser */}
+      <div>
+        <h3 className="mb-3 text-sm font-medium text-gray-300">Browse scans</h3>
+        <ScanBrowser datasetId={dataset.id} />
+      </div>
     </div>
   );
 }

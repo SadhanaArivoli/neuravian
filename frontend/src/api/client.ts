@@ -82,6 +82,22 @@ export function fetchDataset(id: number): Promise<Dataset> {
   return apiFetch<Dataset>(`/datasets/${id}`);
 }
 
+export interface DatasetScan {
+  subject: string;
+  session: string | null;
+  datatype: string | null;
+  suffix: string;
+  path: string;
+}
+
+export interface DatasetScans {
+  scans: DatasetScan[];
+}
+
+export function fetchDatasetScans(datasetId: number): Promise<DatasetScans> {
+  return apiFetch<DatasetScans>(`/datasets/${datasetId}/scans`);
+}
+
 // ------------------------------------------------------------------ //
 // Pipelines                                                            //
 // ------------------------------------------------------------------ //
@@ -181,4 +197,22 @@ export function fetchRuns(): Promise<RunSummary[]> {
 
 export function fetchRun(id: number): Promise<Run> {
   return apiFetch<Run>(`/runs/${id}`);
+}
+
+export interface RunResultFile {
+  name: string;
+  path: string;
+}
+
+export interface RunResults {
+  reports: RunResultFile[];
+  metrics: RunResultFile[];
+}
+
+export function fetchRunResults(runId: number): Promise<RunResults> {
+  return apiFetch<RunResults>(`/runs/${runId}/results`);
+}
+
+export function fetchRunFile<T>(runId: number, filePath: string): Promise<T> {
+  return apiFetch<T>(`/runs/${runId}/files/${filePath}`);
 }
