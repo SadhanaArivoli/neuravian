@@ -78,7 +78,16 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.rglob("sub-*.json"))
     ]
-    return {"reports": reports, "metrics": metrics}
+    # NIfTI derivatives: any .nii or .nii.gz file in the output tree.
+    # MRIQC produces none; fMRIPrep and similar tools produce many.
+    # FileResponse serves these as application/octet-stream, which is
+    # correct — Niivue reads format from the filename, not Content-Type.
+    niftis = [
+        {"name": f.name, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.rglob("*"))
+        if f.name.endswith(".nii.gz") or f.name.endswith(".nii")
+    ]
+    return {"reports": reports, "metrics": metrics, "niftis": niftis}
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")

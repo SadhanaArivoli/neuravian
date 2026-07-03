@@ -75,6 +75,11 @@ def run_with_output(db_session, tmp_path):
     iqm_json = iqm_dir / "sub-01_T1w.json"
     iqm_json.write_text(json.dumps({"snr_total": 4.73, "cnr": 1.69, "cjv": 0.59}))
 
+    # NIfTI derivative files (as a future fMRIPrep-style run would produce)
+    nii_dir = output_dir / "sub-01" / "anat"
+    (nii_dir / "sub-01_desc-preproc_T1w.nii.gz").write_bytes(b"\x1f\x8b" + b"\x00" * 10)
+    (nii_dir / "sub-01_label-GM_probseg.nii").write_bytes(b"\x00" * 348)
+
     run = Run(
         dataset_id=dataset.id,
         pipeline_id=pipeline.id,
@@ -189,6 +194,50 @@ def test_path_traversal_rejected(api_client, run_with_output):
         assert resp.status_code in (403, 404), (
             f"Expected 403/404 for traversal attempt {attempt!r}, got {resp.status_code}"
         )
+
+
+# ------------------------------------------------------------------ #
+# NIfTI derivative discovery                                            #
+# ------------------------------------------------------------------ #
+
+def test_results_includes_niftis(api_client, run_with_output):
+    """niftis field lists .nii.gz and .nii files from the output tree."""
+    run, _ = run_with_output
+    resp = api_client.get(f"/api/runs/{run.id}/results")
+    assert resp.status_code == 200
+    body = resp.json()
+    niftis = body["niftis"]
+    assert len(niftis) == 2
+    paths = {n["path"] for n in niftis}
+    assert "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz" in paths
+    assert "sub-01/anat/sub-01_label-GM_probseg.nii" in paths
+
+
+def test_results_niftis_empty_for_mriqc_style_output(api_client, run_without_output):
+    """niftis is [] when the output directory has no .nii/.nii.gz files (e.g. MRIQC)."""
+    run, _ = run_without_output
+    resp = api_client.get(f"/api/runs/{run.id}/results")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["niftis"] == []
+
+
+def test_serve_nifti_derivative(api_client, run_with_output):
+    """Serving a NIfTI derivative returns 200 with binary content."""
+    run, _ = run_with_output
+    resp = api_client.get(
+        f"/api/runs/{run.id}/files/sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+    )
+    assert resp.status_code == 200
+    # gzip magic bytes
+    assert resp.content[:2] == b"\x1f\x8b"
+
+
+def test_path_traversal_via_nifti_path_rejected(api_client, run_with_output):
+    """Traversal attempts through a nifti-style path are still rejected."""
+    run, _ = run_with_output
+    resp = api_client.get(f"/api/runs/{run.id}/files/sub-01/../../etc/passwd")
+    assert resp.status_code in (403, 404)
 
 
 def test_cross_run_access_rejected(api_client, run_with_output, db_session, tmp_path):

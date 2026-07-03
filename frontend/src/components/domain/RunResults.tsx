@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRunFile, useRunResults } from "../../hooks/useRuns";
+import NiivueViewer from "./NiivueViewer";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -85,6 +86,11 @@ function IqmCard({ data }: { data: IqmData }) {
   );
 }
 
+interface RunResultFile {
+  name: string;
+  path: string;
+}
+
 interface Props {
   runId: number;
 }
@@ -92,6 +98,7 @@ interface Props {
 export default function RunResults({ runId }: Props) {
   const { data: results, isLoading, error } = useRunResults(runId, true);
   const [activeReport, setActiveReport] = useState(0);
+  const [viewerNifti, setViewerNifti] = useState<RunResultFile | null>(null);
 
   const firstMetricPath = results?.metrics[0]?.path ?? null;
   const { data: iqmData } = useRunFile<IqmData>(runId, firstMetricPath);
@@ -112,11 +119,13 @@ export default function RunResults({ runId }: Props) {
     );
   }
 
-  if (results.reports.length === 0 && results.metrics.length === 0) {
+  const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
+
+  if (results.reports.length === 0 && results.metrics.length === 0 && niftis.length === 0) {
     return (
       <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         Run completed but no output files were found in the output directory.
-        This may indicate MRIQC exited before writing its reports — check the log above.
+        This may indicate the pipeline exited before writing its outputs — check the log above.
       </div>
     );
   }
@@ -203,6 +212,41 @@ export default function RunResults({ runId }: Props) {
             ))}
           </ul>
         </details>
+      )}
+
+      {/* NIfTI derivative viewer — hidden for pipelines (e.g. MRIQC) that
+          produce no .nii/.nii.gz outputs; visible for fMRIPrep and others. */}
+      {niftis.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-gray-800 mb-2">
+            NIfTI derivatives ({niftis.length})
+          </h3>
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {niftis.map((f) => (
+              <div
+                key={f.path}
+                className="flex items-center justify-between px-3 py-2 bg-white gap-3"
+              >
+                <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
+                <button
+                  onClick={() => setViewerNifti(f)}
+                  className="shrink-0 rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* NiivueViewer modal — reuses the same component as the dataset scan browser */}
+      {viewerNifti && (
+        <NiivueViewer
+          fileUrl={`/api/runs/${runId}/files/${viewerNifti.path}`}
+          fileName={viewerNifti.name}
+          onClose={() => setViewerNifti(null)}
+        />
       )}
     </div>
   );
