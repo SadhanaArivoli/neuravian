@@ -128,6 +128,35 @@ class DockerExecutor(Executor):
             work_dir_host = to_host_path(work_dir_val)
             volumes[work_dir_host] = {"bind": "/work", "mode": "rw"}
 
+        # Generic file_path/directory_path params with mount: true.
+        #
+        # For each such param, the host path is bind-mounted read-only at
+        # /inputs/{param-name}/{basename} and the CLI flag receives that
+        # container-internal path instead of the raw host path. This lets
+        # manifests declare file inputs (e.g. --fs-license-file) without
+        # any per-pipeline special-casing in the executor.
+        #
+        # Container path scheme: /inputs/{param-name}/{original-basename}
+        # e.g. /Users/me/freesurfer/license.txt
+        #   → mounted at /inputs/fs-license-file/license.txt
+        #   → --fs-license-file /inputs/fs-license-file/license.txt
+        _mounted_paths: dict[str, str] = {}  # param name → container path
+        for p in manifest["parameters"]:
+            if not p.get("mount"):
+                continue
+            name = p["name"]
+            raw = str(params.get(name) or p.get("default") or "").strip()
+            if not raw:
+                continue
+            host_path = to_host_path(raw)
+            basename = Path(raw).name
+            container_path = f"/inputs/{name}/{basename}"
+            volumes[host_path] = {"bind": container_path, "mode": "ro"}
+            _mounted_paths[name] = container_path
+            log.debug(
+                "Mounting %s → %s for param %r", host_path, container_path, name
+            )
+
         # Build the tool command (everything after the image name)
         cmd: list[str] = ["/data", "/out"]
 
@@ -151,10 +180,15 @@ class DockerExecutor(Executor):
             name = p["name"]
             ptype = p["type"]
 
-            # work-dir is handled via volume mount; remap the CLI flag to /work
+            # work-dir is handled via volume mount above; remap CLI flag to /work
             if name == "work-dir":
                 if work_dir_val:
                     cmd += ["--work-dir", "/work"]
+                continue
+
+            # mount: true params use the container-internal path, already computed above
+            if name in _mounted_paths:
+                cmd += [f"--{name}", _mounted_paths[name]]
                 continue
 
             raw_val = params.get(name)

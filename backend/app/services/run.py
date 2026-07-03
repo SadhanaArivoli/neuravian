@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.execution.docker_executor import DockerExecutor, translate_errors
+from app.execution.docker_executor import DockerExecutor, to_host_path, translate_errors
 from app.execution.executor import RunContext
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
@@ -458,6 +458,28 @@ class RunService:
         pipeline_row = self.db.query(Pipeline).filter_by(name=body.pipeline_id).first()
         if not pipeline_row:
             raise ValueError(f"Pipeline '{body.pipeline_id}' not in DB registry. Is the manifest loaded?")
+
+        # Pre-flight: validate required file_path/directory_path params that
+        # need a mount exist on disk NOW, before we create a DB record or touch
+        # Docker. Failing here produces a clear 400 error; failing inside the
+        # container produces a cryptic startup error after a cold-pull delay.
+        for p in manifest.get("parameters", []):
+            if not p.get("mount"):
+                continue
+            name = p["name"]
+            val = str(body.params.get(name) or "").strip()
+            if not val:
+                if p.get("required"):
+                    raise ValueError(
+                        f"Parameter '{name}' is required for {manifest['display_name']}."
+                    )
+                continue  # optional mounted param with no value — skip
+            host_path = Path(to_host_path(val))
+            if not host_path.exists():
+                raise ValueError(
+                    f"Parameter '{name}': path not found: '{val}'. "
+                    "Check that the file exists and the path is correct."
+                )
 
         # Create the DB record (no output_dir yet — we need the run_id first)
         run = Run(

@@ -1,0 +1,257 @@
+id: fmriprep
+display_name: fMRIPrep
+description: >
+  Robust fMRI preprocessing pipeline. Produces motion-corrected, spatially
+  normalised BOLD derivatives, a visual QC report per subject, and a
+  confounds file ready for first-level modelling. Does not perform
+  statistical analysis — it stops at preprocessed data.
+homepage: https://fmriprep.org/en/stable/
+
+container:
+  image: nipreps/fmriprep
+  tag: "25.2.5"
+  engine: docker
+
+inputs:
+  - bids_dataset
+
+outputs:
+  - fmriprep
+
+parameters:
+  # ── Required ───────────────────────────────────────────────────────
+  - name: fs-license-file
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Path to your FreeSurfer license file (license.txt). fMRIPrep uses
+      FreeSurfer binaries even when surface reconstruction is disabled, so
+      this is always required. A free academic license takes ~2 minutes to
+      obtain: register at http://surfer.nmr.mgh.harvard.edu/registration.html
+      and a license.txt file will arrive by email within minutes. Save it
+      anywhere on your Mac (e.g. ~/freesurfer/license.txt) and enter that
+      full path here.
+
+  # ── Analysis level (positional, always "participant" for fMRIPrep) ─
+  - name: analysis_level
+    type: select
+    required: true
+    default: participant
+    positional_index: 1
+    options:
+      - participant
+    help: >
+      fMRIPrep only supports per-subject ("participant") preprocessing.
+      There is no group-level mode.
+
+  # ── Subject / session / task selection ────────────────────────────
+  - name: participant-label
+    type: string
+    required: false
+    multiple: true
+    help: >
+      Restrict processing to one or more subjects, e.g. "01" or "01 02 03"
+      (space-separated, without the "sub-" prefix). Leave blank to process
+      every subject in the dataset — on datasets with many subjects this
+      will take many hours.
+
+  - name: task-id
+    type: string
+    required: false
+    multiple: true
+    help: >
+      Filter by functional task name (the part after "task-"), e.g.
+      "rest" or "rest nback". Leave blank to process all tasks.
+
+  - name: ignore
+    type: multiselect
+    required: false
+    options:
+      - fieldmaps
+      - slicetiming
+      - sbref
+      - t2w
+      - flair
+    help: >
+      Tell fMRIPrep to skip certain data or correction steps. Common
+      choices: "fieldmaps" if your dataset has no fieldmaps or you want
+      to skip susceptibility distortion correction; "slicetiming" if your
+      BOLD sidecar JSON is missing SliceTiming metadata. Leave blank to
+      use all available data.
+
+  # ── FreeSurfer surface reconstruction ─────────────────────────────
+  - name: fs-no-reconall
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Skip FreeSurfer's full cortical surface reconstruction (recon-all).
+      Enabled by default — recon-all alone takes 6-8 hours per subject and
+      is only needed if you want cortical surface outputs (fsnative/fsaverage
+      spaces). With this flag on, fMRIPrep still runs FreeSurfer utilities for
+      registration and requires a valid license, but finishes in 2-6 hours
+      instead of 10-16. Disable only if you specifically need surface outputs.
+
+  # ── Output spaces ──────────────────────────────────────────────────
+  - name: output-spaces
+    type: multiselect
+    required: false
+    default:
+      - MNI152NLin2009cAsym
+    options:
+      - MNI152NLin2009cAsym
+      - MNI152NLin6Asym
+      - T1w
+      - fsaverage5
+      - fsaverage
+    help: >
+      Which coordinate spaces fMRIPrep resamples outputs into. The default
+      (MNI152NLin2009cAsym) is the standard for most fMRI analyses. Add T1w
+      to also keep outputs in the subject's native T1w space. fsaverage/
+      fsaverage5 produce surface outputs and require fs-no-reconall to be
+      disabled. Note: if you need MNI152NLin6Asym:res-2 (for post-hoc
+      ICA-AROMA via fMRIPost-AROMA), set this field to MNI152NLin6Asym and
+      add the resolution modifier manually via the Docker command.
+
+  # ── Performance ────────────────────────────────────────────────────
+  - name: nprocs
+    type: integer
+    required: false
+    default: 1
+    help: >
+      Total number of CPU cores available to fMRIPrep. On Apple Silicon Macs
+      running this image under Rosetta 2 x86 emulation, keep this at 1 to
+      avoid multiprocessing instability (BrokenProcessPool errors have been
+      observed at nprocs > 1 under emulation with limited Docker memory).
+      On native x86 with 8+ GB RAM free in Docker, 4-8 speeds things up
+      significantly.
+
+  - name: omp-nthreads
+    type: integer
+    required: false
+    default: 1
+    advanced: true
+    help: >
+      OpenMP threads per individual process (used by ANTs registration and
+      FreeSurfer tools). Keep at 1 on Apple Silicon under emulation.
+      On native x86 with sufficient cores, 4-8 gives near-linear speedup
+      for ANTs steps. Rule of thumb: nprocs × omp-nthreads ≤ total cores.
+
+  - name: mem
+    type: integer
+    required: false
+    help: >
+      Memory budget for fMRIPrep in megabytes (MB), not GB. Example: 8000
+      for 8 GB, 16000 for 16 GB. fMRIPrep will try to stay within this
+      limit when scheduling parallel work. Recommended minimum: 8000.
+      Leave blank to use all available container memory.
+
+  # ── BOLD preprocessing options ─────────────────────────────────────
+  - name: dummy-scans
+    type: integer
+    required: false
+    advanced: true
+    help: >
+      Number of initial BOLD volumes to discard before preprocessing. These
+      "dummy" scans are acquired while the scanner reaches magnetization
+      steady-state and have inflated signal. fMRIPrep auto-detects them from
+      BIDS sidecar metadata (NumberOfVolumesDiscardedByScanner) — only set
+      this if you need to override auto-detection or force no removal (set 0).
+
+  - name: bold2anat-dof
+    type: select
+    required: false
+    default: "6"
+    advanced: true
+    options:
+      - "6"
+      - "9"
+      - "12"
+    help: >
+      Degrees of freedom for BOLD-to-anatomical coregistration. 6 (rigid-body:
+      translation + rotation) is appropriate for most whole-brain fMRI. 9 adds
+      scaling and may help when there are known voxel size discrepancies. 12
+      (full affine) can overcorrect and is rarely needed.
+
+  - name: skip-bids-validation
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Skip BIDS dataset validation at startup. Useful only if the BIDS validator
+      is emitting false-positive errors on a dataset you have manually verified.
+      Not recommended for datasets you haven't checked.
+
+  # ── Working directory ───────────────────────────────────────────────
+  - name: work-dir
+    type: directory_path
+    required: false
+    advanced: true
+    help: >
+      Directory for intermediate nipype working files. Useful if you want to
+      inspect workflow outputs, resume an interrupted run, or reuse expensive
+      intermediate results (e.g. FreeSurfer recon-all) across multiple runs.
+      If left blank, fMRIPrep creates a temporary directory that is deleted
+      on completion.
+
+max_runtime_hours: 12
+
+known_errors:
+  - pattern: "a valid license file is required for FreeSurfer"
+    explanation: >
+      fMRIPrep cannot find your FreeSurfer license file. This check fires at
+      startup before any data is processed.
+    fix_hint: >
+      Verify the path you entered for "fs-license-file" points to a real
+      license.txt file on your Mac. If you don't have one yet, register free at
+      http://surfer.nmr.mgh.harvard.edu/registration.html — the file arrives
+      by email within minutes.
+
+  - pattern: "PermissionError.*license\\.txt|Permission denied.*license"
+    explanation: >
+      The license file was found but the container cannot read it — likely a
+      file permission issue.
+    fix_hint: >
+      Run: chmod 644 /path/to/your/license.txt — then retry. The file needs
+      to be world-readable so the container process can access it.
+
+  - pattern: "BrokenProcessPool|A process in the executor was terminated abruptly"
+    explanation: >
+      A fMRIPrep worker process was killed unexpectedly, almost always because
+      Docker ran out of memory. This is the most common failure mode on Apple
+      Silicon Macs running fMRIPrep under Rosetta 2 emulation.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources, increase memory to at least
+      8 GB (12+ GB recommended). Then re-run with nprocs=1, omp-nthreads=1,
+      and set mem to 8000. On Apple Silicon, do not increase nprocs above 1.
+
+  - pattern: "No such file or directory.*dataset_description\\.json"
+    explanation: >
+      The selected folder is not a valid BIDS dataset — it is missing
+      dataset_description.json at the root.
+    fix_hint: >
+      Make sure you selected the top-level BIDS directory (the one that
+      contains dataset_description.json, not a subdirectory like sub-01/).
+
+  - pattern: "No functional runs found|No BOLD files found|unable to find any BOLD"
+    explanation: >
+      fMRIPrep found no BOLD/functional images to process. Your task-id filter
+      may have excluded all runs, or the dataset has no functional data under
+      the selected subject.
+    fix_hint: >
+      Clear the task-id field to process all tasks, verify the participant-label
+      matches a subject that has BOLD data, and confirm your BIDS dataset
+      contains func/ directories with *_bold.nii.gz files.
+
+  - pattern: "BIDS validation.*error|bids-validator.*error"
+    explanation: >
+      fMRIPrep's built-in BIDS validator found errors in your dataset. Processing
+      was stopped before any data was touched.
+    fix_hint: >
+      Review the validation errors listed above this line in the log. Common
+      causes: missing required metadata in BOLD sidecar JSON (RepetitionTime,
+      TaskName), misnamed files, or missing dataset_description.json fields.
+      If the errors are false positives on a dataset you know is correct, enable
+      "skip-bids-validation" in Advanced options.

@@ -131,6 +131,11 @@
           "type": "boolean",
           "default": false,
           "description": "If true and type is 'string', the user's space-separated input is split into multiple separate CLI arguments. Used for flags that accept repeated values (e.g. --participant-label 01 02 03)."
+        },
+        "mount": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true and type is 'file_path' or 'directory_path', the path is bind-mounted into the container as a read-only volume and the CLI flag receives the container-internal path instead of the host path. Required for any file/directory that the container must read but that isn't the BIDS dataset or work-dir."
         }
       }
     },
