@@ -64,16 +64,6 @@ parameters:
       Filter by functional task name (the part after "task-"), e.g.
       "rest" or "rest nback". Leave blank to process all tasks.
 
-  - name: run-id
-    type: string
-    required: false
-    multiple: true
-    help: >
-      Filter to specific BOLD run numbers (the part after "run-"), e.g.
-      "01" to process only the first run. Useful when a subject has
-      multiple runs per task and you want to test end-to-end on one
-      before committing hours to all of them.
-
   - name: ignore
     type: multiselect
     required: false
