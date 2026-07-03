@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
@@ -51,6 +53,62 @@ def get_run_logs(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         lines = get_log_buffer(run_id)
         text = "\n".join(lines) if lines else None
     return {"run_id": run_id, "log_text": text}
+
+
+@router.get("/runs/{run_id}/results")
+def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
+    """Discover HTML reports and JSON IQM files in the run's output directory."""
+    try:
+        run = svc.get_by_id(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    if not run.output_dir:
+        return {"reports": [], "metrics": []}
+
+    output_root = Path(run.output_dir)
+    if not output_root.exists():
+        return {"reports": [], "metrics": []}
+
+    reports = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*.html"))
+    ]
+    metrics = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.rglob("sub-*.json"))
+    ]
+    return {"reports": reports, "metrics": metrics}
+
+
+@router.get("/runs/{run_id}/files/{file_path:path}")
+def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc)) -> FileResponse:
+    """Serve a file from the run's output directory.
+
+    Scoped strictly to each run's own output_dir — path traversal attempts
+    (e.g. ../../etc/passwd) are rejected with 403 before any filesystem access.
+    """
+    try:
+        run = svc.get_by_id(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    if not run.output_dir:
+        raise HTTPException(status_code=404, detail="No output directory for this run")
+
+    output_root = Path(run.output_dir).resolve()
+    requested = (output_root / file_path).resolve()
+
+    # Path traversal protection: raises ValueError if requested is outside output_root
+    try:
+        requested.relative_to(output_root)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Path not allowed")
+
+    if not requested.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(str(requested))
 
 
 @router.websocket("/runs/{run_id}/logs/stream")

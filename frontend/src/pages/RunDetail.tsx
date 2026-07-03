@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import RunResults from "../components/domain/RunResults";
 import { useRun } from "../hooks/useRuns";
 
 function getWsBase(): string {
@@ -229,14 +230,8 @@ export default function RunDetail() {
         </div>
       </div>
 
-      {/* Output link */}
-      {run.status === "success" && run.output_dir && (
-        <div className="mt-4 rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          ✓ Run completed. Outputs written to{" "}
-          <code className="font-mono text-xs">{run.output_dir}</code>.
-          Results viewer coming in M7.
-        </div>
-      )}
+      {/* Results viewer */}
+      {run.status === "success" && <RunResults runId={run.id} />}
     </div>
   );
 }

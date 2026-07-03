@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRun, fetchRun, fetchRuns, type RunCreate } from "../api/client";
+import { createRun, fetchRun, fetchRunFile, fetchRunResults, fetchRuns, type RunCreate } from "../api/client";
 
 export function useRuns() {
   return useQuery({
@@ -17,6 +17,22 @@ export function useRun(id: number) {
       const status = query.state.data?.status;
       return status === "pending" || status === "running" ? 2000 : false;
     },
+  });
+}
+
+export function useRunResults(runId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["runs", runId, "results"],
+    queryFn: () => fetchRunResults(runId),
+    enabled,
+  });
+}
+
+export function useRunFile<T>(runId: number, filePath: string | null) {
+  return useQuery({
+    queryKey: ["runs", runId, "files", filePath],
+    queryFn: () => fetchRunFile<T>(runId, filePath!),
+    enabled: !!filePath,
   });
 }
 
