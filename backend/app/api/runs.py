@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
-from app.models.run import Run
+from app.models.run import ProvenanceEvent, Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
 from app.services.run import RunService, get_log_history, subscribe, unsubscribe
 
@@ -53,6 +53,41 @@ def get_run_logs(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         lines = get_log_buffer(run_id)
         text = "\n".join(lines) if lines else None
     return {"run_id": run_id, "log_text": text}
+
+
+@router.get("/runs/{run_id}/provenance")
+def get_run_provenance(run_id: int, db: Session = Depends(get_db)) -> dict:
+    """Return structured provenance for a run: run-level fields + event log."""
+    run = db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    events = (
+        db.query(ProvenanceEvent)
+        .filter(ProvenanceEvent.run_id == run_id)
+        .order_by(ProvenanceEvent.timestamp)
+        .all()
+    )
+
+    import json as _json
+    return {
+        "run_id": run_id,
+        "pipeline_version": run.pipeline_version,
+        "container_digest": run.container_digest,
+        "params": _json.loads(run.params_json or "{}"),
+        "status": run.status,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "events": [
+            {
+                "event_type": e.event_type,
+                "timestamp": e.timestamp.isoformat(),
+                "payload": _json.loads(e.payload_json or "{}"),
+            }
+            for e in events
+        ],
+    }
 
 
 @router.get("/runs/{run_id}/results")

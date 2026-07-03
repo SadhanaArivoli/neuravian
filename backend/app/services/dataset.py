@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +24,22 @@ _CONTAINER_DATASETS_PATH = Path("/host-data")
 
 # Suffixes to ignore when reporting invalid BIDS filenames (not every file needs to be BIDS)
 _NON_BIDS_SUFFIXES = {".json", ".tsv", ".txt", ".md", ".bvec", ".bval", ".gz"}
+
+
+def _compute_manifest_hash(root: Path) -> str:
+    """SHA-256 over sorted (rel_path, size, mtime) tuples for all files.
+
+    Fast (no file content read), detects additions/deletions/replacements.
+    mtime is truncated to integer seconds to avoid float precision noise.
+    """
+    entries: list[str] = []
+    for f in sorted(root.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(root).as_posix()
+        stat = f.stat()
+        entries.append(f"{rel}\t{stat.st_size}\t{int(stat.st_mtime)}")
+    return hashlib.sha256("\n".join(entries).encode()).hexdigest()
 
 
 def _translate_host_path(path: Path) -> Path:
@@ -196,6 +213,7 @@ class DatasetService:
             dataset.bids_version = metadata.bids_version
             dataset.validation_issues = validation_issues.model_dump_json()
             dataset.indexed_metadata = metadata.model_dump_json()
+            dataset.dataset_hash = _compute_manifest_hash(root)
 
         except Exception as exc:
             logger.error("Dataset registration failed for %s: %s", root, exc)

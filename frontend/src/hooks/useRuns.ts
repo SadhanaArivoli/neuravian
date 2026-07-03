@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRun, fetchRun, fetchRunFile, fetchRunResults, fetchRuns, type RunCreate } from "../api/client";
+import { createRun, fetchRun, fetchRunFile, fetchRunProvenance, fetchRunResults, fetchRuns, type RunCreate } from "../api/client";
 
 export function useRuns() {
   return useQuery({
@@ -33,6 +33,13 @@ export function useRunFile<T>(runId: number, filePath: string | null) {
     queryKey: ["runs", runId, "files", filePath],
     queryFn: () => fetchRunFile<T>(runId, filePath!),
     enabled: !!filePath,
+  });
+}
+
+export function useRunProvenance(runId: number) {
+  return useQuery({
+    queryKey: ["runs", runId, "provenance"],
+    queryFn: () => fetchRunProvenance(runId),
   });
 }
 

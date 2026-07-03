@@ -216,3 +216,25 @@ export function fetchRunResults(runId: number): Promise<RunResults> {
 export function fetchRunFile<T>(runId: number, filePath: string): Promise<T> {
   return apiFetch<T>(`/runs/${runId}/files/${filePath}`);
 }
+
+export interface ProvenanceEvent {
+  event_type: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+}
+
+export interface RunProvenance {
+  run_id: number;
+  pipeline_version: string;
+  container_digest: string | null;
+  params: Record<string, unknown>;
+  status: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  events: ProvenanceEvent[];
+}
+
+export function fetchRunProvenance(runId: number): Promise<RunProvenance> {
+  return apiFetch<RunProvenance>(`/runs/${runId}/provenance`);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import RunProvenance from "../components/domain/RunProvenance";
 import RunResults from "../components/domain/RunResults";
 import { useRun } from "../hooks/useRuns";
 
@@ -184,6 +185,14 @@ export default function RunDetail() {
           </pre>
         </details>
       )}
+
+      {/* Provenance panel */}
+      <details className="mb-4">
+        <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 select-none">
+          Provenance record
+        </summary>
+        <RunProvenance runId={run.id} />
+      </details>
 
       {/* Live log console */}
       <div className="rounded-lg border border-gray-200 overflow-hidden">
