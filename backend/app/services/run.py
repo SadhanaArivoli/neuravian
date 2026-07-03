@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.execution.docker_executor import DockerExecutor, to_host_path, translate_errors
+from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, to_host_path, translate_errors
 from app.execution.executor import RunContext
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
@@ -474,8 +474,20 @@ class RunService:
                         f"Parameter '{name}' is required for {manifest['display_name']}."
                     )
                 continue  # optional mounted param with no value — skip
-            host_path = Path(to_host_path(val))
-            if not host_path.exists():
+            translated = to_host_path(val)
+            # Only check existence when the path is reachable from inside the
+            # container. to_host_path() returns the input unchanged when no
+            # mount covers it (e.g. ~/freesurfer/license.txt when only
+            # ~/Documents is mounted). In that case the container can't see the
+            # file, but the Docker daemon on the host can — so we skip the check
+            # and let Docker fail with "bind source path does not exist" if the
+            # path is genuinely wrong.
+            #
+            # path_is_reachable is True when either:
+            #   - to_host_path() translated the path (file is under a known mount), OR
+            #   - we're not inside Docker at all (local dev / test environment)
+            path_is_reachable = (translated != val) or not _is_running_in_docker()
+            if path_is_reachable and not Path(translated).exists():
                 raise ValueError(
                     f"Parameter '{name}': path not found: '{val}'. "
                     "Check that the file exists and the path is correct."

@@ -432,22 +432,64 @@ def test_run_rejected_when_required_license_missing(
 def test_run_rejected_when_license_file_does_not_exist(
     fmriprep_api_client, db_session_for_runs, tmp_path
 ):
-    """POSTing a fmriprep run with a nonexistent license path must return 400."""
+    """A license path that is within a known container mount but doesn't exist
+    on disk must return 400. Simulates a typo'd path under HOST_DATASETS_DIR.
+    """
     ds = _make_dataset(db_session_for_runs, str(tmp_path))
-    resp = fmriprep_api_client.post(
-        "/api/runs",
-        json={
-            "pipeline_id": "fmriprep",
-            "dataset_id": ds.id,
-            "params": {
-                "fs-license-file": "/absolutely/does/not/exist/license.txt",
-                "participant-label": "01",
+    nonexistent = str(tmp_path / "does_not_exist" / "license.txt")
+
+    # _is_running_in_docker() = False → path_is_reachable = True (local-dev branch)
+    # The path genuinely doesn't exist → pre-flight rejects it.
+    with patch("app.services.run._is_running_in_docker", return_value=False):
+        resp = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "fmriprep",
+                "dataset_id": ds.id,
+                "params": {
+                    "fs-license-file": nonexistent,
+                    "participant-label": "01",
+                },
             },
-        },
-    )
+        )
     assert resp.status_code == 400
     assert "not found" in resp.json()["detail"].lower() or \
            "path" in resp.json()["detail"].lower()
+
+
+def test_run_accepted_when_license_outside_container_mounts(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    """A license path that to_host_path() can't translate (outside all mounts)
+    must NOT be falsely rejected by the pre-flight check when running inside
+    Docker. Simulates ~/freesurfer/license.txt on a Mac where only ~/Documents
+    is mounted into the backend container.
+    """
+    ds = _make_dataset(db_session_for_runs, str(tmp_path))
+
+    # Simulate being inside Docker: _is_running_in_docker() returns True and
+    # to_host_path() returns the input unchanged (no matching mount for the path).
+    # Pre-flight must skip the existence check rather than falsely rejecting.
+    with patch("app.services.run._is_running_in_docker", return_value=True), \
+         patch("app.services.run.to_host_path", side_effect=lambda v: v), \
+         patch("app.services.run._execute_run_background"):
+        resp = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "fmriprep",
+                "dataset_id": ds.id,
+                "params": {
+                    # Path that doesn't exist inside container but would exist on host
+                    "fs-license-file": "/Users/someone/freesurfer/license.txt",
+                    "participant-label": "01",
+                },
+            },
+        )
+    # Should pass pre-flight (201), not be rejected with 400
+    assert resp.status_code == 201, (
+        f"Run should be accepted when license path is outside container mounts "
+        f"(got {resp.status_code}: {resp.json()})"
+    )
 
 
 def test_run_accepted_when_license_file_exists(
