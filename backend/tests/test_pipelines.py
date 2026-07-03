@@ -223,7 +223,7 @@ def test_fmriprep_manifest_has_required_fields():
     assert len(manifest["parameters"]) >= 8
     assert isinstance(manifest["known_errors"], list)
     assert len(manifest["known_errors"]) >= 5
-    assert manifest["max_runtime_hours"] == 12
+    assert manifest["max_runtime_hours"] >= 12  # 24h for Apple Silicon Rosetta 2
 
 
 def test_fmriprep_fs_license_param_is_required_and_mounted():
@@ -515,3 +515,121 @@ def test_run_accepted_when_license_file_exists(
         )
     # 201 = run created successfully; pre-flight passed
     assert resp.status_code == 201
+
+
+# ------------------------------------------------------------------ #
+# Automatic persistent work-dir injection                              #
+# ------------------------------------------------------------------ #
+
+def test_auto_work_dir_injected_for_long_pipeline(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    """fMRIPrep (max_runtime_hours=24) must get an auto work-dir injected
+    when none is supplied, so nipype's node cache survives across runs."""
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("fake license\n")
+    ds = _make_dataset(db_session_for_runs, str(tmp_path))
+
+    with patch("app.services.run._execute_run_background"), \
+         patch("app.services.run.settings") as mock_settings:
+        mock_settings.data_dir = str(tmp_path)
+        resp = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "fmriprep",
+                "dataset_id": ds.id,
+                "params": {"fs-license-file": str(license_file)},
+            },
+        )
+
+    assert resp.status_code == 201
+    # The command_preview must contain --work-dir /work (container path)
+    assert "--work-dir" in resp.json()["command_preview"], (
+        "Auto work-dir should be injected into the Docker command"
+    )
+    # The expected host-side work dir must have been created
+    expected_work_dir = tmp_path / "work" / "fmriprep" / str(ds.id)
+    assert expected_work_dir.is_dir(), (
+        f"Auto work-dir {expected_work_dir} was not created on disk"
+    )
+
+
+def test_auto_work_dir_not_injected_when_user_supplies_one(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    """An explicit work-dir param must not be overridden by auto-injection."""
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("fake license\n")
+    explicit_work = tmp_path / "my_work_dir"
+    explicit_work.mkdir()
+    ds = _make_dataset(db_session_for_runs, str(tmp_path))
+
+    with patch("app.services.run._execute_run_background"), \
+         patch("app.services.run.settings") as mock_settings:
+        mock_settings.data_dir = str(tmp_path)
+        resp = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "fmriprep",
+                "dataset_id": ds.id,
+                "params": {
+                    "fs-license-file": str(license_file),
+                    "work-dir": str(explicit_work),
+                },
+            },
+        )
+
+    assert resp.status_code == 201
+    # Auto work-dir (data/work/fmriprep/{dataset_id}) must NOT have been created
+    auto_work_dir = tmp_path / "work" / "fmriprep" / str(ds.id)
+    assert not auto_work_dir.exists(), (
+        "Auto work-dir should not be created when user explicitly sets work-dir"
+    )
+
+
+def test_auto_work_dir_not_injected_for_short_pipeline(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    """A pipeline with max_runtime_hours <= 4 must NOT get an auto work-dir."""
+    import app.services.pipeline as pipeline_mod
+
+    short_manifest = {
+        "id": "fmriprep",
+        "display_name": "fMRIPrep",
+        "description": "test",
+        "container": {"image": "nipreps/fmriprep", "tag": "25.2.5", "engine": "docker"},
+        "inputs": ["bids_dataset"],
+        "outputs": ["fmriprep"],
+        "parameters": [
+            {"name": "fs-license-file", "type": "file_path", "required": True, "mount": True},
+        ],
+        "max_runtime_hours": 3,  # below the 4h threshold
+    }
+
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("fake\n")
+    ds = _make_dataset(db_session_for_runs, str(tmp_path))
+
+    original_registry = pipeline_mod._registry
+    pipeline_mod._registry = {"fmriprep": short_manifest}
+    try:
+        with patch("app.services.run._execute_run_background"), \
+             patch("app.services.run.settings") as mock_settings:
+            mock_settings.data_dir = str(tmp_path)
+            resp = fmriprep_api_client.post(
+                "/api/runs",
+                json={
+                    "pipeline_id": "fmriprep",
+                    "dataset_id": ds.id,
+                    "params": {"fs-license-file": str(license_file)},
+                },
+            )
+    finally:
+        pipeline_mod._registry = original_registry
+
+    assert resp.status_code == 201
+    assert "--work-dir" not in resp.json()["command_preview"], (
+        "work-dir should NOT be auto-injected for pipelines with max_runtime_hours <= 4"
+    )
+    auto_work_dir = tmp_path / "work" / "fmriprep" / str(ds.id)
+    assert not auto_work_dir.exists()

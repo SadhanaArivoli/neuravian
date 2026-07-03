@@ -493,12 +493,44 @@ class RunService:
                     "Check that the file exists and the path is correct."
                 )
 
-        # Create the DB record (no output_dir yet — we need the run_id first)
+        # Auto-persist work directory for long-running pipelines.
+        #
+        # When max_runtime_hours > 4 and the user hasn't set work-dir explicitly,
+        # we create data/work/{pipeline_id}/{dataset_id}/ and inject it into the
+        # effective params. This directory is shared across all runs of the same
+        # pipeline against the same dataset, so nipype's hash-based node cache
+        # survives container restarts and makes retries resume from the last
+        # completed node rather than restarting from scratch.
+        #
+        # Nipype hashes every node's complete input state (file paths + param
+        # values + mtime/size of large files). A retry with different params
+        # (e.g. a different --run-id) will correctly recompute affected nodes
+        # while reusing nodes whose inputs are unchanged (e.g. anat steps that
+        # don't depend on which BOLD runs are selected). Stale-cache risk is
+        # only possible if a file on disk is silently modified without changing
+        # its mtime — not a realistic concern in normal use.
+        effective_params = dict(body.params)
+        if (
+            not effective_params.get("work-dir")
+            and manifest.get("max_runtime_hours", 0) > 4
+        ):
+            work_dir = (
+                Path(settings.data_dir) / "work" / body.pipeline_id / str(body.dataset_id)
+            )
+            work_dir.mkdir(parents=True, exist_ok=True)
+            effective_params["work-dir"] = str(work_dir)
+            log.info(
+                "Auto-mounting persistent work-dir for pipeline %s / dataset %d: %s",
+                body.pipeline_id, body.dataset_id, work_dir,
+            )
+
+        # Create the DB record. params_json records effective_params (including
+        # the auto-injected work-dir) so the provenance record is accurate.
         run = Run(
             dataset_id=body.dataset_id,
             pipeline_id=pipeline_row.id,
             pipeline_version=manifest["container"]["tag"],
-            params_json=json.dumps(body.params),
+            params_json=json.dumps(effective_params),
             status="pending",
         )
         self.db.add(run)
@@ -513,7 +545,7 @@ class RunService:
         ctx = RunContext(
             run_id=run.id,
             manifest=manifest,
-            params=body.params,
+            params=effective_params,
             dataset_path=dataset.path,
             output_dir=str(output_dir),
         )
@@ -543,7 +575,7 @@ class RunService:
                 "dataset_id": body.dataset_id,
                 "dataset_path": dataset.path,
                 "dataset_hash": dataset.dataset_hash,
-                "params": body.params,
+                "params": effective_params,
                 "command_preview": command_preview,
             }),
         ))
