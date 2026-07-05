@@ -80,6 +80,28 @@ parameters:
       BOLD sidecar JSON is missing SliceTiming metadata. Leave blank to
       use all available data.
 
+  # ── Skull-stripping ────────────────────────────────────────────────
+  - name: skull-strip-t1w
+    type: select
+    required: false
+    default: skip
+    options:
+      - skip
+      - auto
+      - force
+    help: >
+      Controls how fMRIPrep strips the skull from the T1w image before
+      registration. "skip" bypasses ANTs-based brain extraction entirely and
+      uses a simpler masking method — strongly recommended on Apple Silicon
+      Macs running fMRIPrep under Rosetta 2 x86 emulation, where the ANTs
+      SyN registration step (which uses AVX2 SIMD instructions) is known to
+      hang indefinitely with zero log output due to Rosetta's incomplete
+      emulation of those instructions. "auto" (fMRIPrep's default) tries
+      ANTs first and falls back on failure; "force" always runs ANTs. On
+      native x86 hardware, "auto" or "force" give the most accurate brain
+      mask. On Apple Silicon, leave this at "skip" unless you are running a
+      native ARM fMRIPrep image.
+
   # ── FreeSurfer surface reconstruction ─────────────────────────────
   - name: fs-no-reconall
     type: boolean
@@ -269,3 +291,30 @@ known_errors:
       TaskName), misnamed files, or missing dataset_description.json fields.
       If the errors are false positives on a dataset you know is correct, enable
       "skip-bids-validation" in Advanced options.
+
+  - pattern: 'Run stopped automatically after.*maximum runtime|antsRegistration.*SyN'
+    explanation: >
+      ANTs registration hung indefinitely — confirmed Rosetta 2 / AVX2
+      incompatibility. On Apple Silicon Macs, fMRIPrep's x86_64 image runs
+      under Rosetta 2 emulation. ANTs registration nodes that use the SyN
+      transform with the CC (cross-correlation) metric rely on AVX2/AVX-512
+      SIMD instructions that Rosetta does not fully emulate. The result is a
+      non-terminating loop: the process consumes one CPU core at 100% with
+      no convergence and no log output, eventually killed by the watchdog or
+      manually. This has been observed in two nodes: brain_extraction_wf/norm
+      (T1w→OASIS30ANTs, run 14, stalled 19+ hours) and anat_fit_wf/norm
+      (T1w→MNI, run 9, killed by 12h watchdog). Any antsRegistration node
+      with --transform SyN and --metric CC is susceptible.
+    fix_hint: >
+      1. Delete the stalled node directory from the work-dir so nipype
+         treats it as incomplete (it will have _unfinished.json but no
+         result_*.pklz). For brain extraction: delete
+         data/work/fmriprep/{dataset_id}/fmriprep_25_2_wf/sub_*/anat_fit_wf/brain_extraction_wf/norm/
+      2. Set skull-strip-t1w to "skip" — this bypasses the ANTs brain
+         extraction step entirely and is the recommended setting on all
+         Apple Silicon Macs running fMRIPrep under Rosetta 2.
+      3. If the stall recurs in a different ANTs node (e.g. anat_fit_wf/norm
+         for T1w→MNI normalization), the same pattern applies: no log output
+         for hours, process at 100% CPU, requires manual container stop.
+         That step cannot be skipped, so the only resolution there is native
+         x86 hardware or a future ARM-native fMRIPrep image.
