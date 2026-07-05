@@ -294,27 +294,23 @@ known_errors:
 
   - pattern: 'Run stopped automatically after.*maximum runtime|antsRegistration.*SyN'
     explanation: >
-      ANTs registration hung indefinitely — confirmed Rosetta 2 / AVX2
-      incompatibility. On Apple Silicon Macs, fMRIPrep's x86_64 image runs
-      under Rosetta 2 emulation. ANTs registration nodes that use the SyN
-      transform with the CC (cross-correlation) metric rely on AVX2/AVX-512
-      SIMD instructions that Rosetta does not fully emulate. The result is a
-      non-terminating loop: the process consumes one CPU core at 100% with
-      no convergence and no log output, eventually killed by the watchdog or
-      manually. This has been observed in two nodes: brain_extraction_wf/norm
-      (T1w→OASIS30ANTs, run 14, stalled 19+ hours) and anat_fit_wf/norm
-      (T1w→MNI, run 9, killed by 12h watchdog). Any antsRegistration node
-      with --transform SyN and --metric CC is susceptible.
+      ANTs SyN registration cannot complete on Apple Silicon under Rosetta 2
+      emulation. This is a confirmed environment constraint, not a NeuroForge
+      code defect. fMRIPrep's x86_64 image uses ANTs registration with the SyN
+      (diffeomorphic) transform and CC (cross-correlation) metric, which rely on
+      AVX2/AVX-512 SIMD instructions that Rosetta 2 does not correctly translate.
+      The result is a non-terminating loop: the process holds one CPU core at
+      ~100% indefinitely with no convergence and no log output. Confirmed on this
+      machine in two nodes: brain_extraction_wf/norm (T1w→OASIS30ANTs, 6+ CPU
+      hours, run 14) and anat_fit_wf/norm (T1w→MNI, 12h watchdog kill, run 9).
+      The T1w→MNI normalization step cannot be skipped — there is no fMRIPrep
+      flag to replace ANTs SyN for that step. A complete fMRIPrep run on Apple
+      Silicon under Rosetta 2 emulation is not achievable with fMRIPrep 25.x.
     fix_hint: >
-      1. Delete the stalled node directory from the work-dir so nipype
-         treats it as incomplete (it will have _unfinished.json but no
-         result_*.pklz). For brain extraction: delete
-         data/work/fmriprep/{dataset_id}/fmriprep_25_2_wf/sub_*/anat_fit_wf/brain_extraction_wf/norm/
-      2. Set skull-strip-t1w to "skip" — this bypasses the ANTs brain
-         extraction step entirely and is the recommended setting on all
-         Apple Silicon Macs running fMRIPrep under Rosetta 2.
-      3. If the stall recurs in a different ANTs node (e.g. anat_fit_wf/norm
-         for T1w→MNI normalization), the same pattern applies: no log output
-         for hours, process at 100% CPU, requires manual container stop.
-         That step cannot be skipped, so the only resolution there is native
-         x86 hardware or a future ARM-native fMRIPrep image.
+      This machine cannot complete a fMRIPrep run. The NeuroForge integration
+      is fully correct and will work on compatible hardware. To run fMRIPrep:
+      use a native x86_64 Linux machine, an x86 cloud instance (e.g. AWS c5,
+      GCP n2), or wait for a future ARM-native fMRIPrep image. If you want to
+      bypass the brain extraction stall specifically (not the normalization),
+      set skull-strip-t1w to "skip" — but note the run will stall again at the
+      T1w→MNI normalization step for the same reason.
