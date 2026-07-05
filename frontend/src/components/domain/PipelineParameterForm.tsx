@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Pipeline, PipelineParameter } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
@@ -9,6 +9,61 @@ interface Props {
 }
 
 type FormValues = Record<string, string | boolean | string[]>;
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+
+function HelpTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  return (
+    <span ref={ref} className="relative inline-flex items-center ml-1.5 align-middle">
+      <button
+        type="button"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen((v) => !v)}
+        className="text-gray-400 hover:text-blue-500 focus:outline-none transition-colors"
+        aria-label="Help"
+      >
+        {/* Info circle icon */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="w-3.5 h-3.5"
+        >
+          <path
+            fillRule="evenodd"
+            d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute left-5 top-0 z-50 w-72 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+        >
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ── Field control ─────────────────────────────────────────────────────────────
 
 function ParameterField({
   param,
@@ -55,34 +110,50 @@ function ParameterField({
 
   if (param.type === "multiselect") {
     const selected = (value as string[]) ?? [];
+    const options = param.options ?? [];
     return (
-      <div className="flex flex-wrap gap-2">
-        {(param.options ?? []).map((opt) => {
-          const checked = selected.includes(opt);
-          return (
-            <label
-              key={opt}
-              className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-sm cursor-pointer transition-colors ${
-                checked
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={checked}
-                onChange={() => {
-                  const next = checked
-                    ? selected.filter((s) => s !== opt)
-                    : [...selected, opt];
-                  onChange(next);
-                }}
-              />
-              {opt}
-            </label>
-          );
-        })}
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap gap-2">
+          {options.map((opt) => {
+            const checked = selected.includes(opt);
+            return (
+              <label
+                key={opt}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm cursor-pointer transition-colors select-none ${
+                  checked
+                    ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
+                    : "border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={checked}
+                  onChange={() => {
+                    const next = checked
+                      ? selected.filter((s) => s !== opt)
+                      : [...selected, opt];
+                    onChange(next);
+                  }}
+                />
+                {checked && (
+                  <svg className="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M10.28 2.28a.75.75 0 0 0-1.06 0L4.5 6.997 2.78 5.28a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.06 0l5.25-5.25a.75.75 0 0 0 0-1.06Z" />
+                  </svg>
+                )}
+                {opt}
+              </label>
+            );
+          })}
+        </div>
+        {selected.length === 0 && (
+          <p className="text-xs text-amber-600">Nothing selected — leave blank to use tool default.</p>
+        )}
+        {selected.length > 0 && (
+          <p className="text-xs text-gray-400">
+            {selected.length} of {options.length} selected
+          </p>
+        )}
       </div>
     );
   }
@@ -99,13 +170,107 @@ function ParameterField({
       onChange={(e) => onChange(e.target.value)}
       placeholder={
         param.default !== undefined && param.default !== null
-          ? String(param.default)
+          ? `default: ${String(param.default)}`
           : undefined
       }
       className={baseInput}
     />
   );
 }
+
+// ── Parameter row (label + tooltip + field) ───────────────────────────────────
+
+function ParameterRow({
+  param,
+  value,
+  onChange,
+}: {
+  param: PipelineParameter;
+  value: string | boolean | string[];
+  onChange: (val: string | boolean | string[]) => void;
+}) {
+  return (
+    <div>
+      <label className="flex items-center text-sm font-medium text-gray-800 mb-1.5">
+        <span>{param.name}</span>
+        {param.required && (
+          <span className="ml-1 text-red-500" aria-label="required">*</span>
+        )}
+        {param.help && <HelpTooltip text={param.help} />}
+      </label>
+      <ParameterField param={param} value={value} onChange={onChange} />
+    </div>
+  );
+}
+
+// ── Warnings ─────────────────────────────────────────────────────────────────
+
+function buildWarnings(
+  pipeline: Pipeline,
+  values: FormValues,
+  selectedDataset: { subject_count: number } | undefined,
+): { key: string; message: React.ReactNode }[] {
+  const warnings: { key: string; message: React.ReactNode }[] = [];
+  const params = pipeline.parameters;
+
+  // participant-label blank on multi-subject dataset
+  const hasParticipantLabel = params.some((p) => p.name === "participant-label");
+  if (hasParticipantLabel && selectedDataset) {
+    const val = String(values["participant-label"] ?? "").trim();
+    const count = selectedDataset.subject_count;
+    if (!val && count > 1) {
+      const nprocs = Math.max(1, Number(values["nprocs"]) || 1);
+      const totalMin = Math.ceil(count / nprocs) * 20;
+      const runtime =
+        totalMin < 60
+          ? `~${totalMin} min`
+          : `~${Math.floor(totalMin / 60)}h${totalMin % 60 > 0 ? ` ${totalMin % 60}m` : ""}`;
+      warnings.push({
+        key: "participant-label-blank",
+        message: (
+          <>
+            <span className="font-semibold">No participant label set</span> —{" "}
+            {pipeline.display_name} will process all {count} subjects. Estimated
+            runtime: <span className="font-semibold">{runtime}</span> at nprocs=
+            {String(values["nprocs"] ?? 1)}. Set{" "}
+            <code className="font-mono text-xs bg-amber-100 px-1 rounded">
+              participant-label
+            </code>{" "}
+            to a single subject ID (e.g.{" "}
+            <code className="font-mono text-xs bg-amber-100 px-1 rounded">01</code>)
+            to test on one subject first.
+          </>
+        ),
+      });
+    }
+  }
+
+  // mem too low for pipelines that declare it (fMRIPrep, etc.)
+  const memParam = params.find((p) => p.name === "mem");
+  if (memParam) {
+    const memVal = parseInt(String(values["mem"] ?? ""), 10);
+    if (!isNaN(memVal) && memVal < 4000) {
+      warnings.push({
+        key: "mem-too-low",
+        message: (
+          <>
+            <span className="font-semibold">
+              mem={memVal} MB is likely too low
+            </span>{" "}
+            — {pipeline.display_name} needs at least 6000 MB (6 GB) to avoid
+            out-of-memory crashes. The default of 6000 is calibrated for a 7.8 GB
+            Docker allocation. Increase Docker memory in Docker Desktop → Settings
+            → Resources if you want to raise this.
+          </>
+        ),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+// ── Defaults ──────────────────────────────────────────────────────────────────
 
 function buildDefaults(params: PipelineParameter[]): FormValues {
   const out: FormValues = {};
@@ -115,19 +280,31 @@ function buildDefaults(params: PipelineParameter[]): FormValues {
     } else if (p.type === "multiselect") {
       out[p.name] = (p.default as string[]) ?? [];
     } else {
-      out[p.name] = p.default !== undefined && p.default !== null ? String(p.default) : "";
+      out[p.name] =
+        p.default !== undefined && p.default !== null ? String(p.default) : "";
     }
   }
   return out;
 }
+
+// ── Main form ─────────────────────────────────────────────────────────────────
 
 export default function PipelineParameterForm({ pipeline }: Props) {
   const navigate = useNavigate();
   const { data: datasets } = useDatasets();
   const createRun = useCreateRun();
 
-  const basicParams = pipeline.parameters.filter((p) => !p.advanced);
-  const advancedParams = pipeline.parameters.filter((p) => p.advanced);
+  // Positional params with only one option are not user-configurable — hide them
+  const visibleParams = pipeline.parameters.filter(
+    (p) =>
+      !(
+        p.positional_index !== undefined &&
+        (p.options ?? []).length <= 1
+      )
+  );
+
+  const basicParams = visibleParams.filter((p) => !p.advanced);
+  const advancedParams = visibleParams.filter((p) => p.advanced);
 
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | "">("");
   const [values, setValues] = useState<FormValues>(() =>
@@ -139,19 +316,11 @@ export default function PipelineParameterForm({ pipeline }: Props) {
   const set = (name: string, val: string | boolean | string[]) =>
     setValues((prev) => ({ ...prev, [name]: val }));
 
-  const selectedDataset = (datasets ?? []).find((ds) => ds.id === selectedDatasetId);
-  const participantLabelEmpty = !String(values["participant-label"] ?? "").trim();
-  const subjectCount = selectedDataset?.subject_count ?? 0;
+  const selectedDataset = (datasets ?? []).find(
+    (ds) => ds.id === selectedDatasetId
+  );
 
-  function estimateRuntime(subjects: number, nprocsVal: unknown): string {
-    const procs = Math.max(1, Number(nprocsVal) || 1);
-    // ~20 min per parallel batch (conservative: T1w + functional)
-    const totalMin = Math.ceil(subjects / procs) * 20;
-    if (totalMin < 60) return `~${totalMin} min`;
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
-  }
+  const warnings = buildWarnings(pipeline, values, selectedDataset);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,7 +331,6 @@ export default function PipelineParameterForm({ pipeline }: Props) {
       return;
     }
 
-    // Coerce form values back to native types for the API
     const params: Record<string, unknown> = {};
     for (const p of pipeline.parameters) {
       const raw = values[p.name];
@@ -185,7 +353,9 @@ export default function PipelineParameterForm({ pipeline }: Props) {
       });
       navigate(`/runs/${run.id}`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Failed to start run.");
+      setSubmitError(
+        err instanceof Error ? err.message : "Failed to start run."
+      );
     }
   }
 
@@ -219,87 +389,96 @@ export default function PipelineParameterForm({ pipeline }: Props) {
 
       <hr className="border-gray-200" />
 
-      {/* Pipeline parameters */}
+      {/* Basic parameters */}
       {basicParams.map((param) => (
-        <div key={param.name}>
-          <label className="block text-sm font-medium text-gray-800 mb-1">
-            {param.name}
-            {param.required && (
-              <span className="ml-1 text-red-500" aria-label="required">
-                *
-              </span>
-            )}
-          </label>
-          {param.help && (
-            <p className="text-xs text-gray-500 mb-1.5">{param.help}</p>
-          )}
-          <ParameterField
-            param={param}
-            value={values[param.name]}
-            onChange={(v) => set(param.name, v)}
-          />
-        </div>
+        <ParameterRow
+          key={param.name}
+          param={param}
+          value={values[param.name]}
+          onChange={(v) => set(param.name, v)}
+        />
       ))}
 
+      {/* Advanced parameters accordion */}
       {advancedParams.length > 0 && (
-        <div>
+        <div className="mt-1">
           <button
             type="button"
             onClick={() => setShowAdvanced((s) => !s)}
-            className="text-sm text-blue-600 hover:underline focus:outline-none"
+            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors"
+            aria-expanded={showAdvanced}
           >
-            {showAdvanced ? "Hide" : "Show"} advanced options (
-            {advancedParams.length})
+            <span>Advanced options</span>
+            <span className="flex items-center gap-2 text-gray-500 text-xs font-normal">
+              {advancedParams.length} parameters
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`w-4 h-4 transition-transform duration-150 ${showAdvanced ? "rotate-180" : ""}`}
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
           </button>
+
           {showAdvanced && (
-            <div className="mt-4 space-y-5 border-l-2 border-gray-200 pl-4">
+            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-5">
+              <p className="text-xs text-gray-500 -mt-1">
+                These settings are safe to leave at their defaults for most runs.
+                Change them only if you know what you need.
+              </p>
               {advancedParams.map((param) => (
-                <div key={param.name}>
-                  <label className="block text-sm font-medium text-gray-800 mb-1">
-                    {param.name}
-                    {param.required && (
-                      <span className="ml-1 text-red-500">*</span>
-                    )}
-                  </label>
-                  {param.help && (
-                    <p className="text-xs text-gray-500 mb-1.5">{param.help}</p>
-                  )}
-                  <ParameterField
-                    param={param}
-                    value={values[param.name]}
-                    onChange={(v) => set(param.name, v)}
-                  />
-                </div>
+                <ParameterRow
+                  key={param.name}
+                  param={param}
+                  value={values[param.name]}
+                  onChange={(v) => set(param.name, v)}
+                />
               ))}
             </div>
           )}
         </div>
       )}
 
+      {/* Warnings */}
+      {warnings.map((w) => (
+        <div
+          key={w.key}
+          className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="w-4 h-4 shrink-0 mt-0.5 text-amber-500"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span>{w.message}</span>
+        </div>
+      ))}
+
+      {/* Submit error */}
       {submitError && (
-        <p className="rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
           {submitError}
         </p>
       )}
 
-      {participantLabelEmpty && selectedDataset && subjectCount > 1 && (
-        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          <span className="font-medium">⚠ No participant label set</span> — MRIQC will process
-          all {subjectCount} subjects in this dataset. Estimated runtime:{" "}
-          <span className="font-medium">
-            {estimateRuntime(subjectCount, values["nprocs"])}
-          </span>{" "}
-          at nprocs={String(values["nprocs"] ?? 4)}.{" "}
-          Enter a participant label above (e.g. <code className="font-mono text-xs">01</code>) to
-          run on a single subject first.
-        </div>
-      )}
-
-      <div className="pt-2">
+      <div className="pt-1">
         <button
           type="submit"
           disabled={createRun.isPending}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {createRun.isPending ? "Starting…" : "Start run"}
         </button>

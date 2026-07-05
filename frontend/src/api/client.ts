@@ -117,6 +117,9 @@ export interface PipelineParameter {
   options?: string[];
   help?: string;
   advanced?: boolean;
+  positional_index?: number;
+  multiple?: boolean;
+  mount?: boolean;
 }
 
 export interface PipelineKnownError {
