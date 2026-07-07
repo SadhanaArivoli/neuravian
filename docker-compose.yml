@@ -22,6 +22,13 @@ services:
       # Tell the backend what host prefix maps to /host-data so it can
       # transparently translate paths the user pastes from their Mac.
       HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
+      # Real host user identity, resolved by Docker Compose from the calling shell
+      # at compose-up time. The backend container runs as root (no USER in
+      # Dockerfile), so os.getuid() always returns 0. Pipelines that set
+      # run_as_host_user: true (e.g. FastSurfer) read these instead to pass
+      # -u uid:gid to the spawned container, matching the host Mac user.
+      HOST_UID: ${HOST_UID:-0}
+      HOST_GID: ${HOST_GID:-0}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s

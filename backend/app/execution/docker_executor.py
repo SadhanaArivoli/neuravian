@@ -235,14 +235,29 @@ class DockerExecutor(Executor):
                 if val is not None and val != "":
                     cmd += [f"--{name}", str(val)]
 
-        # run_as_host_user: true → pass the host UID:GID to the container.
+        # run_as_host_user: true → pass the host UID:GID to the spawned container.
         # Required by images that refuse to run as an arbitrary non-root user
         # (e.g. FastSurfer's run_fastsurfer.sh checks the caller's identity).
         # Defaults to false so MRIQC/fMRIPrep are unaffected.
+        #
+        # os.getuid()/getgid() cannot be used here: the backend container runs as
+        # root (no USER in Dockerfile), so those always return 0. Instead we read
+        # HOST_UID/HOST_GID, which docker-compose.yml injects from the calling
+        # shell at compose-up time (${HOST_UID} / ${HOST_GID}).
         user: str | None = None
         if manifest.get("run_as_host_user"):
             import os
-            user = f"{os.getuid()}:{os.getgid()}"
+            host_uid = os.environ.get("HOST_UID", "").strip()
+            host_gid = os.environ.get("HOST_GID", "").strip()
+            if host_uid and host_gid and host_uid != "0":
+                user = f"{host_uid}:{host_gid}"
+            else:
+                log.warning(
+                    "run_as_host_user=true but HOST_UID=%r HOST_GID=%r — "
+                    "ensure HOST_UID and HOST_GID are set in the environment "
+                    "before running 'docker compose up'. Skipping -u flag.",
+                    host_uid, host_gid,
+                )
 
         return _SdkParams(
             image=f"{container['image']}:{container['tag']}",
