@@ -1042,3 +1042,201 @@ def test_mriqc_blank_participant_label_not_a_tool_error():
     # Neither manifest should fire an error pattern on this text
     assert translate_errors(normal_startup, _mriqc_errors()) is None
     assert translate_errors(normal_startup, _fmriprep_errors()) is None
+
+
+# ------------------------------------------------------------------ #
+# dataset_positional flag — executor regression tests                 #
+# ------------------------------------------------------------------ #
+#
+# Verify that the dataset_positional flag:
+#   1. Defaults to True — existing MRIQC and fMRIPrep command builds
+#      produce exactly the same output as before the change.
+#   2. When set to False — no /data /out positional prefix is emitted
+#      and /data is not mounted (FastSurfer-style pipelines).
+
+_MRIQC_MANIFEST_POSITIONAL = {
+    "id": "mriqc",
+    "display_name": "MRIQC",
+    "description": "For testing dataset_positional default",
+    "container": {"image": "nipreps/mriqc", "tag": "24.0.2", "engine": "docker"},
+    "inputs": ["bids_dataset"],
+    "outputs": ["mriqc"],
+    # dataset_positional intentionally absent → must default to True
+    "parameters": [
+        {
+            "name": "analysis_level",
+            "type": "select",
+            "required": True,
+            "default": "participant",
+            "positional_index": 1,
+            "options": ["participant", "group"],
+        },
+        {
+            "name": "nprocs",
+            "type": "integer",
+            "default": 1,
+        },
+    ],
+}
+
+_FMRIPREP_MINIMAL_POSITIONAL = {
+    "id": "fmriprep",
+    "display_name": "fMRIPrep",
+    "description": "For testing dataset_positional default",
+    "container": {"image": "nipreps/fmriprep", "tag": "25.2.5", "engine": "docker"},
+    "inputs": ["bids_dataset"],
+    "outputs": ["fmriprep"],
+    # dataset_positional intentionally absent → must default to True
+    "parameters": [
+        {
+            "name": "fs-license-file",
+            "type": "file_path",
+            "required": True,
+            "mount": True,
+        },
+        {
+            "name": "nprocs",
+            "type": "integer",
+            "default": 1,
+        },
+    ],
+}
+
+_FASTSURFER_MINIMAL_MANIFEST = {
+    "id": "fastsurfer",
+    "display_name": "FastSurfer",
+    "description": "For testing dataset_positional=false",
+    "container": {"image": "deepmi/fastsurfer", "tag": "cpu-v2.3.3", "engine": "docker"},
+    "inputs": ["t1w_nifti"],
+    "outputs": ["fastsurfer"],
+    "dataset_positional": False,
+    "parameters": [
+        {
+            "name": "t1",
+            "type": "file_path",
+            "required": True,
+            "mount": True,
+            "help": "Path to the T1w NIfTI file.",
+        },
+        {
+            "name": "sid",
+            "type": "string",
+            "required": True,
+            "help": "Subject ID.",
+        },
+        {
+            "name": "seg_only",
+            "type": "boolean",
+            "default": True,
+            "help": "Run segmentation only (no recon-all surface reconstruction).",
+        },
+    ],
+}
+
+
+def test_dataset_positional_default_true_mriqc_has_data_out_prefix(tmp_path):
+    """MRIQC (dataset_positional absent → defaults True) must start command with /data /out."""
+    ctx = RunContext(
+        run_id=1,
+        manifest=_MRIQC_MANIFEST_POSITIONAL,
+        params={"analysis_level": "participant", "nprocs": 1},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert sdk.command[:2] == ["/data", "/out"], (
+        f"MRIQC command must start with /data /out; got {sdk.command[:2]}"
+    )
+    # /data must also be mounted
+    assert str(tmp_path / "dataset") in sdk.volumes
+
+
+def test_dataset_positional_default_true_fmriprep_has_data_out_prefix(tmp_path):
+    """fMRIPrep (dataset_positional absent → defaults True) must start command with /data /out."""
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("fake")
+    ctx = RunContext(
+        run_id=2,
+        manifest=_FMRIPREP_MINIMAL_POSITIONAL,
+        params={"fs-license-file": str(license_file), "nprocs": 1},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert sdk.command[:2] == ["/data", "/out"], (
+        f"fMRIPrep command must start with /data /out; got {sdk.command[:2]}"
+    )
+    assert str(tmp_path / "dataset") in sdk.volumes
+
+
+def test_dataset_positional_false_no_data_out_prefix(tmp_path):
+    """FastSurfer-style manifest (dataset_positional=false) must NOT start with /data /out."""
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake nifti")
+    ctx = RunContext(
+        run_id=3,
+        manifest=_FASTSURFER_MINIMAL_MANIFEST,
+        params={"t1": str(t1_file), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert "/data" not in sdk.command, (
+        f"dataset_positional=false must not emit /data; command: {sdk.command}"
+    )
+    assert "/out" not in sdk.command, (
+        f"dataset_positional=false must not emit /out positional; command: {sdk.command}"
+    )
+
+
+def test_dataset_positional_false_no_data_volume_mount(tmp_path):
+    """FastSurfer-style manifest must not mount the dataset dir at /data."""
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake nifti")
+    ctx = RunContext(
+        run_id=4,
+        manifest=_FASTSURFER_MINIMAL_MANIFEST,
+        params={"t1": str(t1_file), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/data" not in bound_targets, (
+        f"dataset_positional=false must not mount anything at /data; volumes: {sdk.volumes}"
+    )
+
+
+def test_dataset_positional_false_t1_mount_flag_uses_container_path(tmp_path):
+    """FastSurfer --t1 flag must use the container path from the mount, not the host path."""
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake nifti")
+    ctx = RunContext(
+        run_id=5,
+        manifest=_FASTSURFER_MINIMAL_MANIFEST,
+        params={"t1": str(t1_file), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    t1_idx = cmd.index("--t1")
+    container_path = cmd[t1_idx + 1]
+    assert container_path == f"/inputs/t1/{t1_file.name}", (
+        f"--t1 must use container mount path; got {container_path}"
+    )
+    assert str(t1_file) not in container_path

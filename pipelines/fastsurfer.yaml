@@ -1,0 +1,168 @@
+id: fastsurfer
+display_name: FastSurfer
+description: >
+  Fast, CNN-based whole-brain segmentation and cortical surface reconstruction.
+  FastSurfer replaces FreeSurfer's atlas-based segmentation with three 2D U-nets
+  that run directly on raw T1w NIfTI input — no BIDS dataset directory, no ANTs,
+  no FSL. Segmentation completes in 1–5 minutes on CPU; full surface reconstruction
+  (recon-surf) adds 30–90 minutes. --seg_only skips recon-surf and is the
+  recommended starting point.
+homepage: https://deep-mi.org/research/fastsurfer/
+
+container:
+  image: deepmi/fastsurfer
+  tag: cpu-v2.3.3
+  engine: docker
+
+# FastSurfer takes a single T1w NIfTI file via --t1, not a BIDS directory.
+# dataset_positional: false → executor does NOT emit /data /out positional prefix
+# and does NOT mount /data. The T1w file is mounted via the mount: true param below.
+dataset_positional: false
+
+inputs:
+  - t1w_nifti
+
+outputs:
+  - fastsurfer
+
+parameters:
+  # ── Required inputs ─────────────────────────────────────────────────
+  - name: t1
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to the T1-weighted NIfTI image (.nii or .nii.gz). This is the
+      only required input — FastSurfer does not need a BIDS-formatted dataset.
+      Point it directly at a single subject's T1w file, e.g.
+      /path/to/data/sub-01/anat/sub-01_T1w.nii.gz. The file will be mounted
+      read-only into the container.
+
+  - name: sid
+    type: string
+    required: true
+    help: >
+      Subject ID used to name the output directory inside sd (the output root).
+      Use a short alphanumeric identifier, e.g. "sub-01". FastSurfer writes
+      all outputs to {sd}/{sid}/.
+
+  - name: sd
+    type: directory_path
+    required: false
+    mount: false
+    help: >
+      Output directory for FastSurfer results. Leave blank — NeuroForge sets
+      this to /out automatically so outputs appear in the run's output folder.
+      Only override if you need results in a specific location outside NeuroForge.
+
+  # ── Run mode ────────────────────────────────────────────────────────
+  - name: seg_only
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Run only the CNN-based segmentation step (FastSurferCNN + CerebNet),
+      skipping FreeSurfer-compatible cortical surface reconstruction (recon-surf).
+      Enabled by default — segmentation completes in 1–5 minutes on CPU and
+      produces a whole-brain parcellation volume suitable for many analyses.
+      Disable this flag (set to false) if you need cortical thickness, pial
+      surfaces, or any FreeSurfer surface-based outputs; full recon-surf adds
+      30–90 minutes per subject on CPU.
+
+  # ── Performance ─────────────────────────────────────────────────────
+  - name: parallel
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Run left and right hemisphere segmentation in parallel using two CPU
+      threads. May reduce total runtime by ~30% on machines with at least
+      4 free CPU cores. Leave disabled on memory-constrained machines (< 6 GB
+      free RAM) as it roughly doubles peak memory use during segmentation.
+
+  - name: threads
+    type: integer
+    required: false
+    default: 1
+    advanced: true
+    help: >
+      Number of CPU threads for recon-surf (surface reconstruction). Only
+      relevant when seg_only is disabled. Keep at 1 under Docker Desktop on
+      macOS to avoid resource contention. On native Linux with 4+ free cores,
+      setting this to 4 noticeably speeds up the surface fitting stages.
+
+  # ── Device ──────────────────────────────────────────────────────────
+  - name: device
+    type: select
+    required: false
+    default: cpu
+    advanced: true
+    options:
+      - cpu
+      - cuda
+      - mps
+    help: >
+      Compute device for the CNN inference pass. "cpu" works everywhere and
+      is the safe default — segmentation takes 1–5 minutes. "cuda" requires
+      an NVIDIA GPU and Docker with the NVIDIA container toolkit; reduces
+      inference to ~20 seconds. "mps" is Apple Silicon Metal GPU acceleration
+      — available in FastSurfer 2.x but still experimental; may error on some
+      macOS Docker configurations. Use "cpu" unless you have confirmed GPU
+      support in your Docker setup.
+
+max_runtime_hours: 3
+
+known_errors:
+  - pattern: "RuntimeError.*No module named torch|ImportError.*torch"
+    explanation: >
+      The FastSurfer container could not import PyTorch. This should not happen
+      with the official cpu-v2.3.3 image — it indicates the wrong image tag was
+      pulled, a corrupted Docker layer, or a custom image missing dependencies.
+    fix_hint: >
+      Run: docker pull deepmi/fastsurfer:cpu-v2.3.3
+      to re-pull the image. If you built a custom image, verify PyTorch is
+      installed: docker run --rm deepmi/fastsurfer:cpu-v2.3.3 python -c "import torch; print(torch.__version__)"
+
+  - pattern: "FileNotFoundError.*\\.nii|No such file or directory.*\\.nii|t1 does not exist"
+    explanation: >
+      FastSurfer cannot find the T1w NIfTI file at the path you specified.
+      The container received the container-internal path but that path does
+      not exist, which usually means the host file path was wrong or the file
+      was moved after the run was created.
+    fix_hint: >
+      Verify that the path entered for "t1" points to a real .nii or .nii.gz
+      file on your machine. Use an absolute path. The file is mounted read-only
+      into the container at /inputs/t1/{filename} — if it's missing there,
+      the host path was incorrect.
+
+  - pattern: "ERROR: sid.*required|--sid.*required|missing.*required.*argument.*sid"
+    explanation: >
+      FastSurfer requires a subject ID (--sid) but none was provided. All
+      outputs are written to a directory named after the subject ID.
+    fix_hint: >
+      Enter a subject ID in the "sid" field, e.g. "sub-01". It can be any
+      short alphanumeric string — it only names the output directory.
+
+  - pattern: "CUDA.*not available|CUDA error|device.*cuda.*not found"
+    explanation: >
+      The "cuda" device was selected but CUDA/GPU is not available in the
+      container. FastSurfer will not fall back to CPU automatically when cuda
+      is explicitly requested.
+    fix_hint: >
+      Change the "device" parameter to "cpu" in Advanced options, then retry.
+      CUDA requires an NVIDIA GPU, Docker with the NVIDIA container toolkit
+      installed, and the GPU passed through to the container — none of which
+      is typically available in standard Docker Desktop on macOS.
+
+  - pattern: "MemoryError|Cannot allocate memory|Killed"
+    explanation: >
+      FastSurfer ran out of memory. On CPU with the default settings this is
+      uncommon (typical peak: ~3 GB), but enabling --parallel doubles the peak
+      memory use during the CNN inference pass, which can trigger OOM on
+      Docker Desktop with < 6 GB allocated.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources, increase memory to at least
+      6 GB. Then disable "parallel" in Advanced options and retry. If OOM
+      still occurs, the image file may be very large (> 1.5 mm isotropic) —
+      try resampling it to 1 mm before running FastSurfer.

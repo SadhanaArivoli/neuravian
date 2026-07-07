@@ -117,10 +117,17 @@ class DockerExecutor(Executor):
         dataset_host = to_host_path(ctx.dataset_path)
         output_host = to_host_path(ctx.output_dir)
 
+        # dataset_positional: true (default) → BIDS-style pipelines that take
+        # the dataset dir and output dir as positional CLI args (/data /out).
+        # false → flag-only pipelines (e.g. FastSurfer) where the dataset is
+        # addressed via mount:true params; /data is not mounted or passed.
+        dataset_positional: bool = manifest.get("dataset_positional", True)
+
         volumes: dict[str, dict[str, str]] = {
-            dataset_host: {"bind": "/data", "mode": "ro"},
             output_host: {"bind": "/out", "mode": "rw"},
         }
+        if dataset_positional:
+            volumes[dataset_host] = {"bind": "/data", "mode": "ro"}
 
         # work-dir: mount if provided, remap to /work inside the container
         work_dir_val = str(params.get("work-dir", "")).strip()
@@ -157,8 +164,10 @@ class DockerExecutor(Executor):
                 "Mounting %s → %s for param %r", host_path, container_path, name
             )
 
-        # Build the tool command (everything after the image name)
-        cmd: list[str] = ["/data", "/out"]
+        # Build the tool command (everything after the image name).
+        # BIDS-layout pipelines start with the fixed positional pair /data /out;
+        # flag-only pipelines (dataset_positional: false) start with an empty list.
+        cmd: list[str] = ["/data", "/out"] if dataset_positional else []
 
         # Positional parameters (sorted by positional_index)
         positionals = sorted(
