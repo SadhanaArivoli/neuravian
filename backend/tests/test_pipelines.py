@@ -1045,6 +1045,68 @@ def test_mriqc_blank_participant_label_not_a_tool_error():
 
 
 # ------------------------------------------------------------------ #
+# containers.run platform argument — regression test                  #
+# ------------------------------------------------------------------ #
+#
+# Ensures platform="linux/amd64" is passed to every containers.run()
+# call, not just for specific pipelines. Without it, Docker on Apple
+# Silicon probes for a native arm64 manifest first; amd64-only images
+# (fMRIPrep, FastSurfer cpu builds) return a 404 before the container
+# starts, even when the image exists for amd64.
+
+_MINIMAL_MANIFEST_FOR_PLATFORM = {
+    "id": "mriqc",
+    "display_name": "MRIQC",
+    "description": "For platform regression test",
+    "container": {"image": "nipreps/mriqc", "tag": "24.0.2", "engine": "docker"},
+    "inputs": ["bids_dataset"],
+    "outputs": ["mriqc"],
+    "parameters": [],
+}
+
+
+def test_containers_run_receives_platform_linux_amd64(tmp_path):
+    """containers.run() must always be called with platform='linux/amd64'.
+
+    This is a generic executor call — not pipeline-specific. Verifies that a
+    fresh pull on any machine (including Apple Silicon) will request the x86_64
+    manifest rather than probing for a non-existent arm64 one.
+    """
+    import asyncio
+    from unittest.mock import MagicMock, patch
+
+    ctx = RunContext(
+        run_id=99,
+        manifest=_MINIMAL_MANIFEST_FOR_PLATFORM,
+        params={},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+
+    mock_container = MagicMock()
+    mock_container.id = "abc123"
+    mock_container.logs.return_value = iter([])
+    mock_container.wait.return_value = {"StatusCode": 0}
+    mock_client = MagicMock()
+    mock_client.containers.run.return_value = mock_container
+    mock_client.images.get.side_effect = Exception("skip digest")
+
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p), \
+         patch("docker.from_env", return_value=mock_client):
+        asyncio.run(executor.run(ctx, lambda line: None))
+
+    assert mock_client.containers.run.called, "containers.run() was never called"
+    _, kwargs = mock_client.containers.run.call_args
+    assert kwargs.get("platform") == "linux/amd64", (
+        f"containers.run() must pass platform='linux/amd64'; "
+        f"got platform={kwargs.get('platform')!r}. "
+        "Without this, Docker on Apple Silicon will probe for a native arm64 "
+        "manifest and return a 404 for amd64-only images on first pull."
+    )
+
+
+# ------------------------------------------------------------------ #
 # dataset_positional flag — executor regression tests                 #
 # ------------------------------------------------------------------ #
 #
