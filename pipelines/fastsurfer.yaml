@@ -11,7 +11,7 @@ homepage: https://deep-mi.org/research/fastsurfer/
 
 container:
   image: deepmi/fastsurfer
-  tag: cpu-v2.3.3
+  tag: cpu-v2.5.4
   engine: docker
 
 # FastSurfer takes a single T1w NIfTI file via --t1, not a BIDS directory.
@@ -120,9 +120,9 @@ known_errors:
       with the official cpu-v2.3.3 image — it indicates the wrong image tag was
       pulled, a corrupted Docker layer, or a custom image missing dependencies.
     fix_hint: >
-      Run: docker pull deepmi/fastsurfer:cpu-v2.3.3
+      Run: docker pull deepmi/fastsurfer:cpu-v2.5.4
       to re-pull the image. If you built a custom image, verify PyTorch is
-      installed: docker run --rm deepmi/fastsurfer:cpu-v2.3.3 python -c "import torch; print(torch.__version__)"
+      installed: docker run --rm deepmi/fastsurfer:cpu-v2.5.4 python -c "import torch; print(torch.__version__)"
 
   - pattern: "FileNotFoundError.*\\.nii|No such file or directory.*\\.nii|t1 does not exist"
     explanation: >

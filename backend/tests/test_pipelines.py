@@ -1106,7 +1106,7 @@ _FASTSURFER_MINIMAL_MANIFEST = {
     "id": "fastsurfer",
     "display_name": "FastSurfer",
     "description": "For testing dataset_positional=false",
-    "container": {"image": "deepmi/fastsurfer", "tag": "cpu-v2.3.3", "engine": "docker"},
+    "container": {"image": "deepmi/fastsurfer", "tag": "cpu-v2.5.4", "engine": "docker"},
     "inputs": ["t1w_nifti"],
     "outputs": ["fastsurfer"],
     "dataset_positional": False,
