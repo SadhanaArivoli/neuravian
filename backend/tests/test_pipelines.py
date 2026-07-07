@@ -1281,6 +1281,78 @@ def test_dataset_positional_false_no_data_volume_mount(tmp_path):
     )
 
 
+def test_relative_mount_path_resolved_against_dataset_dir(tmp_path):
+    """A relative file_path with mount:true must be resolved to an absolute path
+    before mounting. Docker rejects relative paths as bind-mount sources (it
+    treats them as named volumes instead). Resolution is relative to the dataset
+    directory — the natural anchor when a user types 'sub-01/anat/T1w.nii.gz'.
+
+    Regression for run 17: --t1 received a relative path that Docker refused."""
+    # Create the file at dataset_path/sub-01/anat/sub-01_T1w.nii.gz
+    t1_rel = "sub-01/anat/sub-01_T1w.nii.gz"
+    t1_abs = tmp_path / "dataset" / "sub-01" / "anat" / "sub-01_T1w.nii.gz"
+    t1_abs.parent.mkdir(parents=True)
+    t1_abs.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=90,
+        manifest=_FASTSURFER_MINIMAL_MANIFEST,
+        params={"t1": t1_rel, "sid": "sub-01", "seg_only": True},  # relative path
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    # Volume key must be the resolved absolute path, not the relative string
+    volume_keys = list(sdk.volumes.keys())
+    assert not any(not k.startswith("/") for k in volume_keys if k != str(tmp_path / "out")), (
+        f"All volume keys must be absolute paths; got {volume_keys}"
+    )
+    expected_abs = str(t1_abs)
+    assert expected_abs in sdk.volumes, (
+        f"Resolved absolute path {expected_abs!r} not found in volumes {volume_keys}"
+    )
+
+
+def test_relative_mount_path_sid_stays_separate(tmp_path):
+    """--sid must appear as its own CLI flag, NOT concatenated onto the --t1 value.
+
+    Regression for run 17: the user submitted params where t1 and sid were
+    concatenated ('sub-01/anat/sub-01_T1w.nii.gzsub-01') because the browser
+    merged two adjacent unattributed text inputs. Even with that malformed input
+    the executor should not make it worse; this test verifies that when params
+    ARE correctly separated the two flags remain separate list elements."""
+    t1_abs = tmp_path / "dataset" / "sub-01_T1w.nii.gz"
+    t1_abs.parent.mkdir(parents=True)
+    t1_abs.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=91,
+        manifest=_FASTSURFER_MINIMAL_MANIFEST,
+        params={"t1": str(t1_abs), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    cmd = sdk.command
+    # --t1 value must be the container path for the t1 file only
+    t1_idx = cmd.index("--t1")
+    t1_val = cmd[t1_idx + 1]
+    assert "sub-01" not in t1_val or t1_val == f"/inputs/t1/{t1_abs.name}", (
+        f"--t1 value should be the container mount path only; got {t1_val!r}"
+    )
+    # --sid must be a separate flag, not merged into --t1
+    assert "--sid" in cmd, "--sid must be a separate flag in the command"
+    sid_idx = cmd.index("--sid")
+    assert cmd[sid_idx + 1] == "sub-01", f"--sid value must be 'sub-01'; got {cmd[sid_idx+1]!r}"
+    assert sid_idx != t1_idx + 1, "--sid should not be at the position of --t1's value"
+
+
 def test_dataset_positional_false_t1_mount_flag_uses_container_path(tmp_path):
     """FastSurfer --t1 flag must use the container path from the mount, not the host path."""
     t1_file = tmp_path / "sub-01_T1w.nii.gz"

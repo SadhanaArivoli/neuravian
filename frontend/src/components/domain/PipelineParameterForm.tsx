@@ -82,6 +82,8 @@ function ParameterField({
       <label className="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
+          id={`param-${param.name}`}
+          name={param.name}
           checked={value as boolean}
           onChange={(e) => onChange(e.target.checked)}
           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -94,6 +96,8 @@ function ParameterField({
   if (param.type === "select") {
     return (
       <select
+        id={`param-${param.name}`}
+        name={param.name}
         value={value as string}
         onChange={(e) => onChange(e.target.value)}
         className={baseInput}
@@ -166,6 +170,9 @@ function ParameterField({
     <input
       type={inputType}
       step={step}
+      id={`param-${param.name}`}
+      name={param.name}
+      autoComplete="off"
       value={value as string}
       onChange={(e) => onChange(e.target.value)}
       placeholder={
@@ -191,7 +198,7 @@ function ParameterRow({
 }) {
   return (
     <div>
-      <label className="flex items-center text-sm font-medium text-gray-800 mb-1.5">
+      <label htmlFor={`param-${param.name}`} className="flex items-center text-sm font-medium text-gray-800 mb-1.5">
         <span>{param.name}</span>
         {param.required && (
           <span className="ml-1 text-red-500" aria-label="required">*</span>

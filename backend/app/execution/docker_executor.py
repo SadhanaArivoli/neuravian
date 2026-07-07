@@ -155,6 +155,12 @@ class DockerExecutor(Executor):
             raw = str(params.get(name) or p.get("default") or "").strip()
             if not raw:
                 continue
+            # Relative paths cannot be bind-mounted by Docker (it interprets them
+            # as named volumes). Resolve against the dataset directory — the most
+            # natural anchor when a user types a path like "sub-01/anat/T1w.nii.gz"
+            # while browsing their dataset.
+            if not Path(raw).is_absolute():
+                raw = str(Path(ctx.dataset_path) / raw)
             host_path = to_host_path(raw)
             basename = Path(raw).name
             container_path = f"/inputs/{name}/{basename}"

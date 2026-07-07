@@ -49,11 +49,14 @@ parameters:
   - name: sd
     type: directory_path
     required: false
-    mount: false
+    default: /out
+    advanced: true
     help: >
-      Output directory for FastSurfer results. Leave blank — NeuroForge sets
-      this to /out automatically so outputs appear in the run's output folder.
-      Only override if you need results in a specific location outside NeuroForge.
+      Output directory for FastSurfer results inside the container. The default
+      /out maps to the run's output folder on your machine — do not change this
+      unless you have a specific reason to write results elsewhere inside the
+      container. Changing it without also adjusting the Docker volume mounts will
+      result in outputs being lost when the container stops.
 
   # ── Run mode ────────────────────────────────────────────────────────
   - name: seg_only
