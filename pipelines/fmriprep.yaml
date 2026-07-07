@@ -253,15 +253,20 @@ known_errors:
       Run: chmod 644 /path/to/your/license.txt — then retry. The file needs
       to be world-readable so the container process can access it.
 
-  - pattern: "BrokenProcessPool|A process in the executor was terminated abruptly"
+  - pattern: "BrokenProcessPool|A process in the executor was terminated abruptly|\\bKilled\\b"
     explanation: >
-      A fMRIPrep worker process was killed unexpectedly, almost always because
-      Docker ran out of memory. This is the most common failure mode on Apple
-      Silicon Macs running fMRIPrep under Rosetta 2 emulation.
+      A fMRIPrep process was killed unexpectedly, almost always because Docker
+      ran out of memory. "BrokenProcessPool" means a nipype worker subprocess
+      was OOM-killed; "Killed" (printed by the shell) means the main fMRIPrep
+      process itself received SIGKILL from Docker's OOM killer. Both indicate
+      the container hit its memory ceiling. Common on Apple Silicon under Rosetta
+      2 emulation, where x86 emulation overhead inflates memory use by 20–40%.
     fix_hint: >
       In Docker Desktop → Settings → Resources, increase memory to at least
       8 GB (12+ GB recommended). Then re-run with nprocs=1, omp-nthreads=1,
-      and set mem to 8000. On Apple Silicon, do not increase nprocs above 1.
+      and mem=8000. Also check that the "mem" parameter is set in MB (not GB)
+      — "mem=600" means 600 MB and will cause immediate OOM; it should be 6000
+      for 6 GB. On Apple Silicon, do not increase nprocs above 1.
 
   - pattern: "No such file or directory.*dataset_description\\.json"
     explanation: >
@@ -292,25 +297,53 @@ known_errors:
       If the errors are false positives on a dataset you know is correct, enable
       "skip-bids-validation" in Advanced options.
 
-  - pattern: 'Run stopped automatically after.*maximum runtime|antsRegistration.*SyN'
+  - pattern: 'Run stopped automatically after.*maximum runtime|Executing "registration".*SpatialNormalization|Executing "norm".*FixHeaderRegistration'
     explanation: >
-      ANTs SyN registration cannot complete on Apple Silicon under Rosetta 2
-      emulation. This is a confirmed environment constraint, not a NeuroForge
-      code defect. fMRIPrep's x86_64 image uses ANTs registration with the SyN
-      (diffeomorphic) transform and CC (cross-correlation) metric, which rely on
-      AVX2/AVX-512 SIMD instructions that Rosetta 2 does not correctly translate.
-      The result is a non-terminating loop: the process holds one CPU core at
-      ~100% indefinitely with no convergence and no log output. Confirmed on this
-      machine in two nodes: brain_extraction_wf/norm (T1w→OASIS30ANTs, 6+ CPU
-      hours, run 14) and anat_fit_wf/norm (T1w→MNI, 12h watchdog kill, run 9).
-      The T1w→MNI normalization step cannot be skipped — there is no fMRIPrep
-      flag to replace ANTs SyN for that step. A complete fMRIPrep run on Apple
-      Silicon under Rosetta 2 emulation is not achievable with fMRIPrep 25.x.
+      ANTs SyN registration stalled — the process held a CPU core at ~100% with
+      no convergence and no further log output, then was killed by the runtime
+      watchdog or manually. This is a confirmed environment constraint on Apple
+      Silicon Macs running fMRIPrep's x86_64 image under Rosetta 2 emulation:
+      ANTs's SyN+CC-metric code path uses AVX2/AVX-512 SIMD instructions that
+      Rosetta 2 does not correctly translate, producing a non-terminating loop.
+      Confirmed in three nodes across three runs on this machine: brain_extraction
+      _wf/norm (FixHeaderRegistration, T1w→OASIS30ANTs, 6+ CPU hours, run 14),
+      anat_fit_wf/register_template_wf/registration (SpatialNormalization, T1w→
+      MNI, watchdog at 12h, run 9; watchdog at 24h, run 15). The T1w→MNI
+      normalization step cannot be skipped — there is no fMRIPrep flag to replace
+      ANTs SyN for that registration. A complete fMRIPrep run on Apple Silicon
+      under Rosetta 2 emulation is not achievable with fMRIPrep 25.x.
     fix_hint: >
-      This machine cannot complete a fMRIPrep run. The NeuroForge integration
-      is fully correct and will work on compatible hardware. To run fMRIPrep:
-      use a native x86_64 Linux machine, an x86 cloud instance (e.g. AWS c5,
-      GCP n2), or wait for a future ARM-native fMRIPrep image. If you want to
-      bypass the brain extraction stall specifically (not the normalization),
-      set skull-strip-t1w to "skip" — but note the run will stall again at the
-      T1w→MNI normalization step for the same reason.
+      This machine cannot complete a fMRIPrep run. The NeuroForge integration is
+      fully correct and will work on compatible hardware. To run fMRIPrep: use a
+      native x86_64 Linux machine, an x86 cloud instance (e.g. AWS c5, GCP n2),
+      or wait for a future ARM-native fMRIPrep image. Setting skull-strip-t1w to
+      "skip" bypasses the brain extraction stall but the run will stall again at
+      the T1w→MNI normalization step for the same reason.
+
+  - pattern: 'fmriprep: error: unrecognized arguments'
+    explanation: >
+      fMRIPrep's argument parser rejected one or more flags before processing
+      started. This happens when a flag exists in the parameters submitted to
+      NeuroForge but is not recognized by the installed fMRIPrep version —
+      either because the flag was removed in a newer fMRIPrep release, or because
+      params were edited manually outside the UI. The full usage text is printed
+      and the run exits with code 2. Example: --run-id was removed in fMRIPrep
+      25.x and caused this error in runs 12 and 13 on this machine.
+    fix_hint: >
+      Look for the line "fmriprep: error: unrecognized arguments: --flag-name"
+      at the very end of the log (after the usage text) to identify which flag
+      was rejected. If the flag no longer appears in fMRIPrep's usage output,
+      it has been removed in this version — do not include it. If you edited
+      params manually, resubmit using the standard NeuroForge run wizard instead.
+
+  - pattern: 'fmriprep: error: Path does not exist:.*license|fmriprep: error: argument.*fs.license.file'
+    explanation: >
+      fMRIPrep's argument parser could not find the FreeSurfer license file at
+      the path you specified. This check happens at startup before any data is
+      processed. The path either does not exist or was typed incorrectly.
+    fix_hint: >
+      Verify the path entered for "fs-license-file" exists on your machine.
+      The license file is usually named license.txt and is typically at
+      ~/freesurfer/license.txt. If you do not have one, register free at
+      http://surfer.nmr.mgh.harvard.edu/registration.html — the file arrives
+      by email within minutes.

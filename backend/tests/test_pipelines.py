@@ -633,3 +633,412 @@ def test_auto_work_dir_not_injected_for_short_pipeline(
     )
     auto_work_dir = tmp_path / "work" / "fmriprep" / str(ds.id)
     assert not auto_work_dir.exists()
+
+
+# ------------------------------------------------------------------ #
+# M6: known_error translate_errors — verified against real log text   #
+# ------------------------------------------------------------------ #
+#
+# Each test feeds a real or realistic log snippet (captured from actual
+# runs on this machine) to translate_errors() and asserts the correct
+# explanation is returned.  Log text is taken verbatim from the runs
+# cited so the regex is proven against real output, not assumed to match.
+
+from app.execution.docker_executor import translate_errors  # noqa: E402
+
+
+def _fmriprep_errors() -> list:
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fmriprep.yaml", schema)
+    return manifest["known_errors"]
+
+
+def _mriqc_errors() -> list:
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "mriqc.yaml", schema)
+    return manifest["known_errors"]
+
+
+# ── fMRIPrep: unrecognized argument (runs 12 and 13) ────────────────
+
+def test_translate_fmriprep_unrecognized_argument():
+    """Argparse rejection of --run-id (removed in fMRIPrep 25.x) must be detected.
+    Log text captured verbatim from runs 12 and 13."""
+    log = (
+        "usage: fmriprep [-h] [--skip_bids_validation]\n"
+        "                [--participant-label PARTICIPANT_LABEL [PARTICIPANT_LABEL ...]]\n"
+        "                bids_dir output_dir {participant}\n"
+        "fmriprep: error: unrecognized arguments: --run-id 01\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "Should detect argparse rejection"
+    assert "unrecognized" in result.lower() or "argument" in result.lower() or "parser" in result.lower()
+
+
+def test_translate_fmriprep_unrecognized_argument_any_flag():
+    """Pattern must fire for any unrecognized flag, not just --run-id."""
+    log = "fmriprep: error: unrecognized arguments: --use-aroma\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+
+
+# ── fMRIPrep: ANTs/Rosetta watchdog timeout (runs 9 and 15) ─────────
+
+def test_translate_fmriprep_ants_watchdog_timeout():
+    """NeuroForge watchdog line must match the ANTs/Rosetta entry.
+    Exact text injected by docker_executor.py watchdog — seen in runs 9 and 15."""
+    log = (
+        "260705-06:25:05,354 nipype.workflow INFO:\n"
+        '\t [Node] Executing "registration"'
+        " <niworkflows.interfaces.norm.SpatialNormalization>\n"
+        "[neuroforge] Run stopped automatically after 24h maximum runtime.\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "Watchdog timeout must be detected"
+    assert "ants" in result.lower() or "rosetta" in result.lower() or "registration" in result.lower()
+
+
+def test_translate_fmriprep_ants_watchdog_12h():
+    """Watchdog with 12h limit (run 9 original max_runtime_hours) must also match."""
+    log = "[neuroforge] Run stopped automatically after 12h maximum runtime.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+
+
+# ── fMRIPrep: ANTs node executing lines (runs 14 and 15) ────────────
+
+def test_translate_fmriprep_fix_header_registration_node():
+    """FixHeaderRegistration node executing line (brain_extraction_wf/norm).
+    Captured verbatim from run 14 log, line 425."""
+    log = (
+        "260703-13:37:00,001 nipype.workflow INFO:\n"
+        '\t [Node] Executing "norm"'
+        " <niworkflows.interfaces.fixes.FixHeaderRegistration>\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "FixHeaderRegistration executing line must be detected"
+
+
+def test_translate_fmriprep_spatial_normalization_node():
+    """SpatialNormalization node executing line (register_template_wf/registration).
+    Captured verbatim from run 15 log, last node before stall."""
+    log = (
+        "260705-06:25:05,354 nipype.workflow INFO:\n"
+        '\t [Node] Executing "registration"'
+        " <niworkflows.interfaces.norm.SpatialNormalization>\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "SpatialNormalization executing line must be detected"
+
+
+# ── fMRIPrep: OOM / SIGKILL ──────────────────────────────────────────
+
+def test_translate_fmriprep_broken_process_pool():
+    """BrokenProcessPool (nipype worker OOM-killed) must be detected."""
+    log = (
+        "concurrent.futures.process.BrokenProcessPool: "
+        "A process in the executor was terminated abruptly while the future was running "
+        "or pending.\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+    assert "memory" in result.lower() or "killed" in result.lower()
+
+
+def test_translate_fmriprep_killed_signal():
+    """Bare 'Killed' (shell output when main process receives SIGKILL) must be detected."""
+    log = (
+        "260703-17:53:00,000 nipype.workflow INFO:\n"
+        "\t [Node] Executing some node\n"
+        "Killed\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "'Killed' line should match OOM entry"
+
+
+def test_translate_fmriprep_killed_word_boundary():
+    """'Killed' inside a compound word must NOT match due to \\b word boundary."""
+    log = "Skill-based registration approach selected.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    # Must not fire on 'Skill' — if something matched, it must be a different pattern
+    if result is not None:
+        assert "BrokenProcessPool" not in result
+
+
+# ── fMRIPrep: license path does not exist (real argparse output) ────
+
+def test_translate_fmriprep_license_path_not_exist():
+    """fMRIPrep argparse path check for --fs-license-file.
+    Exact text from: docker run nipreps/fmriprep:25.2.5 ... --fs-license-file /nonexistent/license.txt"""
+    log = "fmriprep: error: Path does not exist: </nonexistent/license.txt>.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "License path-not-exist argparse error must be detected"
+    assert "license" in result.lower()
+
+
+# ── fMRIPrep: FreeSurfer runtime license check ───────────────────────
+
+def test_translate_fmriprep_freesurfer_license_runtime():
+    """FreeSurfer runtime license error (different from argparse path check) must match."""
+    log = "ERROR: a valid license file is required for FreeSurfer.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+    assert "license" in result.lower()
+
+
+# ── fMRIPrep: regression guard on known_errors count ────────────────
+
+def test_fmriprep_known_errors_count():
+    """Guard against accidentally removing entries — must have at least 9."""
+    errors = _fmriprep_errors()
+    assert len(errors) >= 9, (
+        f"Expected at least 9 fmriprep known_errors, got {len(errors)}. "
+        "Check that no entries were removed."
+    )
+
+
+# ── MRIQC: OOM detection ─────────────────────────────────────────────
+
+def test_translate_mriqc_oom_killed():
+    """MRIQC 'Killed' OOM pattern must be detected."""
+    log = "Killed\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None, "MRIQC must detect bare 'Killed' as OOM"
+
+
+def test_translate_mriqc_memory_error():
+    """MRIQC MemoryError must be detected."""
+    log = "MemoryError: Unable to allocate 4.50 GiB for array\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None
+
+
+def test_translate_mriqc_cannot_allocate():
+    """MRIQC 'Cannot allocate memory' must be detected."""
+    log = "OSError: [Errno 12] Cannot allocate memory\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None
+
+
+# ── Blank participant-label: no tool-level error (UI handles it) ─────
+
+def test_mriqc_blank_participant_label_not_a_tool_error():
+    """Blank participant-label is valid behavior — processes all subjects.
+    The UI warns before submission; no known_error pattern should fire on
+    normal MRIQC startup log text."""
+    normal_startup = (
+        "mriqc 24.0.2\n"
+        "Processing all participants in the dataset.\n"
+        "  * Analysis levels: ['participant'].\n"
+        "  * Participants list: ['01', '02', '03'].\n"
+    )
+    assert translate_errors(normal_startup, _mriqc_errors()) is None
+    assert translate_errors(normal_startup, _fmriprep_errors()) is None
+
+
+# ------------------------------------------------------------------ #
+# M6: known_error translate_errors — verified against real log text   #
+# ------------------------------------------------------------------ #
+#
+# Each test feeds a real or realistic log snippet (captured from actual
+# runs on this machine) to translate_errors() and asserts the correct
+# explanation is returned.  Log text is taken verbatim from the runs
+# cited so the regex is proven against real output, not assumed to match.
+
+from app.execution.docker_executor import translate_errors
+
+
+def _fmriprep_errors():
+    """Load the fmriprep manifest's known_errors list."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fmriprep.yaml", schema)
+    return manifest["known_errors"]
+
+
+def _mriqc_errors():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "mriqc.yaml", schema)
+    return manifest["known_errors"]
+
+
+# ── fMRIPrep: unrecognized argument (runs 12 and 13) ────────────────
+
+def test_translate_fmriprep_unrecognized_argument():
+    """Argparse rejection of --run-id (removed in fMRIPrep 25.x) must be detected.
+    Log text captured verbatim from runs 12 and 13."""
+    log = (
+        "usage: fmriprep [-h] [--skip_bids_validation]\n"
+        "                [--participant-label PARTICIPANT_LABEL [PARTICIPANT_LABEL ...]]\n"
+        "                bids_dir output_dir {participant}\n"
+        "fmriprep: error: unrecognized arguments: --run-id 01\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "Should detect argparse rejection"
+    assert "unrecognized" in result.lower() or "argument" in result.lower() or "parser" in result.lower()
+
+
+def test_translate_fmriprep_unrecognized_argument_any_flag():
+    """The pattern must fire for any unrecognized flag, not just --run-id."""
+    log = "fmriprep: error: unrecognized arguments: --use-aroma\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+
+
+# ── fMRIPrep: ANTs/Rosetta watchdog timeout (runs 9 and 15) ─────────
+
+def test_translate_fmriprep_ants_watchdog_timeout():
+    """NeuroForge watchdog line (injected when max_runtime_hours exceeded) must match.
+    Exact text injected by docker_executor.py watchdog — seen in runs 9 and 15."""
+    log = (
+        "260705-06:25:05,354 nipype.workflow INFO:\n"
+        '\t [Node] Executing "registration" <niworkflows.interfaces.norm.SpatialNormalization>\n'
+        "[neuroforge] Run stopped automatically after 24h maximum runtime.\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "Watchdog timeout must be detected"
+    assert "ants" in result.lower() or "rosetta" in result.lower() or "registration" in result.lower()
+
+
+def test_translate_fmriprep_ants_watchdog_12h():
+    """Watchdog with 12h limit (run 9 original max_runtime_hours) must also match."""
+    log = "[neuroforge] Run stopped automatically after 12h maximum runtime.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+
+
+# ── fMRIPrep: ANTs node executing lines (runs 14 and 15) ────────────
+
+def test_translate_fmriprep_fix_header_registration_node():
+    """FixHeaderRegistration node executing line (brain_extraction_wf/norm) must
+    match the ANTs/Rosetta entry. Captured verbatim from run 14 log, line 425."""
+    log = (
+        "260703-13:37:00,000 nipype.workflow INFO:\n"
+        '\t [Node] Setting-up "fmriprep_25_2_wf.sub_01_wf.anat_fit_wf'
+        '.brain_extraction_wf.norm" in "/work/...".\n'
+        "260703-13:37:00,001 nipype.workflow INFO:\n"
+        '\t [Node] Executing "norm" <niworkflows.interfaces.fixes.FixHeaderRegistration>\n'
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "FixHeaderRegistration executing line must be detected"
+
+
+def test_translate_fmriprep_spatial_normalization_node():
+    """SpatialNormalization node executing line (register_template_wf/registration)
+    must match. Captured verbatim from run 15 log, the last node before stall."""
+    log = (
+        "260705-06:25:05,334 nipype.workflow INFO:\n"
+        '\t [Node] Setting-up "fmriprep_25_2_wf.sub_01_wf.anat_fit_wf'
+        '.register_template_wf._template_MNI152NLin2009cAsym/registration".\n'
+        "260705-06:25:05,354 nipype.workflow INFO:\n"
+        '\t [Node] Executing "registration" <niworkflows.interfaces.norm.SpatialNormalization>\n'
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "SpatialNormalization executing line must be detected"
+
+
+# ── fMRIPrep: OOM / SIGKILL ──────────────────────────────────────────
+
+def test_translate_fmriprep_broken_process_pool():
+    """BrokenProcessPool (nipype worker OOM-killed) must be detected."""
+    log = (
+        "multiprocessing.managers.RemoteTraceback:\n"
+        "concurrent.futures.process.BrokenProcessPool: "
+        "A process in the executor was terminated abruptly while the future was running "
+        "or pending.\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+    assert "memory" in result.lower() or "killed" in result.lower() or "oom" in result.lower()
+
+
+def test_translate_fmriprep_killed_signal():
+    """Bare 'Killed' (shell output when main process receives SIGKILL) must be detected."""
+    log = (
+        "260703-17:53:00,000 nipype.workflow INFO:\n"
+        "\t [Node] Executing some node\n"
+        "Killed\n"
+    )
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "'Killed' line should match OOM entry"
+
+
+def test_translate_fmriprep_killed_does_not_match_arbitrary_text():
+    """'Killed' inside a word (e.g. 'Skill-based') must NOT match due to word boundary."""
+    log = "Skill-based registration approach selected.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    # Should not match the OOM entry (may match nothing or other entries)
+    if result is not None:
+        # If something matched, it must not be the OOM entry
+        assert "BrokenProcessPool" not in result
+
+
+# ── fMRIPrep: license path does not exist (argparse, real output) ───
+
+def test_translate_fmriprep_license_path_not_exist():
+    """fMRIPrep's argparse path check for --fs-license-file must be detected.
+    Exact text produced by 'docker run nipreps/fmriprep:25.2.5 ... --fs-license-file /nonexistent/license.txt'."""
+    log = "fmriprep: error: Path does not exist: </nonexistent/license.txt>.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None, "License path-not-exist argparse error must be detected"
+    assert "license" in result.lower()
+
+
+# ── fMRIPrep: FreeSurfer runtime license check ───────────────────────
+
+def test_translate_fmriprep_freesurfer_license_runtime():
+    """FreeSurfer runtime license error (different from argparse path check) must match."""
+    log = "ERROR: a valid license file is required for FreeSurfer.\n"
+    result = translate_errors(log, _fmriprep_errors())
+    assert result is not None
+    assert "license" in result.lower()
+
+
+# ── fMRIPrep: count of known_errors (regression guard) ─────────────
+
+def test_fmriprep_known_errors_count():
+    """Guard against accidentally removing entries — must have at least 9."""
+    errors = _fmriprep_errors()
+    assert len(errors) >= 9, (
+        f"Expected at least 9 fmriprep known_errors, got {len(errors)}. "
+        "Check that no entries were removed accidentally."
+    )
+
+
+# ── MRIQC: OOM detection ─────────────────────────────────────────────
+
+def test_translate_mriqc_oom_killed():
+    """MRIQC's 'Killed' OOM pattern must be detected."""
+    log = "Killed\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None, "MRIQC must detect bare 'Killed' as OOM"
+
+
+def test_translate_mriqc_memory_error():
+    """MRIQC MemoryError must be detected."""
+    log = "MemoryError: Unable to allocate 4.50 GiB for array\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None
+
+
+def test_translate_mriqc_cannot_allocate():
+    """MRIQC 'Cannot allocate memory' must be detected."""
+    log = "OSError: [Errno 12] Cannot allocate memory\n"
+    result = translate_errors(log, _mriqc_errors())
+    assert result is not None
+
+
+# ── Blank participant-label: no tool-level error (UI handles it) ─────
+
+def test_mriqc_blank_participant_label_not_a_tool_error():
+    """Blank participant-label is valid fMRIPrep/MRIQC behavior (processes all subjects).
+    It produces no error in the log — the UI warns before submission.
+    Confirm no known_error pattern falsely fires on normal MRIQC startup text."""
+    normal_startup = (
+        "mriqc 24.0.2\n"
+        "Processing all participants in the dataset.\n"
+        "  * Analysis levels: ['participant'].\n"
+        "  * Participants list: ['01', '02', '03'].\n"
+    )
+    # Neither manifest should fire an error pattern on this text
+    assert translate_errors(normal_startup, _mriqc_errors()) is None
+    assert translate_errors(normal_startup, _fmriprep_errors()) is None
