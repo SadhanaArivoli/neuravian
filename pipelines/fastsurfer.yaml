@@ -18,6 +18,9 @@ container:
 # dataset_positional: false → executor does NOT emit /data /out positional prefix
 # and does NOT mount /data. The T1w file is mounted via the mount: true param below.
 dataset_positional: false
+# FastSurfer's run_fastsurfer.sh refuses to run as an arbitrary non-root user
+# and requires the container process to match the host UID:GID.
+run_as_host_user: true
 
 inputs:
   - t1w_nifti

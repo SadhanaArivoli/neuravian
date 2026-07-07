@@ -80,6 +80,11 @@
       "type": "string",
       "description": "Template string for the Docker command. Use {placeholders} for dynamic values."
     },
+    "run_as_host_user": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, containers.run() is called with user='<host-uid>:<host-gid>' so the container process runs as the same UID/GID as the host user. Required by images whose entrypoints refuse to run as an arbitrary non-root user (e.g. FastSurfer). Defaults to false; MRIQC and fMRIPrep do not need this."
+    },
     "dataset_positional": {
       "type": "boolean",
       "default": true,

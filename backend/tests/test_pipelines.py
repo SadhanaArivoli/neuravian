@@ -1065,6 +1065,95 @@ _MINIMAL_MANIFEST_FOR_PLATFORM = {
 }
 
 
+def test_run_as_host_user_true_sets_user_field(tmp_path):
+    """When run_as_host_user: true, _build_sdk_params must set user='uid:gid'.
+
+    Regression for run 19: FastSurfer's entrypoint refuses to run as an
+    arbitrary non-root user and requires -u $(id -u):$(id -g)."""
+    import os
+    manifest_with_host_user = {
+        **_FASTSURFER_MINIMAL_MANIFEST,
+        "run_as_host_user": True,
+    }
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake")
+    ctx = RunContext(
+        run_id=200,
+        manifest=manifest_with_host_user,
+        params={"t1": str(t1_file), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert sdk.user == f"{os.getuid()}:{os.getgid()}", (
+        f"run_as_host_user=true must set user='uid:gid'; got {sdk.user!r}"
+    )
+
+
+def test_run_as_host_user_false_leaves_user_none(tmp_path):
+    """MRIQC and fMRIPrep (run_as_host_user absent/false) must not pass user."""
+    ctx = RunContext(
+        run_id=201,
+        manifest=_MRIQC_MANIFEST_POSITIONAL,  # no run_as_host_user key
+        params={"analysis_level": "participant", "nprocs": 1},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert sdk.user is None, (
+        f"run_as_host_user absent must leave user=None; got {sdk.user!r}"
+    )
+
+
+def test_run_as_host_user_true_appears_in_build_command(tmp_path):
+    """build_command must include -u uid:gid when run_as_host_user is true."""
+    import os
+    manifest_with_host_user = {
+        **_FASTSURFER_MINIMAL_MANIFEST,
+        "run_as_host_user": True,
+    }
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake")
+    ctx = RunContext(
+        run_id=202,
+        manifest=manifest_with_host_user,
+        params={"t1": str(t1_file), "sid": "sub-01", "seg_only": True},
+        dataset_path=str(tmp_path),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "-u" in cmd, "build_command must include -u flag when run_as_host_user=true"
+    u_idx = cmd.index("-u")
+    assert cmd[u_idx + 1] == f"{os.getuid()}:{os.getgid()}"
+
+
+def test_run_as_host_user_false_not_in_build_command(tmp_path):
+    """build_command must NOT include -u for MRIQC (run_as_host_user absent)."""
+    ctx = RunContext(
+        run_id=203,
+        manifest=_MRIQC_MANIFEST_POSITIONAL,
+        params={"analysis_level": "participant", "nprocs": 1},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "-u" not in cmd, (
+        f"build_command must not include -u when run_as_host_user is absent; got {cmd}"
+    )
+
+
 def test_containers_run_receives_platform_linux_amd64(tmp_path):
     """containers.run() must always be called with platform='linux/amd64'.
 

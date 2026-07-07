@@ -104,6 +104,7 @@ class _SdkParams:
     image: str
     command: list[str]
     volumes: dict[str, dict[str, str]]  # {host_path: {"bind": ..., "mode": ...}}
+    user: str | None = None  # "uid:gid" when run_as_host_user: true in manifest
 
 
 class DockerExecutor(Executor):
@@ -234,16 +235,28 @@ class DockerExecutor(Executor):
                 if val is not None and val != "":
                     cmd += [f"--{name}", str(val)]
 
+        # run_as_host_user: true → pass the host UID:GID to the container.
+        # Required by images that refuse to run as an arbitrary non-root user
+        # (e.g. FastSurfer's run_fastsurfer.sh checks the caller's identity).
+        # Defaults to false so MRIQC/fMRIPrep are unaffected.
+        user: str | None = None
+        if manifest.get("run_as_host_user"):
+            import os
+            user = f"{os.getuid()}:{os.getgid()}"
+
         return _SdkParams(
             image=f"{container['image']}:{container['tag']}",
             command=cmd,
             volumes=volumes,
+            user=user,
         )
 
     def build_command(self, ctx: RunContext) -> list[str]:
         """Full CLI representation — used for command_preview display."""
         sdk = self._build_sdk_params(ctx)
         cli = ["docker", "run", "--rm"]
+        if sdk.user is not None:
+            cli += ["-u", sdk.user]
         for host_path, bind in sdk.volumes.items():
             mode = bind.get("mode", "rw")
             cli += ["-v", f"{host_path}:{bind['bind']}:{mode}"]
@@ -269,8 +282,7 @@ class DockerExecutor(Executor):
             nonlocal exit_code, digest
 
             log.info("Starting container %s for run %d", sdk.image, ctx.run_id)
-            container = client.containers.run(
-                sdk.image,
+            run_kwargs: dict = dict(
                 command=sdk.command,
                 volumes=sdk.volumes,
                 detach=True,
@@ -281,6 +293,9 @@ class DockerExecutor(Executor):
                 # "no matching manifest for linux/arm64" 404 at pull time.
                 platform="linux/amd64",
             )
+            if sdk.user is not None:
+                run_kwargs["user"] = sdk.user
+            container = client.containers.run(sdk.image, **run_kwargs)
             _active_containers[ctx.run_id] = container.id
 
             # Capture image digest for provenance
