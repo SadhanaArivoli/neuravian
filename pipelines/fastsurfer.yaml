@@ -83,11 +83,14 @@ parameters:
     help: >
       Run only the CNN-based segmentation step (FastSurferCNN + CerebNet),
       skipping FreeSurfer-compatible cortical surface reconstruction (recon-surf).
-      Enabled by default — segmentation completes in 1–5 minutes on CPU and
-      produces a whole-brain parcellation volume suitable for many analyses.
+      Enabled by default. Runtime varies dramatically by hardware: on native
+      x86_64 Linux, segmentation completes in 1–5 minutes on CPU. On Apple
+      Silicon Macs running this x86_64 image under Rosetta 2 emulation, the
+      three CNN orientation passes (coronal/sagittal/axial, 256 batches each)
+      take ~33 hours total — confirmed in run 21 at 154 s/batch. Plan accordingly.
       Disable this flag (set to false) if you need cortical thickness, pial
-      surfaces, or any FreeSurfer surface-based outputs; full recon-surf adds
-      30–90 minutes per subject on CPU.
+      surfaces, or any FreeSurfer surface-based outputs; recon-surf adds further
+      time on top of segmentation.
 
   # ── Performance ─────────────────────────────────────────────────────
   - name: parallel
@@ -131,13 +134,32 @@ parameters:
       macOS Docker configurations. Use "cpu" unless you have confirmed GPU
       support in your Docker setup.
 
-max_runtime_hours: 3
+max_runtime_hours: 40
 
 known_errors:
+  - pattern: "Run stopped automatically after.*maximum runtime"
+    explanation: >
+      The NeuroForge runtime watchdog stopped this FastSurfer run after it exceeded
+      the maximum allowed wall time. On native x86_64 Linux or cloud hardware,
+      FastSurfer --seg_only typically finishes in 30–90 minutes per subject.
+      On Apple Silicon Macs running the x86_64 image under Rosetta 2 emulation,
+      the CNN inference is dramatically slower: the three orientation passes
+      (coronal, sagittal, axial) process 256 batches each at ~154 seconds per
+      batch under emulation, giving a total of roughly 33 hours for a single
+      subject. Run 21 on this machine confirmed the pace — 68/256 batches
+      completed in exactly 3 hours before the (then-too-short) watchdog fired.
+      The limit has since been raised to 40 hours, which should be sufficient.
+    fix_hint: >
+      If the run was killed and progress was visible in the log (e.g. "batch
+      68/256"), the run was healthy — it just needs more time. Resubmit; the
+      watchdog is now set to 40 hours. If you need results sooner, run FastSurfer
+      on native x86_64 hardware (Linux workstation or cloud instance) where the
+      30–90 minute estimate holds.
+
   - pattern: "RuntimeError.*No module named torch|ImportError.*torch"
     explanation: >
       The FastSurfer container could not import PyTorch. This should not happen
-      with the official cpu-v2.3.3 image — it indicates the wrong image tag was
+      with the official cpu-v2.5.4 image — it indicates the wrong image tag was
       pulled, a corrupted Docker layer, or a custom image missing dependencies.
     fix_hint: >
       Run: docker pull deepmi/fastsurfer:cpu-v2.5.4
