@@ -27,6 +27,20 @@ outputs:
 
 parameters:
   # ── Required inputs ─────────────────────────────────────────────────
+  - name: fs_license
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Path to your FreeSurfer license file (license.txt). FastSurfer ships
+      FreeSurfer binaries for surface reconstruction and always requires a
+      valid license, even when running seg_only (the CNN segmentation step
+      itself doesn't need it, but the container checks at startup). A free
+      academic license takes ~2 minutes to obtain: register at
+      http://surfer.nmr.mgh.harvard.edu/registration.html and a license.txt
+      file will arrive by email within minutes. Save it anywhere on your Mac
+      (e.g. ~/freesurfer/license.txt) and enter that full path here.
+
   - name: t1
     type: file_path
     required: true
