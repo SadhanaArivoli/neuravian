@@ -270,6 +270,10 @@ class DockerExecutor(Executor):
                 detach=True,
                 remove=False,  # we remove after capturing exit code
                 labels={"neuroforge_run_id": str(ctx.run_id)},
+                # Force x86_64 emulation on Apple Silicon so that amd64-only
+                # images (fMRIPrep, FastSurfer cpu builds) don't fail with a
+                # "no matching manifest for linux/arm64" 404 at pull time.
+                platform="linux/amd64",
             )
             _active_containers[ctx.run_id] = container.id
 
