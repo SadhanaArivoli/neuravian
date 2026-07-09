@@ -1,26 +1,33 @@
 """Wizard API — DICOM Mapping Wizard endpoints.
 
-Implements the scout step: runs dcm2bids_helper in a Docker container,
-parses the emitted sidecar JSONs, applies lightweight heuristics to
-classify each series, and returns structured metadata to the UI.
+Implements the scout step (runs dcm2bids_helper in Docker, classifies series)
+and the launch step (saves generated config.json, creates a dcm2bids run).
 
-No config.json is generated here. No dcm2bids execution is launched.
-No dataset files are modified (DICOM dir is mounted read-only).
+No dataset files are modified (DICOM dir is mounted read-only in all steps).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.core.database import get_db
+from app.core.config import settings
 from app.execution.docker_executor import from_host_path, to_host_path
+from app.models.dataset import Dataset
+from app.schemas.run import RunCreate
+from app.services.run import RunService
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["wizard"])
@@ -441,3 +448,125 @@ def scout_dicom(body: ScoutRequest) -> ScoutResponse:
         session_id=body.session_id,
         helper_log=helper_log,
     )
+
+
+# ---------------------------------------------------------------------------
+# Launch endpoint — save config and create a dcm2bids run
+# ---------------------------------------------------------------------------
+
+class LaunchRequest(BaseModel):
+    dicom_path: str                # host path as entered by the user
+    participant_id: str            # e.g. "sub-01"
+    session_id: str | None = None  # e.g. "ses-01" — optional
+    dataset_name: str | None = None
+    config: dict[str, Any]         # generated dcm2bids config JSON
+
+
+class LaunchResponse(BaseModel):
+    run_id: int
+    config_path: str               # host-accessible path to the saved config
+
+
+@router.post("/wizard/dcm2bids/launch", response_model=LaunchResponse)
+def launch_dcm2bids(
+    body: LaunchRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> LaunchResponse:
+    """Save the generated config.json and launch a dcm2bids run.
+
+    Workflow:
+    1. Write config JSON to a stable wizard_configs/{uuid}/ path inside data_dir.
+    2. Upsert a Dataset record for the DICOM directory (for DB FK / provenance).
+    3. Create the run via RunService (same path as any other pipeline run).
+    4. Write .bidsignore and copy config into the run's output dir for provenance.
+    5. Return the run_id so the UI can redirect to /runs/{run_id}.
+
+    The DICOM directory is never modified (it is mounted read-only by the executor).
+    """
+    # ── 1. Resolve and validate the DICOM path ──────────────────────────────
+    container_dicom_path = from_host_path(body.dicom_path)
+    if not Path(container_dicom_path).is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"DICOM directory not found: {body.dicom_path}",
+        )
+
+    # ── 2. Save config.json to a stable path inside data_dir ────────────────
+    data_dir = Path(settings.data_dir)
+    config_dir = data_dir / "wizard_configs" / uuid.uuid4().hex
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "dcm2bids_config.json"
+    config_path.write_text(json.dumps(body.config, indent=2), encoding="utf-8")
+
+    log.info("Saved wizard config to %s", config_path)
+
+    # ── 3. Upsert Dataset record for the DICOM source ────────────────────────
+    # The dataset record is a lightweight tracking entry — it is NOT a
+    # registered BIDS dataset. Its path is the container-internal DICOM dir.
+    existing_dataset = db.query(Dataset).filter_by(path=container_dicom_path).first()
+    if existing_dataset:
+        dataset = existing_dataset
+    else:
+        dataset = Dataset(
+            name=body.dataset_name or f"DICOM source: {body.participant_id}",
+            path=container_dicom_path,
+            validation_status="dicom_source",
+        )
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+
+    log.info("Using dataset id=%d (path=%s) for dcm2bids run", dataset.id, container_dicom_path)
+
+    # ── 4. Build params for the dcm2bids pipeline ────────────────────────────
+    # All path params must be HOST paths (not container-internal paths).
+    # The pre-flight check in RunService.create_run skips existence verification
+    # when the path is already a host path (to_host_path returns it unchanged),
+    # and the DockerExecutor passes it directly to the Docker daemon as a
+    # bind-mount source — which the daemon can access on the host filesystem.
+    host_config_path = to_host_path(str(config_path))
+
+    params: dict[str, Any] = {
+        "dicom-dir": body.dicom_path,       # user-provided host path
+        "participant-label": body.participant_id,
+        "config-file": host_config_path,    # host path to the saved config
+    }
+    if body.session_id:
+        params["session-label"] = body.session_id
+
+    # ── 5. Create the run via RunService ─────────────────────────────────────
+    svc = RunService(db)
+    run_create = RunCreate(
+        pipeline_id="dcm2bids",
+        dataset_id=dataset.id,
+        params=params,
+    )
+    try:
+        run = svc.create_run(run_create, background_tasks)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # ── 6. Post-creation: write .bidsignore + copy config for provenance ────
+    # run.output_dir is the container-internal output directory, accessible
+    # directly from the backend container.
+    if run.output_dir:
+        out = Path(run.output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+
+        # .bidsignore: tell BIDS Validator to ignore dcm2bids working files.
+        # dcm2bids v3 may write this itself, but writing it upfront is safe
+        # (dcm2bids appends rather than overwrites existing .bidsignore).
+        bidsignore = out / ".bidsignore"
+        if not bidsignore.exists():
+            bidsignore.write_text("tmp_dcm2bids/\n", encoding="utf-8")
+
+        # Provenance copy: put the config in code/ alongside the BIDS output.
+        # This mirrors the dcm2bids recommended practice of keeping the config
+        # with the dataset (BIDS dataset/code/ is explicitly allowed for scripts).
+        code_dir = out / "code"
+        code_dir.mkdir(exist_ok=True)
+        shutil.copy(str(config_path), code_dir / "dcm2bids_config.json")
+
+    host_config = to_host_path(str(config_path))
+    return LaunchResponse(run_id=run.id, config_path=host_config)

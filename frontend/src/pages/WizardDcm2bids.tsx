@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { scoutDicom } from "../api/client";
+import { scoutDicom, launchDcm2bids } from "../api/client";
 import type { WizardDiscoveredSeries, WizardScoutResponse } from "../api/client";
 
 // ── Mapping types ─────────────────────────────────────────────────────────────
@@ -589,6 +590,7 @@ const inputCls =
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function WizardDcm2bids() {
+  const navigate = useNavigate();
   const [dicomPath, setDicomPath] = useState("");
   const [participantId, setParticipantId] = useState("sub-01");
   const [sessionId, setSessionId] = useState("");
@@ -602,6 +604,22 @@ export default function WizardDcm2bids() {
       scoutDicom(dicomPath.trim(), participantId.trim(), sessionId.trim() || undefined),
     onSuccess: (data) => {
       setScoutResult(data);
+    },
+  });
+
+  const launch = useMutation({
+    mutationFn: () => {
+      const config = generateConfig(scoutResult!.series, mappings);
+      return launchDcm2bids(
+        dicomPath.trim(),
+        participantId.trim(),
+        sessionId.trim() || null,
+        datasetName.trim(),
+        config as unknown as Record<string, unknown>,
+      );
+    },
+    onSuccess: (data) => {
+      navigate(`/runs/${data.run_id}`);
     },
   });
 
@@ -816,6 +834,110 @@ export default function WizardDcm2bids() {
 
           {/* Config preview */}
           <ConfigPreview series={scoutResult.series} mappings={mappings} />
+
+          {/* Step 3 — Run dcm2bids */}
+          {(() => {
+            const config = generateConfig(scoutResult.series, mappings);
+            const validationIssues = validateMappings(scoutResult.series, mappings);
+            const canLaunch =
+              config.descriptions.length > 0 &&
+              validationIssues.length === 0 &&
+              !launch.isPending;
+            return (
+              <div className="mt-6 rounded-xl border border-white/10 bg-surface-raised overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-gray-400">
+                    <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215Z" />
+                  </svg>
+                  <h3 className="text-sm font-semibold text-gray-200">Step 3 — Run dcm2bids</h3>
+                </div>
+
+                <div className="px-4 py-4 space-y-3">
+                  {/* Summary of what will run */}
+                  <div className="rounded-lg border border-white/10 bg-surface-overlay px-3 py-2.5 space-y-1.5 text-xs text-gray-400">
+                    <div className="flex gap-2">
+                      <span className="text-gray-600 w-28 shrink-0">DICOM folder</span>
+                      <span className="font-mono text-gray-300 break-all">{dicomPath.trim()}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="text-gray-600 w-28 shrink-0">Participant</span>
+                      <span className="font-mono text-gray-300">{participantId.trim()}</span>
+                    </div>
+                    {sessionId.trim() && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-600 w-28 shrink-0">Session</span>
+                        <span className="font-mono text-gray-300">{sessionId.trim()}</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <span className="text-gray-600 w-28 shrink-0">Series to convert</span>
+                      <span className="text-gray-300">{config.descriptions.length} included</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500">
+                    NeuroForge will save the generated config and launch dcm2bids in Docker.
+                    The output BIDS dataset will be available as a run artifact — you can then
+                    chain to BIDS Validator directly from the run results page.
+                  </p>
+
+                  {/* Blockers */}
+                  {config.descriptions.length === 0 && (
+                    <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                        <path fillRule="evenodd" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                      </svg>
+                      Include at least one series above to enable the run.
+                    </div>
+                  )}
+                  {validationIssues.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                        <path fillRule="evenodd" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                      </svg>
+                      Fix {validationIssues.length} mapping issue{validationIssues.length !== 1 ? "s" : ""} above before running.
+                    </div>
+                  )}
+
+                  {/* Launch error */}
+                  {launch.isError && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-xs text-red-300">
+                      <p className="font-medium mb-0.5">Launch failed</p>
+                      <p className="text-red-400">
+                        {launch.error instanceof Error ? launch.error.message : String(launch.error)}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Launch button */}
+                  <button
+                    type="button"
+                    aria-label="Run dcm2bids"
+                    disabled={!canLaunch}
+                    onClick={() => launch.mutate()}
+                    className="flex items-center gap-2 rounded-md bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {launch.isPending ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Launching…
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215Z" />
+                        </svg>
+                        Run dcm2bids
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* dcm2bids_helper log — collapsed */}
           {scoutResult.helper_log && (

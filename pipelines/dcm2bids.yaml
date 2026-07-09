@@ -1,0 +1,182 @@
+id: dcm2bids
+display_name: dcm2bids
+description: >
+  Converts raw DICOM scanner output to a BIDS-organized dataset using a
+  dcm2bids configuration file. Takes a DICOM directory, a participant label,
+  and a series-mapping config produced by the NeuroForge DICOM Mapping Wizard,
+  and writes a standards-compliant BIDS directory ready for BIDS Validator,
+  MRIQC, and fMRIPrep. The configuration file controls which DICOM series are
+  converted, their BIDS filenames, and optional sidecar overrides.
+homepage: https://unfmontreal.github.io/Dcm2Bids/
+compute_profile: local-ok
+category: conversion
+input_type: dicom
+
+container:
+  image: unfmontreal/dcm2bids
+  tag: "3.2.0"
+  engine: docker
+
+# dcm2bids takes DICOM dir and output dir via explicit flags (-d, -o),
+# not as BIDS-style positional args. dataset_positional: false prevents the
+# executor from prepending /data /out to the command; the DICOM directory
+# is mounted via dicom-dir (mount: true) and addressed via -d flag.
+dataset_positional: false
+
+inputs:
+  - dicom
+
+outputs:
+  - bids_dataset
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: dicom-dir
+    cli_flag: "-d"
+    type: directory_path
+    required: true
+    mount: true
+    help: >
+      Full path to the folder containing raw DICOM files from the scanner.
+      The folder is mounted read-only into the container. Can be a per-subject
+      DICOM folder, a session folder, or any directory dcm2bids should search.
+      This is typically the same path entered in the DICOM Wizard.
+
+  - name: participant-label
+    cli_flag: "-p"
+    type: string
+    required: true
+    help: >
+      BIDS participant label. Enter the subject identifier exactly as you want
+      it to appear in the BIDS filename — e.g. "sub-01" or just "01". dcm2bids
+      v3 handles both forms (the "sub-" prefix is stripped if present). Must
+      match the label used during DICOM Wizard scouting.
+
+  - name: config-file
+    cli_flag: "-c"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Path to the dcm2bids configuration JSON file that maps DICOM series to
+      BIDS descriptions. Generate this file using the NeuroForge DICOM Mapping
+      Wizard (Steps 1–2) and download it, or point to an existing config.json
+      you have prepared. The file must be accessible inside your configured data
+      directory.
+
+  # ── Optional ──────────────────────────────────────────────────────────
+  - name: session-label
+    cli_flag: "-s"
+    type: string
+    required: false
+    help: >
+      BIDS session label (the part after "ses-"). Enter "01" or "baseline" —
+      not "ses-01". Leave blank for single-session datasets (no ses-* folder
+      structure). Must match the session entered during scouting if one was used.
+
+  # ── Output (always /out, mapped to the run output directory) ──────────
+  - name: output-dir
+    cli_flag: "-o"
+    type: string
+    required: false
+    default: /out
+    advanced: true
+    help: >
+      Output directory inside the container. The default /out maps to the
+      run's output folder on your machine — do not change this. Changing this
+      will cause NeuroForge to lose track of the BIDS output.
+
+  # ── Advanced ──────────────────────────────────────────────────────────
+  - name: skip-dcm2niix
+    cli_flag: "--skip_dcm2niix"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Skip the dcm2niix conversion step and use existing NIfTI files. Useful
+      if you already have NIfTI files from a prior dcm2niix run and only want
+      dcm2bids to apply the BIDS naming and sidecar generation. Leave disabled
+      for standard DICOM → BIDS conversion.
+
+  - name: force-dcm2bids
+    cli_flag: "--forceDcm2Bids"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Force dcm2bids to run even if output files already exist. By default,
+      dcm2bids skips series whose output NIfTI already exists in the output
+      directory (incremental mode). Enable this to overwrite existing files
+      (e.g. after updating the config).
+
+accepts: []
+
+produces:
+  - type: bids_dataset
+    path_hint: ""
+    label: "BIDS Dataset"
+    description: "BIDS-organized dataset converted from DICOM; ready for BIDS Validator, MRIQC, or fMRIPrep"
+
+max_runtime_hours: 1.0
+
+# ── Manual testing reference ─────────────────────────────────────────────────
+# Test using the structural DICOM test dataset via the DICOM Mapping Wizard:
+#   1. Open /wizard/dcm2bids in NeuroForge
+#   2. Set DICOM folder to:
+#      backend/tests/data/dicom-structural/dicoms
+#   3. Scout → review mapping → generate config
+#   4. Click "Run dcm2bids" in Step 3
+#   5. Confirm run completes with status=success
+#   6. Confirm output has BIDS structure: sub-01/anat/sub-01_T1w.nii.gz
+#   7. Confirm BIDS Validator runs next from the produced bids_dataset artifact
+# ─────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "No DICOM files|No volume found|FileNotFoundError.*dicom"
+    explanation: >
+      dcm2bids could not find DICOM files in the folder you specified. The
+      DICOM directory may be empty, the path may be wrong, or the files may
+      not have a recognized DICOM extension.
+    fix_hint: >
+      Verify the DICOM folder path and confirm it contains .dcm files (or
+      extensionless DICOM files). Try re-running the DICOM Wizard scout on
+      the folder to confirm DICOMs are readable.
+
+  - pattern: "No description matched|No match found for"
+    explanation: >
+      None of the series in the DICOM folder matched a description in the
+      config.json. This usually means the SeriesDescription in the DICOM
+      header has changed, or the config was generated from a different scan
+      session.
+    fix_hint: >
+      Re-run the DICOM Wizard scout and regenerate the config. Check that
+      the criteria.SeriesDescription in the config matches what is in the
+      DICOM headers (visible in Advanced mode in the wizard).
+
+  - pattern: "ValidationError|Invalid configuration|JSONDecodeError"
+    explanation: >
+      The dcm2bids configuration file contains invalid JSON or a field that
+      dcm2bids does not recognize. This may happen if the config was manually
+      edited and introduced a syntax error.
+    fix_hint: >
+      Re-download the config from the DICOM Wizard Preview Config section.
+      Validate the JSON at jsonlint.com if you edited it manually.
+
+  - pattern: "participant.*already exists|output.*exists"
+    explanation: >
+      dcm2bids found existing output files for this participant in the output
+      directory. By default it skips conversion to avoid overwriting.
+    fix_hint: >
+      Enable the "Force dcm2bids" (--forceDcm2Bids) advanced option to
+      overwrite existing output, or choose a different output directory.
+
+  - pattern: "Permission denied|cannot write"
+    explanation: >
+      dcm2bids cannot write to the output directory. This is uncommon inside
+      Docker but can occur if the volume mount has incorrect permissions.
+    fix_hint: >
+      Check that the NeuroForge data directory is writable. If you are
+      running NeuroForge inside a restricted environment, ensure the data
+      volume is mounted with rw permissions.

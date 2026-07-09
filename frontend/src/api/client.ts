@@ -402,3 +402,28 @@ export function scoutDicom(
   });
 }
 
+
+export interface WizardLaunchResponse {
+  run_id: number;
+  config_path: string;
+}
+
+export function launchDcm2bids(
+  dicomPath: string,
+  participantId: string,
+  sessionId: string | null,
+  datasetName: string,
+  config: Record<string, unknown>,
+): Promise<WizardLaunchResponse> {
+  return apiFetch<WizardLaunchResponse>("/wizard/dcm2bids/launch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dicom_path: dicomPath,
+      participant_id: participantId,
+      session_id: sessionId || null,
+      dataset_name: datasetName || null,
+      config,
+    }),
+  });
+}
