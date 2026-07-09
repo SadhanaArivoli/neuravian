@@ -99,6 +99,37 @@ def to_host_path(container_path: str) -> str:
     return container_path
 
 
+def from_host_path(host_path: str) -> str:
+    """
+    Translate a host filesystem path to the equivalent backend-container-internal
+    path. Inverse of to_host_path(). Used by NativeExecutor to convert user-
+    supplied host paths (e.g. /Users/you/Documents/neuroforge/data/...) to
+    paths accessible inside the backend container (e.g. /app/data/...).
+
+    When not running inside Docker, the path is already accessible and is
+    returned unchanged.
+    """
+    if not _is_running_in_docker():
+        return host_path
+
+    mounts = _resolve_mounts()
+    # Invert the mount table: {host_source: container_dest}
+    inv: dict[str, str] = {src: dest for dest, src in mounts.items()}
+    best_src = ""
+    best_dest = ""
+    for src, dest in inv.items():
+        if (host_path == src or host_path.startswith(src + "/")) and len(src) > len(best_src):
+            best_src = src
+            best_dest = dest
+
+    if best_src:
+        relative = host_path[len(best_src):]
+        return best_dest + relative
+
+    log.warning("No mount found for host path %s — using as-is", host_path)
+    return host_path
+
+
 @dataclass
 class _SdkParams:
     image: str
@@ -278,8 +309,11 @@ class DockerExecutor(Executor):
                     host_uid, host_gid,
                 )
 
+        # Digest-pinned images use @sha256:... instead of :tag syntax.
+        tag = container["tag"]
+        sep = "@" if tag.startswith("sha256:") else ":"
         return _SdkParams(
-            image=f"{container['image']}:{container['tag']}",
+            image=f"{container['image']}{sep}{tag}",
             command=cmd,
             volumes=volumes,
             user=user,
@@ -399,15 +433,16 @@ class DockerExecutor(Executor):
             if host_arch in ("arm64", "aarch64"):
                 try:
                     client_tmp = __import__("docker").from_env()
-                    img_info = client_tmp.images.get(
-                        f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}"
-                    )
+                    _c_tag = ctx.manifest["container"]["tag"]
+                    _c_sep = "@" if _c_tag.startswith("sha256:") else ":"
+                    _c_ref = f"{ctx.manifest['container']['image']}{_c_sep}{_c_tag}"
+                    img_info = client_tmp.images.get(_c_ref)
                     img_arch = img_info.attrs.get("Architecture", "")
                     if img_arch == "amd64":
                         warnings.append(ResourceWarning(
                             level="warn",
                             message=(
-                                f"This pipeline image ({ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}) "
+                                f"This pipeline image ({_c_ref}) "
                                 "is x86_64 only and will run under Rosetta 2 emulation on your Apple Silicon Mac. "
                                 "Expect 5-10× slower processing and higher memory usage than native. "
                                 "Keep nprocs=1 and omp-nthreads=1 to avoid memory exhaustion. "

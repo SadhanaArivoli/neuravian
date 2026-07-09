@@ -6,6 +6,8 @@ description: >
   visual reports — no manual scoring required.
 homepage: https://mriqc.readthedocs.io/en/24.0.2/
 compute_profile: local-ok
+category: quality_control
+input_type: bids_dataset
 container:
   image: nipreps/mriqc
   tag: "24.0.2"

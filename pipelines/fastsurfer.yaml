@@ -9,6 +9,8 @@ description: >
   recommended starting point.
 homepage: https://deep-mi.org/research/fastsurfer/
 compute_profile: local-slow
+category: segmentation
+input_type: nifti
 
 container:
   image: deepmi/fastsurfer

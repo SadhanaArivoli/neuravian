@@ -129,14 +129,18 @@ export interface PipelineKnownError {
 }
 
 export type ComputeProfile = "local-ok" | "local-slow" | "local-unsafe";
+export type PipelineCategory = "conversion" | "validation" | "quality_control" | "segmentation" | "preprocessing" | "deidentification";
+export type PipelineInputType = "dicom" | "nifti" | "bids_dataset";
 
 export interface PipelineSummary {
   id: string;
   display_name: string;
   description: string;
   homepage?: string;
-  container: PipelineContainer;
+  container: PipelineContainer | null;
   compute_profile?: ComputeProfile;
+  category?: PipelineCategory;
+  input_type?: PipelineInputType;
 }
 
 export interface Pipeline extends PipelineSummary {

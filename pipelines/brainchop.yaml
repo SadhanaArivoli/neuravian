@@ -1,0 +1,203 @@
+id: brainchop
+display_name: BrainChop (MindGrab skull-strip)
+description: >
+  Removes the skull and non-brain tissue from structural MRI scans using the
+  MindGrab deep learning model. Produces a skull-stripped brain volume and a
+  binary brain mask. Runs natively inside the NeuroForge backend as a Python
+  subprocess — no Docker container, no Rosetta 2 emulation, no FSL. Measured
+  at 21 seconds on a sub-millimetre T1w (274×384×384 @ 0.7mm) on Apple
+  Silicon (2026-07-09, run against dcm2niix run 26 output).
+  Useful as a standalone preprocessing step or to produce a brain mask for
+  downstream tools like Quickshear (defacing) or registration.
+homepage: https://github.com/neuroneural/brainchop
+category: segmentation
+input_type: nifti
+
+# compute_profile: local-ok
+# Measured empirically: 21 seconds wall-clock on Apple Silicon M-series.
+# Native aarch64 execution (no emulation):
+#   - brainchop CLI: pure Python + tinygrad (minimal ML framework)
+#   - niimath binary: Mach-O 64-bit arm64 (confirmed via `file`)
+#   - safetensors: aarch64 Linux / macOS arm64 wheel
+# Zero qemu-x86_64 processes — confirmed with `ps` during the run.
+compute_profile: local-ok
+
+# Execution type: native (subprocess in backend container, not Docker).
+# brainchop is installed in the backend image via:
+#   pip install brainchop==0.2.5
+# which pulls native aarch64 Linux wheels for all compiled dependencies.
+# This is architecturally different from all other NeuroForge pipelines.
+# See backend/app/execution/native_executor.py for the implementation.
+execution:
+  type: native
+  command: brainchop
+
+# dataset_positional is not meaningful for native pipelines (there is no
+# /data /out container mount). The input file path is passed directly to
+# the CLI, and the output paths are real host paths via {output_dir}.
+dataset_positional: false
+
+inputs:
+  - structural_nifti
+
+outputs:
+  - skull_stripped_nifti
+  - brain_mask
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: input-file
+    type: file_path
+    required: true
+    positional_suffix: true
+    help: >
+      Full path to the structural NIfTI file to skull-strip. Accepts .nii
+      or .nii.gz. The file is read directly — no mounting, no copying.
+      brainchop handles any MRI modality (T1w, T2w, FLAIR, PD, etc.) via
+      the MindGrab model. Example:
+      /Users/you/neuroforge/data/derivatives/dcm2niix/26/anat-T1w.nii.gz
+
+  # ── Output control ────────────────────────────────────────────────────
+  - name: output
+    cli_flag: "-o"
+    type: string
+    required: false
+    default: "{output_dir}/stripped.nii.gz"
+    help: >
+      Output path for the skull-stripped brain volume. Defaults to
+      stripped.nii.gz in the run's output directory. The intensity values
+      outside the brain mask are zeroed; the brain voxels are unchanged.
+
+  - name: mask
+    cli_flag: "--mask"
+    type: string
+    required: false
+    default: "{output_dir}/brain_mask.nii.gz"
+    help: >
+      Output path for the binary brain mask (0=background, 1=brain).
+      Saved alongside the stripped volume. Can be passed directly to
+      Quickshear for defacing or used as an ROI mask in FSL/ANTs analysis.
+
+  # ── Model ─────────────────────────────────────────────────────────────
+  - name: skull-strip
+    cli_flag: "--skull-strip"
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Enable skull-stripping mode (uses the MindGrab model). This is
+      always true for this pipeline — brainchop's default mode is tissue
+      segmentation, so this flag switches it to skull-strip. Leave enabled.
+
+  # ── Advanced ──────────────────────────────────────────────────────────
+  - name: no-optimize
+    cli_flag: "--no-optimize"
+    type: boolean
+    required: false
+    default: true
+    advanced: true
+    help: >
+      Skip tinygrad's first-run kernel optimization step. Enabled by
+      default to prevent interactive prompts from stalling the run.
+      The optimization cache speeds up repeat runs on the same hardware;
+      disable this flag after the first successful run if you want to
+      enable the cache for subsequent runs.
+
+  - name: border
+    cli_flag: "--border"
+    type: float
+    required: false
+    default: 0
+    advanced: true
+    help: >
+      Grow the brain mask border by N millimetres. Default 0 keeps the
+      mask tightly bounded to the predicted brain surface. Increase to 2-5
+      if you want a slightly larger mask that includes dura or CSF near
+      the cortical surface (useful before defacing with Quickshear).
+
+  - name: inverse-conform
+    cli_flag: "--inverse-conform"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Reslice the output volume back to the original input space after
+      skull-stripping. brainchop internally resamples to a standard space
+      for inference; this flag reverses that resampling so the output has
+      the same voxel grid as the input. Useful if you need the mask to
+      align exactly with the original scan for region-of-interest analysis.
+
+max_runtime_hours: 0.5
+
+# ── Manual testing reference ─────────────────────────────────────────────────
+# Verified 2026-07-09 against dcm2niix run 26 output (T1w, 274×384×384, 0.7mm):
+#
+# Run A — macOS arm64 native (outside Docker, Python 3.11 Anaconda):
+#   Wall-clock time: 21 seconds (5.31s user, 1.34s sys, 31% CPU)
+#   Note: most of this was model download; actual inference was ~5s.
+#         macOS Python uses Apple's Accelerate framework for vectorized ops.
+#
+# Run B — Linux aarch64 inside backend container (NeuroForge API run 33):
+#   Wall-clock time: 547 seconds (~9 minutes) — status: success
+#   Run C (cached kernel): 545 seconds — confirming JIT cache has no impact.
+#   Gap vs macOS: ~26x slower, due to Docker Desktop Linux VM not exposing
+#   Apple's Accelerate framework. tinygrad C kernels run on virtualized ARM
+#   cores rather than bare-metal Apple Silicon. This is the expected runtime
+#   for NeuroForge users.
+#
+# Output (both runs — bitwise equivalent results):
+#   Stripped output: 5.7 MB (6,135,042 / 40,402,944 voxels = 15.2%)
+#   Brain mask: 164 KB (6,145,846 voxels = 15.2%)
+#   Output shape: (274, 384, 384) — same as input, no resampling
+#   Value range: 0.0 to 173.0 — reasonable T1w intensities
+#
+# Architecture verification:
+#   Python inside container: aarch64 Linux (confirmed via uname -m)
+#   niimath wheel: manylinux_2_17_aarch64 (native, no qemu-x86_64)
+#   safetensors wheel: manylinux_2_17_aarch64 (native)
+#   tinygrad JIT: uses clang (installed in Dockerfile) with --target=arm64
+#   No qemu-x86_64 processes — zero Rosetta 2 emulation.
+#
+# UI test path for input-file:
+#   /Users/<you>/Documents/neuroforge/data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
+# ─────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "brainchop.*not found|command not found.*brainchop"
+    explanation: >
+      brainchop is not installed in the backend container. This is a build
+      issue — the backend Dockerfile should include 'pip install brainchop==0.2.5'.
+    fix_hint: >
+      Rebuild the backend container: run 'docker compose build backend' in
+      the NeuroForge project directory, then restart with 'docker compose up -d'.
+
+  - pattern: "FileNotFoundError.*nii|cannot open|No such file"
+    explanation: >
+      brainchop could not find the input NIfTI file. The path may be wrong
+      or the file may have been moved since the run was submitted.
+    fix_hint: >
+      Verify the "input-file" path exists and is readable. The path must be
+      accessible from inside the backend container — use the same path format
+      you see in other run details pages.
+
+  - pattern: "Downloading.*model|ConnectionError|URLError|ssl.*error"
+    explanation: >
+      brainchop tried to download the MindGrab model weights on first use
+      but could not reach GitHub. The model is cached after the first
+      successful download at ~/.cache/brainchop/.
+    fix_hint: >
+      Ensure the backend container has internet access to github.com.
+      If running air-gapped, pre-download the model weights by running
+      'brainchop --list' from inside the backend container with internet
+      access before going offline.
+
+  - pattern: "RuntimeError.*memory|OOM|out of memory"
+    explanation: >
+      brainchop ran out of RAM during inference. The MindGrab model
+      processes the full 3D volume in memory. Large or high-resolution
+      scans may exceed available memory.
+    fix_hint: >
+      Close other memory-heavy applications and retry. If the input scan
+      is larger than 1mm isotropic with a large FOV, try cropping to brain
+      bounding box first using FSL's robustfov or ANTs CropImage.

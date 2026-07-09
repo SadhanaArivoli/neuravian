@@ -10,6 +10,8 @@ description: >
   rather than discovering them hours into a heavy pipeline.
 homepage: https://bids-standard.github.io/bids-validator/
 compute_profile: local-ok
+category: validation
+input_type: bids_dataset
 
 container:
   image: bids/validator

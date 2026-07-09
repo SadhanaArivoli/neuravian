@@ -4,7 +4,7 @@
   "title": "NeuroForge Pipeline Manifest",
   "description": "Schema for YAML pipeline manifests. Each manifest describes how to invoke one containerized neuroimaging tool.",
   "type": "object",
-  "required": ["id", "display_name", "description", "container", "inputs", "outputs", "parameters"],
+  "required": ["id", "display_name", "description", "inputs", "outputs", "parameters"],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -48,6 +48,23 @@
           "type": "string",
           "enum": ["docker"],
           "description": "Container engine. Only 'docker' is supported in v1."
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Native subprocess execution block. Use this instead of 'container' for tools installed directly in the backend image (e.g. via pip). Exactly one of 'container' or 'execution' must be present.",
+      "required": ["type", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["native"],
+          "description": "Execution type. 'native' runs the tool as a subprocess inside the backend container via NativeExecutor."
+        },
+        "command": {
+          "type": "string",
+          "description": "The CLI entry-point name (e.g. 'brainchop'). Must be on PATH inside the backend container."
         }
       }
     },
@@ -99,6 +116,16 @@
       "type": "string",
       "enum": ["local-ok", "local-slow", "local-unsafe"],
       "description": "Expected local-execution quality. local-ok=runs well locally; local-slow=runs but significantly slower (e.g. Rosetta 2 emulation); local-unsafe=may hang indefinitely locally (e.g. AVX2 dependency)."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification"],
+      "description": "Functional category for UI grouping and filtering. Choose the primary purpose of the tool."
+    },
+    "input_type": {
+      "type": "string",
+      "enum": ["dicom", "nifti", "bids_dataset"],
+      "description": "Coarse classification of what raw data this pipeline expects. Used for UI filtering. dicom=raw scanner DICOMs; nifti=one or more .nii/.nii.gz files; bids_dataset=a BIDS-formatted directory."
     }
   },
   "$defs": {

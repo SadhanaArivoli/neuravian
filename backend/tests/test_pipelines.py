@@ -1631,7 +1631,7 @@ def test_dcm2niix_manifest_loads_and_validates():
 
 
 def test_compute_profile_in_all_manifests():
-    """All five manifests must declare a compute_profile value."""
+    """All seven manifests must declare a compute_profile value."""
     schema = _load_schema()
     expected = {
         "dcm2niix": "local-ok",
@@ -1639,6 +1639,8 @@ def test_compute_profile_in_all_manifests():
         "fastsurfer": "local-slow",
         "fmriprep": "local-unsafe",
         "bids-validator": "local-ok",
+        "pydeface": "local-unsafe",
+        "brainchop": "local-ok",
     }
     for fname, expected_profile in expected.items():
         manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
@@ -1646,6 +1648,32 @@ def test_compute_profile_in_all_manifests():
             f"{fname}.yaml: expected compute_profile={expected_profile!r}; "
             f"got {manifest.get('compute_profile')!r}"
         )
+
+
+def test_category_and_input_type_in_all_manifests():
+    """All seven manifests must declare category and input_type."""
+    schema = _load_schema()
+    expected = {
+        "dcm2niix":      ("conversion",       "dicom"),
+        "mriqc":         ("quality_control",   "bids_dataset"),
+        "fastsurfer":    ("segmentation",      "nifti"),
+        "fmriprep":      ("preprocessing",     "bids_dataset"),
+        "bids-validator":("validation",        "bids_dataset"),
+        "pydeface":      ("deidentification",  "nifti"),
+        "brainchop":     ("segmentation",      "nifti"),
+    }
+    valid_categories = {"conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification"}
+    valid_input_types = {"dicom", "nifti", "bids_dataset"}
+    for fname, (exp_cat, exp_in) in expected.items():
+        manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
+        assert manifest.get("category") == exp_cat, (
+            f"{fname}.yaml: expected category={exp_cat!r}; got {manifest.get('category')!r}"
+        )
+        assert manifest.get("input_type") == exp_in, (
+            f"{fname}.yaml: expected input_type={exp_in!r}; got {manifest.get('input_type')!r}"
+        )
+        assert manifest["category"] in valid_categories
+        assert manifest["input_type"] in valid_input_types
 
 
 def test_bids_validator_manifest_loads_and_validates():
@@ -1689,3 +1717,111 @@ def test_bids_validator_known_errors_cover_exit_16_cases():
     assert any("MISSING_DATASET_DESCRIPTION" in p for p in patterns)
     assert any("MISSING_REQUIRED_ENTITY" in p for p in patterns)
     assert any("INVALID_LOCATION" in p for p in patterns)
+
+
+def test_pydeface_manifest_loads_and_validates():
+    """The pydeface.yaml manifest must load, pass schema validation, and be local-unsafe."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "pydeface.yaml", schema)
+    assert manifest["id"] == "pydeface"
+    assert manifest["container"]["image"] == "poldracklab/pydeface"
+    # Digest-pinned because poldracklab/pydeface has no versioned tags on Docker Hub.
+    assert manifest["container"]["tag"].startswith("sha256:")
+    assert manifest["compute_profile"] == "local-unsafe"
+    assert manifest["dataset_positional"] is False
+    nifti_param = next(p for p in manifest["parameters"] if p["name"] == "nifti-file")
+    assert nifti_param["mount"] is True
+    assert nifti_param["positional_suffix"] is True
+
+
+def test_pydeface_nifti_file_is_positional_suffix_not_flag():
+    """nifti-file must not emit a --nifti-file flag; must be appended as positional suffix."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "pydeface.yaml", schema)
+    nifti_param = next(p for p in manifest["parameters"] if p["name"] == "nifti-file")
+    assert nifti_param.get("positional_suffix") is True
+    assert "cli_flag" not in nifti_param
+
+
+def test_brainchop_manifest_loads_and_validates():
+    """brainchop.yaml must load with native execution block and local-ok profile."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "brainchop.yaml", schema)
+    assert manifest["id"] == "brainchop"
+    assert manifest["compute_profile"] == "local-ok"
+    # Must use native execution, not container
+    assert "container" not in manifest
+    assert manifest["execution"]["type"] == "native"
+    assert manifest["execution"]["command"] == "brainchop"
+    input_param = next(p for p in manifest["parameters"] if p["name"] == "input-file")
+    assert input_param.get("positional_suffix") is True
+
+
+def test_brainchop_no_container_block():
+    """brainchop must not have a container block — it's the first native pipeline."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "brainchop.yaml", schema)
+    assert "container" not in manifest, (
+        "brainchop is a native (subprocess) pipeline — it must not have a container block. "
+        "Use execution.type=native instead."
+    )
+
+
+def test_docker_manifests_have_container_not_execution():
+    """All Docker-based manifests must have container block, not execution block."""
+    schema = _load_schema()
+    docker_manifests = ["mriqc", "fmriprep", "fastsurfer", "dcm2niix", "bids-validator", "pydeface"]
+    for name in docker_manifests:
+        manifest = _load_manifest(PIPELINES_DIR / f"{name}.yaml", schema)
+        assert "container" in manifest, f"{name}.yaml missing container block"
+        assert "execution" not in manifest, f"{name}.yaml should not have execution block"
+
+
+def test_schema_rejects_manifest_with_both_container_and_execution(tmp_path):
+    """A manifest with both container and execution blocks must be rejected."""
+    import yaml as _yaml
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(_yaml.dump({
+        "id": "bad-pipeline",
+        "display_name": "Bad",
+        "description": "test",
+        "inputs": ["x"],
+        "outputs": ["y"],
+        "parameters": [],
+        "container": {"image": "foo/bar", "tag": "1.0.0", "engine": "docker"},
+        "execution": {"type": "native", "command": "brainchop"},
+    }))
+    schema = _load_schema()
+    try:
+        _load_manifest(bad, schema)
+        assert False, "Expected ManifestError"
+    except Exception as exc:
+        assert "cannot have both" in str(exc) or "container" in str(exc)
+
+
+def test_schema_rejects_manifest_with_neither_container_nor_execution(tmp_path):
+    """A manifest with neither container nor execution block must be rejected."""
+    import yaml as _yaml
+    bad = tmp_path / "bad2.yaml"
+    bad.write_text(_yaml.dump({
+        "id": "bad-pipeline2",
+        "display_name": "Bad",
+        "description": "test",
+        "inputs": ["x"],
+        "outputs": ["y"],
+        "parameters": [],
+    }))
+    schema = _load_schema()
+    try:
+        _load_manifest(bad, schema)
+        assert False, "Expected ManifestError"
+    except Exception as exc:
+        assert "container" in str(exc) or "execution" in str(exc)
+
+def test_pydeface_preflight_dialog_is_triggered():
+    """pydeface compute_profile=local-unsafe must match the preflight dialog trigger condition."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "pydeface.yaml", schema)
+    # The frontend PreflightDialog fires for local-slow and local-unsafe.
+    # Confirm pydeface is in the set that triggers the dialog.
+    assert manifest["compute_profile"] in {"local-slow", "local-unsafe"}

@@ -22,7 +22,8 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.execution.progress_parser import parse_tqdm_line
 from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, to_host_path, translate_errors
-from app.execution.executor import RunContext
+from app.execution.native_executor import NativeExecutor
+from app.execution.executor import Executor, RunContext
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
 from app.models.run import ProvenanceEvent, Run, RunLog
@@ -291,7 +292,8 @@ def seed_pipeline_registry(db: Session) -> None:
     """
     registry = get_registry()
     for manifest_id, manifest in registry.items():
-        tag = manifest["container"]["tag"]
+        c = manifest.get("container") or {}
+        tag = c.get("tag") or manifest.get("execution", {}).get("command", "native")
         existing = db.query(Pipeline).filter_by(name=manifest_id).first()
         if existing:
             existing.version = tag
@@ -310,12 +312,20 @@ def seed_pipeline_registry(db: Session) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _get_executor(manifest: dict) -> Executor:
+    """Return the appropriate Executor for the manifest's execution type."""
+    exec_type = manifest.get("execution", {}).get("type", "docker")
+    if exec_type == "native":
+        return NativeExecutor()
+    return DockerExecutor()
+
+
 async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     """
-    Runs the pipeline container in the background. Opens its own DB session
+    Runs the pipeline in the background. Opens its own DB session
     so it can outlive the HTTP request that created the run record.
     """
-    executor = DockerExecutor()
+    executor = _get_executor(ctx.manifest)
     loop = asyncio.get_event_loop()
 
     def _log(line: str) -> None:
@@ -374,7 +384,11 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             run_id=run_id,
             event_type="execution_started",
             payload_json=json.dumps({
-                "container_image": f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}",
+                "container_image": (
+                    f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}"
+                    if ctx.manifest.get("container") else
+                    f"native:{ctx.manifest.get('execution', {}).get('command', 'unknown')}"
+                ),
                 "command": executor.build_command(ctx),
                 "output_dir": ctx.output_dir,
             }),
@@ -584,7 +598,7 @@ class RunService:
         run = Run(
             dataset_id=body.dataset_id,
             pipeline_id=pipeline_row.id,
-            pipeline_version=manifest["container"]["tag"],
+            pipeline_version=(manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command", "native"),
             params_json=json.dumps(effective_params),
             status="pending",
         )
@@ -606,7 +620,7 @@ class RunService:
         )
 
         # Resource pre-check (warnings only — never block the run)
-        executor = DockerExecutor()
+        executor = _get_executor(manifest)
         raw_warnings = executor.check_resources(ctx)
         resource_warnings = [
             ResourceWarningSchema(level=w.level, message=w.message)
@@ -625,8 +639,12 @@ class RunService:
             event_type="run_created",
             payload_json=json.dumps({
                 "pipeline_id": body.pipeline_id,
-                "pipeline_version": manifest["container"]["tag"],
-                "container_image": f"{manifest['container']['image']}:{manifest['container']['tag']}",
+                "pipeline_version": (manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command"),
+                "container_image": (
+                    f"{manifest['container']['image']}:{manifest['container']['tag']}"
+                    if manifest.get("container") else
+                    f"native:{manifest.get('execution', {}).get('command', 'unknown')}"
+                ),
                 "dataset_id": body.dataset_id,
                 "dataset_path": dataset.path,
                 "dataset_hash": dataset.dataset_hash,

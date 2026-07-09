@@ -7,6 +7,8 @@ description: >
   statistical analysis — it stops at preprocessed data.
 homepage: https://fmriprep.org/en/stable/
 compute_profile: local-unsafe
+category: preprocessing
+input_type: bids_dataset
 
 container:
   image: nipreps/fmriprep

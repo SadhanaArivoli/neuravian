@@ -8,6 +8,8 @@ description: >
   The recommended first step when you have DICOM files directly from a scanner.
 homepage: https://github.com/rordenlab/dcm2niix
 compute_profile: local-ok
+category: conversion
+input_type: dicom
 
 container:
   image: svdvoort/dcm2niix

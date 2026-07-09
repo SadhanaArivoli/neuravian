@@ -43,6 +43,12 @@ def _load_manifest(path: Path, schema: dict[str, Any]) -> dict[str, Any]:
         jsonschema.validate(data, schema)
     except jsonschema.ValidationError as exc:
         raise ManifestError(f"{path.name}: {exc.message}") from exc
+    has_container = "container" in data
+    has_execution = "execution" in data
+    if not has_container and not has_execution:
+        raise ManifestError(f"{path.name}: must have either 'container' or 'execution' block")
+    if has_container and has_execution:
+        raise ManifestError(f"{path.name}: cannot have both 'container' and 'execution' blocks")
     return data
 
 
@@ -81,15 +87,18 @@ class PipelineService:
         self._registry = get_registry()
 
     def list_all(self) -> list[dict[str, Any]]:
-        """Return summary dicts (id, display_name, description, container)."""
+        """Return summary dicts (id, display_name, description, container or execution)."""
         return [
             {
                 "id": m["id"],
                 "display_name": m["display_name"],
                 "description": m["description"],
                 "homepage": m.get("homepage"),
-                "container": m["container"],
+                "container": m.get("container"),
+                "execution": m.get("execution"),
                 "compute_profile": m.get("compute_profile"),
+                "category": m.get("category"),
+                "input_type": m.get("input_type"),
             }
             for m in self._registry.values()
         ]

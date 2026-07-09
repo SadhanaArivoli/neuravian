@@ -1,0 +1,166 @@
+id: pydeface
+display_name: pydeface
+description: >
+  Removes facial features from structural MRI images to protect participant
+  privacy before data sharing. Registers a face template to the subject's T1w
+  image using FSL FLIRT, then zeros out the voxels that correspond to the face
+  region, preserving all brain tissue untouched. Required before uploading data
+  to repositories like OpenNeuro, NIMH Data Archive, or UK Biobank.
+  Output is saved as a separate _defaced.nii.gz file — the original is never
+  modified.
+homepage: https://github.com/poldracklab/pydeface
+compute_profile: local-unsafe
+category: deidentification
+input_type: nifti
+
+container:
+  image: poldracklab/pydeface
+  # poldracklab/pydeface has no semantic version tags — only "latest" (2026-05-09)
+  # and old per-commit CI tags (2019). Pinned by digest for reproducibility.
+  # Executor detects sha256: prefix and uses @sha256: separator instead of :.
+  # pydeface 2.1.1.dev0, image created 2026-05-09.
+  tag: "sha256:40855352a8dd6dde3f0bcd9ed0fff110b07849871c7c70f62db8bac5ab099541"
+  engine: docker
+
+# pydeface takes a single NIfTI file as a positional argument followed by
+# optional flags. It does not use a BIDS dataset layout at all.
+# dataset_positional:false prevents the executor from prepending /data /out.
+# The input file is mounted via the nifti-file param and appended as the first
+# positional arg. Output is written to the same /out directory.
+dataset_positional: false
+
+inputs:
+  - structural_nifti
+
+outputs:
+  - defaced_nifti
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: nifti-file
+    type: file_path
+    required: true
+    mount: true
+    positional_suffix: true
+    help: >
+      Full path to the T1w (or other structural) NIfTI file to deface.
+      The file is mounted read-only — your original scan is never modified.
+      Output will be written to the run's output directory as a new file
+      with the "_defaced" suffix (e.g. sub-01_T1w_defaced.nii.gz).
+      Example: /Users/you/data/derivatives/dcm2niix/26/anat-T1w.nii.gz.
+
+  # ── Output control ────────────────────────────────────────────────────
+  - name: outfile
+    cli_flag: "--outfile"
+    type: string
+    required: false
+    default: /out/defaced.nii.gz
+    help: >
+      Path inside the container for the defaced output file. Defaults to
+      /out/defaced.nii.gz, which maps to the run's output directory on
+      your machine. Rename this to match your BIDS naming convention if
+      needed — e.g. /out/sub-01_T1w_defaced.nii.gz.
+
+  - name: force
+    cli_flag: "--force"
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Overwrite the output file if it already exists. Enabled by default
+      so re-running a failed job works without manual cleanup. Disable
+      only if you want to guard against accidental overwriting.
+
+  # ── Registration options ──────────────────────────────────────────────
+  - name: cost
+    cli_flag: "--cost"
+    type: select
+    required: false
+    default: mutualinfo
+    options:
+      - mutualinfo
+      - corratio
+      - normcorr
+      - normmi
+      - leastsq
+      - labeldiff
+      - bbr
+    advanced: true
+    help: >
+      FSL FLIRT cost function used to register the face template to the
+      subject's image. "mutualinfo" (default) works reliably across scanner
+      types, field strengths, and contrasts. Change only if registration
+      appears misaligned in the output — check with the NIfTI viewer.
+
+  - name: verbose
+    cli_flag: "--verbose"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Log detailed FSL FLIRT output during registration. Produces verbose
+      output showing each registration step. Useful for debugging cases
+      where the defacing mask appears misaligned.
+
+max_runtime_hours: 1.0
+
+# ── Compute profile note ─────────────────────────────────────────────────────
+# compute_profile: local-unsafe
+#
+# pydeface shells out to FSL FLIRT for face template registration. FSL FLIRT
+# is an x86_64 binary that runs under Rosetta 2 emulation on Apple Silicon.
+# Empirical testing (2026-07-09): pydeface ran for 22+ minutes on the run 26
+# T1w (274×384×384, 0.7mm isotropic) with FLIRT producing only 0-byte
+# temp files — the same qemu-x86_64 / Rosetta 2 stall pattern confirmed for
+# fMRIPrep and FastSurfer. Container was killed after 22 min; no output.
+#
+# On Linux x86_64 (native or cloud/HPC), pydeface completes in ~2-5 minutes
+# for a standard structural T1w. It is the correct tool for this task on
+# appropriate hardware.
+#
+# To run pydeface: use a Linux x86_64 machine, a Docker Desktop Linux VM
+# (if Docker Desktop ever adds x86_64 Linux VMs for Apple Silicon), or
+# submit to cloud/HPC compute.
+# ─────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "error: unable to open file|Cannot open volume|Could not open image"
+    explanation: >
+      pydeface could not read the input NIfTI file. This usually means the
+      path is wrong, the file does not exist, or it is compressed in a format
+      pydeface cannot decompress (rare — .nii.gz is fully supported).
+    fix_hint: >
+      Verify the "nifti-file" path points to an existing .nii or .nii.gz
+      file. Check that the file is not still being written by another pipeline.
+
+  - pattern: "flirt: not found|FLIRT.*not found|FSL_DIR"
+    explanation: >
+      FSL's FLIRT registration tool was not found inside the container.
+      This should not happen with the official poldracklab/pydeface image
+      — it means a different or corrupted image was used.
+    fix_hint: >
+      Make sure you are using the poldracklab/pydeface:latest image and
+      that it was pulled successfully. Try "docker pull poldracklab/pydeface"
+      and resubmit the run.
+
+  - pattern: "FLIRT.*failed|registration.*failed|flirt exited"
+    explanation: >
+      FSL FLIRT's registration of the face template to the subject image
+      failed. This can happen if the input image has unusual orientation
+      metadata, very low contrast, or large field-of-view artifacts.
+    fix_hint: >
+      Try changing the "cost" parameter from "mutualinfo" to "normcorr"
+      and rerun. If the image is in a non-standard orientation, try
+      reorienting it to RAS+ first with FSL's fslreorient2std, or run
+      MRIQC first to check for image quality issues.
+
+  - pattern: "Permission denied|cannot write"
+    explanation: >
+      pydeface could not write the output file. This usually means the
+      output directory is not writable by the container user.
+    fix_hint: >
+      This is an internal NeuroForge issue — the output directory should
+      always be writable. Try resubmitting the run. If it persists, check
+      that your system disk has sufficient free space (pydeface needs
+      roughly 3× the input file size in temporary space).
