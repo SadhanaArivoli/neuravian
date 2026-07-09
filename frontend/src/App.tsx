@@ -6,6 +6,7 @@ import Pipelines from "./pages/Pipelines";
 import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
+import WizardDcm2bids from "./pages/WizardDcm2bids";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/runs" element={<Runs />} />
           <Route path="/runs/:id" element={<RunDetail />} />
+          <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
         </Routes>
       </main>
     </div>

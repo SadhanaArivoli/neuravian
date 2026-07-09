@@ -344,3 +344,61 @@ export interface RunProvenance {
 export function fetchRunProvenance(runId: number): Promise<RunProvenance> {
   return apiFetch<RunProvenance>(`/runs/${runId}/provenance`);
 }
+
+// ------------------------------------------------------------------ //
+// Wizard — DICOM Mapping                                               //
+// ------------------------------------------------------------------ //
+
+export interface WizardSeriesClassification {
+  modality: string;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+  suggested_datatype: string | null;
+  suggested_suffix: string | null;
+  skip_recommended: boolean;
+}
+
+export interface WizardDiscoveredSeries {
+  series_number: number | null;
+  acquisition_time: string | null;
+  series_description: string | null;
+  protocol_name: string | null;
+  image_type: string[] | null;
+  tr: number | null;
+  te: number | null;
+  inversion_time: number | null;
+  flip_angle: number | null;
+  echo_number: number | null;
+  phase_encoding_direction: string | null;
+  manufacturer: string | null;
+  manufacturers_model_name: string | null;
+  magnetic_field_strength: number | null;
+  slice_thickness: number | null;
+  raw_sidecar: Record<string, unknown>;
+  classification: WizardSeriesClassification;
+}
+
+export interface WizardScoutResponse {
+  series: WizardDiscoveredSeries[];
+  dicom_path: string;
+  participant_id: string;
+  session_id: string | null;
+  helper_log: string;
+}
+
+export function scoutDicom(
+  dicomPath: string,
+  participantId: string,
+  sessionId?: string,
+): Promise<WizardScoutResponse> {
+  return apiFetch<WizardScoutResponse>("/wizard/dcm2bids/scout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dicom_path: dicomPath,
+      participant_id: participantId,
+      session_id: sessionId || null,
+    }),
+  });
+}
+
