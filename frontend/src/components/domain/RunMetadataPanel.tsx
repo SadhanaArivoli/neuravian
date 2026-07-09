@@ -216,6 +216,18 @@ export default function RunMetadataPanel({ metadata }: Props) {
           )}
         </Row>
 
+        {/* Auto-registered BIDS dataset (dcm2bids output) */}
+        {metadata.registered_dataset_id != null && (
+          <Row label="Registered dataset">
+            <a
+              href={`/datasets/${metadata.registered_dataset_id}`}
+              className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+            >
+              {metadata.registered_dataset_name ?? `Dataset #${metadata.registered_dataset_id}`}
+            </a>
+          </Row>
+        )}
+
         {/* Output folder */}
         {metadata.output_dir && (
           <Row label="Output folder">

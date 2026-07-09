@@ -471,7 +471,71 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             ))
             db.commit()
 
+            # Auto-register dcm2bids output as a NeuroForge Dataset so MRIQC
+            # and fMRIPrep can pick it up via the dataset selector immediately.
+            if exit_code == 0 and ctx.manifest.get("id") == "dcm2bids" and run.output_dir:
+                _auto_register_dcm2bids_output(run_id, run.output_dir, ctx.params, db)
+
     loop.call_soon_threadsafe(_broadcast_done, run_id)
+
+
+_run_logger = logging.getLogger(__name__)
+
+
+def _auto_register_dcm2bids_output(
+    run_id: int, output_dir: str, params: dict[str, Any], db: Session
+) -> None:
+    """Register the dcm2bids output directory as a NeuroForge Dataset.
+
+    Idempotent: if a dataset with the same path already exists (e.g. run was
+    reprocessed), update its name and source_run_id rather than creating a
+    duplicate. Any error is logged and swallowed so it never breaks the run.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from app.models.dataset import Dataset as _Dataset
+    from app.services.dataset import DatasetService as _DatasetService
+    from app.schemas.dataset import DatasetCreate as _DatasetCreate
+
+    participant = str(params.get("participant-label", "")).strip()
+    name = (
+        f"dcm2bids run {run_id} — {participant}"
+        if participant
+        else f"dcm2bids run {run_id}"
+    )
+
+    try:
+        resolved = str(_Path(output_dir).resolve())
+        existing = db.query(_Dataset).filter(_Dataset.path == resolved).first()
+
+        if existing is None:
+            svc = _DatasetService(db)
+            result = svc.register(_DatasetCreate(path=output_dir))
+            dataset = db.get(_Dataset, result.id)
+        else:
+            dataset = existing
+
+        if dataset is None:
+            return
+
+        dataset.name = name
+
+        try:
+            meta = _json.loads(dataset.indexed_metadata or "{}")
+        except Exception:
+            meta = {}
+        meta["source_run_id"] = run_id
+        dataset.indexed_metadata = _json.dumps(meta)
+
+        db.commit()
+        _run_logger.info(
+            "Auto-registered dcm2bids output as Dataset id=%s name=%r",
+            dataset.id, name,
+        )
+    except Exception:
+        _run_logger.exception(
+            "Auto-registration of dcm2bids output failed for run %s", run_id
+        )
 
 
 # --------------------------------------------------------------------------- #

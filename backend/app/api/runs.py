@@ -143,6 +143,17 @@ def _build_run_metadata(run, svc: RunService) -> dict:
         except Exception:
             pass
 
+    # ── Auto-registered dataset (dcm2bids output) ────────────────────────────
+    registered_dataset_id: int | None = None
+    registered_dataset_name: str | None = None
+    if run.pipeline_manifest_id == "dcm2bids" and run.output_dir:
+        from pathlib import Path as _Path
+        resolved_output = str(_Path(run.output_dir).resolve())
+        reg_ds = svc.db.query(Dataset).filter(Dataset.path == resolved_output).first()
+        if reg_ds:
+            registered_dataset_id = reg_ds.id
+            registered_dataset_name = reg_ds.name
+
     return {
         "run_id": run.id,
         "pipeline_id": run.pipeline_manifest_id,
@@ -163,6 +174,8 @@ def _build_run_metadata(run, svc: RunService) -> dict:
         "command_preview": run.command_preview,
         "params": run.params,
         "lineage": lineage,
+        "registered_dataset_id": registered_dataset_id,
+        "registered_dataset_name": registered_dataset_name,
     }
 
 

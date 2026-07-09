@@ -287,6 +287,8 @@ export interface RunMetadata {
   command_preview: string | null;
   params: Record<string, unknown>;
   lineage: RunLineage | null;
+  registered_dataset_id?: number | null;
+  registered_dataset_name?: string | null;
 }
 
 export interface RunResults {
