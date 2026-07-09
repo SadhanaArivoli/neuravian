@@ -252,11 +252,33 @@ export interface PrefillContext {
   isDatasetSlot: boolean;
 }
 
+export interface RunMetadata {
+  run_id: number;
+  pipeline_id: string;
+  pipeline_display_name: string | null;
+  pipeline_version: string;
+  status: string;
+  compute_profile: string | null;
+  execution_type: "docker" | "native";
+  container_image: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  runtime_seconds: number | null;
+  dataset_id: number;
+  dataset_name: string | null;
+  dataset_path: string | null;
+  output_dir: string | null;
+  command_preview: string | null;
+  params: Record<string, unknown>;
+}
+
 export interface RunResults {
   reports: RunResultFile[];
   metrics: RunResultFile[];
   niftis?: RunResultFile[];
   artifacts: RunArtifact[];
+  metadata?: RunMetadata;
 }
 
 export function fetchRunResults(runId: number): Promise<RunResults> {

@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
+from app.models.dataset import Dataset
 from app.models.run import ProvenanceEvent, Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
 from app.execution.docker_executor import to_host_path
@@ -95,6 +96,64 @@ def get_run_provenance(run_id: int, db: Session = Depends(get_db)) -> dict:
     }
 
 
+def _build_run_metadata(run: Run, svc: RunService) -> dict:
+    """Assemble provenance metadata for a run from stored fields and the manifest registry.
+
+    Uses only data that is already recorded — no new DB columns are added.
+    Fields that cannot be derived are omitted (not fabricated).
+    """
+    registry = get_registry()
+    manifest = registry.get(run.pipeline_manifest_id, {})
+
+    # ── Timestamps / runtime ──────────────────────────────────────────────────
+    runtime_seconds: int | None = None
+    if run.started_at and run.finished_at:
+        delta = run.finished_at - run.started_at
+        runtime_seconds = int(delta.total_seconds())
+
+    # ── Execution type: docker vs native ─────────────────────────────────────
+    container_cfg = manifest.get("container")
+    if container_cfg:
+        execution_type = "docker"
+        container_image: str | None = f"{container_cfg['image']}:{container_cfg['tag']}"
+    else:
+        execution_type = "native"
+        container_image = None
+
+    # ── Dataset name ─────────────────────────────────────────────────────────
+    dataset = svc.db.get(Dataset, run.dataset_id)
+    dataset_name: str | None = dataset.name if dataset else None
+    dataset_path: str | None = (
+        to_host_path(dataset.path) if dataset and dataset.path else None
+    )
+
+    # ── Output path (host-accessible) ────────────────────────────────────────
+    output_dir_host: str | None = (
+        to_host_path(run.output_dir) if run.output_dir else None
+    )
+
+    return {
+        "run_id": run.id,
+        "pipeline_id": run.pipeline_manifest_id,
+        "pipeline_display_name": manifest.get("display_name"),
+        "pipeline_version": run.pipeline_version,
+        "status": run.status,
+        "compute_profile": manifest.get("compute_profile"),
+        "execution_type": execution_type,
+        "container_image": container_image,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "runtime_seconds": runtime_seconds,
+        "dataset_id": run.dataset_id,
+        "dataset_name": dataset_name,
+        "dataset_path": dataset_path,
+        "output_dir": output_dir_host,
+        "command_preview": run.command_preview,
+        "params": run.params,
+    }
+
+
 @router.get("/runs/{run_id}/results")
 def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     """Discover HTML reports and JSON IQM files in the run's output directory."""
@@ -104,11 +163,17 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     if not run.output_dir:
-        return {"reports": [], "metrics": []}
+        return {
+            "reports": [], "metrics": [], "niftis": [], "artifacts": [],
+            "metadata": _build_run_metadata(run, svc),
+        }
 
     output_root = Path(run.output_dir)
     if not output_root.exists():
-        return {"reports": [], "metrics": []}
+        return {
+            "reports": [], "metrics": [], "niftis": [], "artifacts": [],
+            "metadata": _build_run_metadata(run, svc),
+        }
 
     reports = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
@@ -158,7 +223,13 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         except Exception:
             log.exception("Artifact resolution failed for run %d", run_id)
 
-    return {"reports": reports, "metrics": metrics, "niftis": niftis, "artifacts": artifacts}
+    return {
+        "reports": reports,
+        "metrics": metrics,
+        "niftis": niftis,
+        "artifacts": artifacts,
+        "metadata": _build_run_metadata(run, svc),
+    }
 
 
 @router.get("/runs/{run_id}/download")

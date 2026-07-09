@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRunFile, useRunResults } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
+import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
 
 // Key T1w IQMs with friendly labels and descriptions.
@@ -355,6 +356,9 @@ export default function RunResults({ runId }: Props) {
           onClose={() => setViewerLayers(null)}
         />
       )}
+
+      {/* Run provenance / metadata — collapsible, shown for all completed runs */}
+      {results.metadata && <RunMetadataPanel metadata={results.metadata} />}
     </div>
   );
 }
