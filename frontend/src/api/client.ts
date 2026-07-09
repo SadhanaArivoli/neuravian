@@ -128,12 +128,15 @@ export interface PipelineKnownError {
   fix_hint?: string;
 }
 
+export type ComputeProfile = "local-ok" | "local-slow" | "local-unsafe";
+
 export interface PipelineSummary {
   id: string;
   display_name: string;
   description: string;
   homepage?: string;
   container: PipelineContainer;
+  compute_profile?: ComputeProfile;
 }
 
 export interface Pipeline extends PipelineSummary {
@@ -172,12 +175,24 @@ export interface RunSummary {
   created_at: string;
 }
 
+export interface RunProgress {
+  percent: number;
+  current: number;
+  total: number;
+  elapsed_seconds: number;
+  eta_seconds: number;
+  rate: number;
+  rate_unit: string;
+  last_updated: string; // ISO UTC
+}
+
 export interface Run extends RunSummary {
   params: Record<string, unknown>;
   command_preview: string | null;
   output_dir: string | null;
   error_message: string | null;
   resource_warnings: ResourceWarning[];
+  progress?: RunProgress | null;
 }
 
 export interface RunCreate {

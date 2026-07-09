@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Pipeline, PipelineParameter } from "../../api/client";
+import type { ComputeProfile, Pipeline, PipelineParameter } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
 import { useCreateRun } from "../../hooks/useRuns";
 
@@ -277,6 +277,85 @@ function buildWarnings(
   return warnings;
 }
 
+// ── Pre-flight confirmation dialog ────────────────────────────────────────────
+
+const PREFLIGHT_COPY: Record<
+  "local-slow" | "local-unsafe",
+  { title: string; body: string; cta: string }
+> = {
+  "local-slow": {
+    title: "This pipeline will run slowly on Apple Silicon",
+    body:
+      "FastSurfer's CNN inference runs under Rosetta 2 x86_64 emulation on Apple Silicon Macs. " +
+      "Confirmed runtime is ~154 seconds per batch × 256 batches × 3 orientations = approximately 33 hours " +
+      "per subject (vs 30–90 minutes on native x86_64 Linux). " +
+      "The run is healthy and will eventually complete — just plan for an overnight computation. " +
+      "If you need results sooner, run on native x86_64 hardware.",
+    cta: "Start anyway (will take ~33h)",
+  },
+  "local-unsafe": {
+    title: "This pipeline may hang indefinitely on Apple Silicon",
+    body:
+      "fMRIPrep's spatial normalisation step (ANTs SyN registration with correlation-coefficient metric) " +
+      "requires AVX2/AVX-512 SIMD instructions. Under Rosetta 2 emulation these instructions are not fully " +
+      "supported: confirmed runs 14–15 stalled at 99.9% CPU utilisation for over 6 hours with no progress. " +
+      "The run will likely never complete on this machine. Consider using native x86_64 hardware " +
+      "or a cloud/HPC environment.",
+    cta: "Start anyway (may hang)",
+  },
+};
+
+function PreflightDialog({
+  pipeline,
+  onConfirm,
+  onCancel,
+}: {
+  pipeline: Pipeline;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const profile = pipeline.compute_profile as "local-slow" | "local-unsafe" | undefined;
+  if (!profile || !(profile in PREFLIGHT_COPY)) return null;
+  const copy = PREFLIGHT_COPY[profile];
+  const isUnsafe = profile === "local-unsafe";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200 mx-4">
+        <div className={`flex items-start gap-3 rounded-t-xl px-5 pt-5 pb-4 ${isUnsafe ? "bg-red-50" : "bg-amber-50"}`}>
+          <span className="text-xl mt-0.5">{isUnsafe ? "⛔" : "⏱"}</span>
+          <div>
+            <h3 className={`font-semibold text-base ${isUnsafe ? "text-red-800" : "text-amber-800"}`}>
+              {copy.title}
+            </h3>
+            <p className="mt-1 text-sm text-gray-700 leading-relaxed">{copy.body}</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${
+              isUnsafe
+                ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                : "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
+            }`}
+          >
+            {copy.cta}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 function buildDefaults(params: PipelineParameter[]): FormValues {
@@ -319,6 +398,7 @@ export default function PipelineParameterForm({ pipeline }: Props) {
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showPreflightDialog, setShowPreflightDialog] = useState(false);
 
   const set = (name: string, val: string | boolean | string[]) =>
     setValues((prev) => ({ ...prev, [name]: val }));
@@ -329,15 +409,7 @@ export default function PipelineParameterForm({ pipeline }: Props) {
 
   const warnings = buildWarnings(pipeline, values, selectedDataset);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitError(null);
-
-    if (!selectedDatasetId) {
-      setSubmitError("Please select a dataset before starting a run.");
-      return;
-    }
-
+  function buildParams(): Record<string, unknown> {
     const params: Record<string, unknown> = {};
     for (const p of pipeline.parameters) {
       const raw = values[p.name];
@@ -351,12 +423,16 @@ export default function PipelineParameterForm({ pipeline }: Props) {
         params[p.name] = raw;
       }
     }
+    return params;
+  }
 
+  async function doSubmit() {
+    setSubmitError(null);
     try {
       const run = await createRun.mutateAsync({
         pipeline_id: pipeline.id,
         dataset_id: selectedDatasetId as number,
-        params,
+        params: buildParams(),
       });
       navigate(`/runs/${run.id}`);
     } catch (err) {
@@ -364,6 +440,24 @@ export default function PipelineParameterForm({ pipeline }: Props) {
         err instanceof Error ? err.message : "Failed to start run."
       );
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitError(null);
+
+    if (!selectedDatasetId) {
+      setSubmitError("Please select a dataset before starting a run.");
+      return;
+    }
+
+    const profile = pipeline.compute_profile as ComputeProfile | undefined;
+    if (profile === "local-slow" || profile === "local-unsafe") {
+      setShowPreflightDialog(true);
+      return;
+    }
+
+    void doSubmit();
   }
 
   return (
@@ -490,6 +584,18 @@ export default function PipelineParameterForm({ pipeline }: Props) {
           {createRun.isPending ? "Starting…" : "Start run"}
         </button>
       </div>
+
+      {/* Pre-flight confirmation dialog for local-slow / local-unsafe pipelines */}
+      {showPreflightDialog && (
+        <PreflightDialog
+          pipeline={pipeline}
+          onConfirm={() => {
+            setShowPreflightDialog(false);
+            void doSubmit();
+          }}
+          onCancel={() => setShowPreflightDialog(false)}
+        />
+      )}
     </form>
   );
 }

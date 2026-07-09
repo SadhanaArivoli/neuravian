@@ -192,9 +192,14 @@ class DockerExecutor(Executor):
         for p in manifest["parameters"]:
             if p.get("positional_index") is not None:
                 continue  # already handled above
+            if p.get("positional_suffix"):
+                continue  # appended after all flags — see below
 
             name = p["name"]
             ptype = p["type"]
+            # cli_flag overrides the default --{name} emitted flag (e.g. "-b" for
+            # single-dash tools like dcm2niix that don't accept --long-form flags).
+            flag = p.get("cli_flag") or f"--{name}"
 
             # work-dir is handled via volume mount above; remap CLI flag to /work
             if name == "work-dir":
@@ -204,21 +209,21 @@ class DockerExecutor(Executor):
 
             # mount: true params use the container-internal path, already computed above
             if name in _mounted_paths:
-                cmd += [f"--{name}", _mounted_paths[name]]
+                cmd += [flag, _mounted_paths[name]]
                 continue
 
             raw_val = params.get(name)
 
             if ptype == "boolean":
-                # Emit --flag only if explicitly true; false = omit entirely
+                # Emit flag only if explicitly true; false = omit entirely
                 effective = raw_val if raw_val is not None else p.get("default", False)
                 if effective is True or effective == "true":
-                    cmd.append(f"--{name}")
+                    cmd.append(flag)
 
             elif ptype == "multiselect":
                 val = raw_val if raw_val is not None else p.get("default", [])
                 if val:
-                    cmd += [f"--{name}"] + list(val)
+                    cmd += [flag] + list(val)
 
             elif p.get("multiple"):
                 # String param that accepts space-separated repeated values
@@ -226,14 +231,28 @@ class DockerExecutor(Executor):
                 if not val:
                     val = str(p.get("default", "")).strip()
                 if val:
-                    cmd += [f"--{name}"] + val.split()
+                    cmd += [flag] + val.split()
 
             else:
                 val = raw_val
                 if val is None or val == "":
                     val = p.get("default")
                 if val is not None and val != "":
-                    cmd += [f"--{name}", str(val)]
+                    cmd += [flag, str(val)]
+
+        # Positional-suffix parameters: appended after all flags as bare positional
+        # args using their container-internal path when mount:true. Used for tools
+        # like dcm2niix where the input directory is the final positional argument.
+        for p in manifest["parameters"]:
+            if not p.get("positional_suffix"):
+                continue
+            name = p["name"]
+            if name in _mounted_paths:
+                cmd.append(_mounted_paths[name])
+            else:
+                val = str(params.get(name) or p.get("default") or "").strip()
+                if val:
+                    cmd.append(val)
 
         # run_as_host_user: true → pass the host UID:GID to the spawned container.
         # Required by images that refuse to run as an arbitrary non-root user

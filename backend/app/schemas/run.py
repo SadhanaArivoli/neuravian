@@ -29,6 +29,7 @@ class RunRead(BaseModel):
     finished_at: datetime | None
     created_at: datetime
     resource_warnings: list[ResourceWarningSchema] = []
+    progress: dict | None = None
 
     model_config = {"from_attributes": True}
 

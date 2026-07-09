@@ -204,7 +204,11 @@ async def stream_run_logs(websocket: WebSocket, run_id: int) -> None:
                 )
                 break
 
-            await websocket.send_text(json.dumps({"type": "log", "line": item}))
+            if isinstance(item, dict):
+                # Structured message (e.g. progress update) — send as-is
+                await websocket.send_text(json.dumps(item))
+            else:
+                await websocket.send_text(json.dumps({"type": "log", "line": item}))
 
     except WebSocketDisconnect:
         pass

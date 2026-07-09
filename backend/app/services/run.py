@@ -12,6 +12,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from fastapi import BackgroundTasks
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.execution.progress_parser import parse_tqdm_line
 from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, to_host_path, translate_errors
 from app.execution.executor import RunContext
 from app.models.dataset import Dataset
@@ -81,6 +83,33 @@ def _broadcast(run_id: int, line: str) -> None:
     _log_buffers.setdefault(run_id, []).append(line)
     for q in _subscribers.get(run_id, set()):
         q.put_nowait(line)
+
+
+# --------------------------------------------------------------------------- #
+# Progress tracking state (module-level, single-process)                       #
+# --------------------------------------------------------------------------- #
+
+_progress_state: dict[int, dict] = {}
+_progress_last_write: dict[int, float] = {}
+PROGRESS_WRITE_INTERVAL_S = 10  # write to DB at most once per 10s per run
+
+
+def _write_progress_to_db(run_id: int, progress: dict) -> None:
+    try:
+        with SessionLocal() as db:
+            run = db.get(Run, run_id)
+            if run:
+                run.progress_json = json.dumps(progress)
+                db.commit()
+    except Exception as exc:
+        log.debug("Progress DB write failed for run %d: %s", run_id, exc)
+
+
+def _broadcast_progress(run_id: int, progress: dict) -> None:
+    """Called in the event-loop thread (via call_soon_threadsafe)."""
+    msg = {"type": "progress", "data": progress}
+    for q in _subscribers.get(run_id, set()):
+        q.put_nowait(msg)
 
 
 def _broadcast_done(run_id: int) -> None:
@@ -310,6 +339,26 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             pass
         _log(line)
 
+        # Progress parsing
+        parsed = parse_tqdm_line(line)
+        if parsed:
+            progress_dict = {
+                "percent": parsed.percent,
+                "current": parsed.current,
+                "total": parsed.total,
+                "elapsed_seconds": parsed.elapsed_seconds,
+                "eta_seconds": parsed.eta_seconds,
+                "rate": parsed.rate,
+                "rate_unit": parsed.rate_unit,
+                "last_updated": parsed.last_updated,
+            }
+            _progress_state[run_id] = progress_dict
+            loop.call_soon_threadsafe(_broadcast_progress, run_id, progress_dict)
+            now = monotonic()
+            if now - _progress_last_write.get(run_id, 0) > PROGRESS_WRITE_INTERVAL_S:
+                _progress_last_write[run_id] = now
+                _write_progress_to_db(run_id, progress_dict)
+
     with SessionLocal() as db:
         run = db.get(Run, run_id)
         if not run:
@@ -382,6 +431,10 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             run.container_digest = digest
             if translated_error:
                 run.error_message = translated_error
+            # Persist final progress snapshot if any was collected
+            final_progress = _progress_state.get(run_id)
+            if final_progress:
+                run.progress_json = json.dumps(final_progress)
             db.commit()
 
             # RunLog record
@@ -422,6 +475,7 @@ class RunService:
 
     def _run_to_read(self, run: Run, resource_warnings: list[ResourceWarningSchema] | None = None) -> RunRead:
         params = json.loads(run.params_json or "{}")
+        progress = json.loads(run.progress_json) if run.progress_json else None
         return RunRead(
             id=run.id,
             pipeline_manifest_id=self._get_pipeline_manifest_id(run.pipeline_id),
@@ -436,6 +490,7 @@ class RunService:
             finished_at=run.finished_at,
             created_at=run.created_at,
             resource_warnings=resource_warnings or [],
+            progress=progress,
         )
 
     def create_run(

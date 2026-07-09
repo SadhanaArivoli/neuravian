@@ -1491,3 +1491,201 @@ def test_dataset_positional_false_t1_mount_flag_uses_container_path(tmp_path):
         f"--t1 must use container mount path; got {container_path}"
     )
     assert str(t1_file) not in container_path
+
+
+# ------------------------------------------------------------------ #
+# cli_flag and positional_suffix (dcm2niix-style pipelines)            #
+# ------------------------------------------------------------------ #
+
+_DCM2NIIX_MINIMAL_MANIFEST = {
+    "id": "dcm2niix",
+    "display_name": "dcm2niix",
+    "description": "DICOM to NIfTI converter",
+    "container": {"image": "svdvoort/dcm2niix", "tag": "1.0.20250506", "engine": "docker"},
+    "inputs": ["dicom_directory"],
+    "outputs": ["nifti"],
+    "dataset_positional": False,
+    "parameters": [
+        {
+            "name": "dicom-dir",
+            "type": "directory_path",
+            "required": True,
+            "mount": True,
+            "positional_suffix": True,
+        },
+        {
+            "name": "output-dir",
+            "type": "string",
+            "cli_flag": "-o",
+            "default": "/out",
+            "advanced": True,
+        },
+        {
+            "name": "bids-sidecar",
+            "type": "select",
+            "cli_flag": "-b",
+            "default": "y",
+            "options": ["y", "n", "o"],
+        },
+        {
+            "name": "compress",
+            "type": "select",
+            "cli_flag": "-z",
+            "default": "y",
+            "options": ["y", "i", "n"],
+        },
+    ],
+}
+
+
+def test_cli_flag_emits_single_dash_flag(tmp_path):
+    """Parameters with cli_flag must emit the specified flag string, not --{name}."""
+    dicom_dir = tmp_path / "dicoms"
+    dicom_dir.mkdir()
+    ctx = RunContext(
+        run_id=100,
+        manifest=_DCM2NIIX_MINIMAL_MANIFEST,
+        params={
+            "dicom-dir": str(dicom_dir),
+            "bids-sidecar": "y",
+            "compress": "n",
+        },
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    cmd_str = " ".join(cmd)
+    # Single-dash flags must be present
+    assert "-b y" in cmd_str, f"-b flag missing or wrong; cmd={cmd_str}"
+    assert "-z n" in cmd_str, f"-z flag missing or wrong; cmd={cmd_str}"
+    assert "-o /out" in cmd_str, f"-o flag missing or wrong; cmd={cmd_str}"
+    # Double-dash forms must NOT appear
+    assert "--bids-sidecar" not in cmd_str
+    assert "--compress" not in cmd_str
+    assert "--output-dir" not in cmd_str
+
+
+def test_positional_suffix_appended_after_flags(tmp_path):
+    """dicom-dir must be the LAST token in the command (positional suffix after all flags)."""
+    dicom_dir = tmp_path / "dicoms"
+    dicom_dir.mkdir()
+    ctx = RunContext(
+        run_id=101,
+        manifest=_DCM2NIIX_MINIMAL_MANIFEST,
+        params={
+            "dicom-dir": str(dicom_dir),
+            "bids-sidecar": "y",
+            "compress": "y",
+        },
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    # The last command token must be the container-internal dicom-dir path
+    last_token = sdk.command[-1]
+    expected_container_path = f"/inputs/dicom-dir/{dicom_dir.name}"
+    assert last_token == expected_container_path, (
+        f"Expected last token to be container dicom-dir path '{expected_container_path}'; "
+        f"got '{last_token}'. Full command: {sdk.command}"
+    )
+
+
+def test_positional_suffix_not_emitted_as_flag(tmp_path):
+    """dicom-dir with positional_suffix:true must NOT appear as --dicom-dir in the command."""
+    dicom_dir = tmp_path / "dicoms"
+    dicom_dir.mkdir()
+    ctx = RunContext(
+        run_id=102,
+        manifest=_DCM2NIIX_MINIMAL_MANIFEST,
+        params={"dicom-dir": str(dicom_dir), "bids-sidecar": "y"},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    cmd_str = " ".join(cmd)
+    assert "--dicom-dir" not in cmd_str, (
+        f"positional_suffix param must not appear as --flag; cmd={cmd_str}"
+    )
+
+
+def test_dcm2niix_manifest_loads_and_validates():
+    """The dcm2niix.yaml manifest must load and pass schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "dcm2niix.yaml", schema)
+    assert manifest["id"] == "dcm2niix"
+    assert manifest["container"]["tag"] == "1.0.20250506"
+    assert manifest["compute_profile"] == "local-ok"
+    assert manifest["dataset_positional"] is False
+    dicom_param = next(p for p in manifest["parameters"] if p["name"] == "dicom-dir")
+    assert dicom_param["mount"] is True
+    assert dicom_param["positional_suffix"] is True
+
+
+def test_compute_profile_in_all_manifests():
+    """All five manifests must declare a compute_profile value."""
+    schema = _load_schema()
+    expected = {
+        "dcm2niix": "local-ok",
+        "mriqc": "local-ok",
+        "fastsurfer": "local-slow",
+        "fmriprep": "local-unsafe",
+        "bids-validator": "local-ok",
+    }
+    for fname, expected_profile in expected.items():
+        manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
+        assert manifest.get("compute_profile") == expected_profile, (
+            f"{fname}.yaml: expected compute_profile={expected_profile!r}; "
+            f"got {manifest.get('compute_profile')!r}"
+        )
+
+
+def test_bids_validator_manifest_loads_and_validates():
+    """The bids-validator.yaml manifest must load and pass schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    assert manifest["id"] == "bids-validator"
+    assert manifest["container"]["image"] == "bids/validator"
+    assert manifest["container"]["tag"] == "2.5.6"
+    assert manifest["compute_profile"] == "local-ok"
+    assert manifest["dataset_positional"] is False
+    bids_param = next(p for p in manifest["parameters"] if p["name"] == "bids-dir")
+    assert bids_param["mount"] is True
+    assert bids_param["positional_suffix"] is True
+
+
+def test_bids_validator_bids_dir_is_positional_suffix():
+    """bids-dir must not emit a flag and must be appended as a positional suffix."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    bids_param = next(p for p in manifest["parameters"] if p["name"] == "bids-dir")
+    # positional_suffix params are skipped by the flag loop and appended last
+    assert bids_param.get("positional_suffix") is True
+    # must not have a cli_flag that would cause it to appear as a flag
+    assert "cli_flag" not in bids_param
+
+
+def test_bids_validator_verbose_uses_short_flag():
+    """verbose parameter must emit -v, not --verbose."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    verbose_param = next(p for p in manifest["parameters"] if p["name"] == "verbose")
+    assert verbose_param.get("cli_flag") == "-v"
+
+
+def test_bids_validator_known_errors_cover_exit_16_cases():
+    """Known errors must cover the three errors produced by the invalid test dataset."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("MISSING_DATASET_DESCRIPTION" in p for p in patterns)
+    assert any("MISSING_REQUIRED_ENTITY" in p for p in patterns)
+    assert any("INVALID_LOCATION" in p for p in patterns)

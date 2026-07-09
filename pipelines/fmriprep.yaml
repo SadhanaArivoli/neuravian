@@ -6,6 +6,7 @@ description: >
   confounds file ready for first-level modelling. Does not perform
   statistical analysis — it stops at preprocessed data.
 homepage: https://fmriprep.org/en/stable/
+compute_profile: local-unsafe
 
 container:
   image: nipreps/fmriprep

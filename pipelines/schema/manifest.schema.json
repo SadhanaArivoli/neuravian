@@ -94,6 +94,11 @@
       "type": "object",
       "additionalProperties": { "type": "string" },
       "description": "Map of old param name → new param name for migration across manifest versions."
+    },
+    "compute_profile": {
+      "type": "string",
+      "enum": ["local-ok", "local-slow", "local-unsafe"],
+      "description": "Expected local-execution quality. local-ok=runs well locally; local-slow=runs but significantly slower (e.g. Rosetta 2 emulation); local-unsafe=may hang indefinitely locally (e.g. AVX2 dependency)."
     }
   },
   "$defs": {
@@ -141,6 +146,15 @@
           "type": "boolean",
           "default": false,
           "description": "If true and type is 'string', the user's space-separated input is split into multiple separate CLI arguments. Used for flags that accept repeated values (e.g. --participant-label 01 02 03)."
+        },
+        "cli_flag": {
+          "type": "string",
+          "description": "Override the CLI flag emitted for this parameter. Use when the tool uses single-dash flags (e.g. '-b') rather than the default '--{name}' form. Include the dash(es) in the value."
+        },
+        "positional_suffix": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, this parameter is appended as a positional argument AFTER all flag arguments, using its container-internal path when mount:true. Used for tools like dcm2niix where the input directory is the last positional arg."
         },
         "mount": {
           "type": "boolean",

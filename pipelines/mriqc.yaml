@@ -5,6 +5,7 @@ description: >
   Extracts image quality metrics (IQMs) and produces individual and group
   visual reports — no manual scoring required.
 homepage: https://mriqc.readthedocs.io/en/24.0.2/
+compute_profile: local-ok
 container:
   image: nipreps/mriqc
   tag: "24.0.2"

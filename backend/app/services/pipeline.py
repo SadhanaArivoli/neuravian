@@ -89,6 +89,7 @@ class PipelineService:
                 "description": m["description"],
                 "homepage": m.get("homepage"),
                 "container": m["container"],
+                "compute_profile": m.get("compute_profile"),
             }
             for m in self._registry.values()
         ]

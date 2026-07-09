@@ -13,6 +13,10 @@ frontend/dist/
 # Local data volume
 data/
 
+# Test DICOM data (large binary files — download separately via git clone)
+# Source: https://github.com/datalad/example-dicom-structural (PDDL license)
+backend/tests/data/dicom-structural/dicoms/
+
 # Env files
 .env
 .env.local

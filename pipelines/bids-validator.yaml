@@ -1,0 +1,213 @@
+id: bids-validator
+display_name: BIDS Validator
+description: >
+  Checks whether a dataset conforms to the Brain Imaging Data Structure (BIDS)
+  specification. Validates filenames, directory structure, required JSON
+  sidecar fields, and inter-file consistency. Exits with status "success" when
+  the dataset is BIDS-compliant (exit 0) and "failed" when errors are present
+  (exit 16), so the run status directly reflects dataset validity. Run this
+  before MRIQC, fMRIPrep, or FastSurfer to catch structural problems in seconds
+  rather than discovering them hours into a heavy pipeline.
+homepage: https://bids-standard.github.io/bids-validator/
+compute_profile: local-ok
+
+container:
+  image: bids/validator
+  tag: "2.5.6"
+  engine: docker
+
+# bids-validator validates a single dataset directory passed as a positional
+# argument. It does not consume a BIDS dataset in the MRIQC/fMRIPrep sense
+# (there is no separate /data + /out layout expected by the tool itself).
+# dataset_positional:false prevents the executor from prepending /data /out;
+# the BIDS directory is mounted and appended as the last positional arg via
+# bids-dir (mount:true, positional_suffix:true).
+dataset_positional: false
+
+inputs:
+  - bids_dataset
+
+outputs:
+  - bids_validation_report
+
+# TODO: Pre-flight integration
+# BIDS Validator is currently a standalone pipeline (runs on demand like any
+# other pipeline). A future enhancement would wire it as an automatic pre-flight
+# check in PipelineParameterForm.tsx: before submitting a run for any BIDS-
+# dataset pipeline (MRIQC, fMRIPrep), check whether the selected dataset has a
+# recent successful BIDS Validator run and surface a warning if not.
+# The manifest-level hook point would be a new property like
+# `preflight_for: ["mriqc", "fmriprep"]` that the parameter form reads to
+# display a "consider running BIDS Validator first" suggestion in the UI.
+# Architecture is ready: the pre-flight modal in PipelineParameterForm.tsx
+# already supports arbitrary confirmation dialogs; this would add a second
+# trigger condition alongside compute_profile warnings.
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: bids-dir
+    type: directory_path
+    required: true
+    mount: true
+    positional_suffix: true
+    help: >
+      Full path to the BIDS dataset directory to validate. This is the
+      top-level folder that contains dataset_description.json, sub-*/
+      subdirectories, and other BIDS root files. The folder is mounted
+      read-only into the container. Example: /Users/you/Documents/my-bids-dataset.
+      The run status directly reflects validity: "success" = BIDS compliant,
+      "failed" = one or more BIDS errors found (see log for details).
+
+  # ── Output ────────────────────────────────────────────────────────────
+  - name: outfile
+    type: string
+    required: false
+    default: /out/validation-report.txt
+    advanced: true
+    help: >
+      Path inside the container to write the validation report. Defaults to
+      /out/validation-report.txt, which maps to the run's output directory on
+      your machine. Change only if you have a reason to write the report
+      elsewhere — otherwise leave at the default.
+
+  # ── Output format ─────────────────────────────────────────────────────
+  - name: format
+    type: select
+    required: false
+    default: text
+    options:
+      - text
+      - json_pp
+    help: >
+      Output format for the validation report. "text" (default) produces a
+      human-readable summary with indented error and warning descriptions —
+      the best choice for reading in NeuroForge's log viewer. "json_pp"
+      produces pretty-printed JSON, useful if you want to parse or import the
+      results into another tool. Both formats write to the log console and to
+      the outfile (if set).
+
+  # ── Validation options ────────────────────────────────────────────────
+  - name: ignoreWarnings
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Suppress non-critical warnings and only report BIDS errors. Useful when
+      you have a known-good dataset with unavoidable warnings (e.g. missing
+      recommended-but-optional sidecar fields like InstitutionName) and only
+      want to check for structural errors. Leave disabled for first validation
+      runs — warnings often point to real metadata gaps that affect downstream
+      tools like fMRIPrep.
+
+  - name: ignoreNiftiHeaders
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Skip validation of NIfTI header content (voxel sizes, orientation
+      matrices, data type). Useful when header metadata was lost during DICOM
+      conversion or for datasets with known non-standard header values.
+      Enabling this may allow a dataset to pass BIDS validation while still
+      having header issues that could cause fMRIPrep or FreeSurfer to fail.
+
+  # ── Advanced ──────────────────────────────────────────────────────────
+  - name: verbose
+    cli_flag: "-v"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Log extended information about each issue, including file-level details
+      and links to the relevant BIDS specification section. Makes the report
+      much longer — useful when diagnosing a specific error, not for routine
+      validation checks.
+
+  - name: max-rows
+    type: integer
+    required: false
+    default: 1000
+    advanced: true
+    help: >
+      Maximum number of rows to validate in TSV files (participants.tsv,
+      events.tsv, etc.). Default 1000 is sufficient for most datasets. Set
+      to -1 to validate all rows (slower on large datasets with many events
+      files). Set to 0 to validate only the header row.
+
+  - name: recursive
+    cli_flag: "-r"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Also validate datasets found inside derivatives/ subdirectories. By
+      default only the root dataset is validated. Enable if your dataset
+      includes processed derivatives (e.g. from fMRIPrep or MRIQC) that you
+      also want to check for BIDS Derivatives compliance.
+
+max_runtime_hours: 0.25
+
+known_errors:
+  - pattern: "MISSING_DATASET_DESCRIPTION"
+    explanation: >
+      The dataset is missing a dataset_description.json file at the root
+      level. This is a required BIDS file that describes the dataset name,
+      BIDS version, and authorship — without it, the dataset is not
+      considered a valid BIDS dataset at all.
+    fix_hint: >
+      Create a dataset_description.json in the top-level folder. Minimum
+      required content:
+        {
+          "Name": "My Dataset",
+          "BIDSVersion": "1.8.0"
+        }
+      You can also use dcm2niix with --bids-sidecar y to generate this file
+      automatically during DICOM conversion.
+
+  - pattern: "MISSING_REQUIRED_ENTITY"
+    explanation: >
+      One or more files are missing a required BIDS entity in their filename.
+      The most common case is a NIfTI file without the "sub-" subject prefix
+      (e.g. T1w.nii.gz instead of sub-01_T1w.nii.gz). BIDS requires every
+      data file to identify which subject it belongs to.
+    fix_hint: >
+      Rename the file to include all required entities. For structural MRI:
+      sub-{label}_T1w.nii.gz (e.g. sub-01_T1w.nii.gz). Check the BIDS
+      specification for the full list of required entities per modality:
+      https://bids-specification.readthedocs.io/en/stable/
+
+  - pattern: "INVALID_LOCATION"
+    explanation: >
+      One or more files are correctly named but placed in the wrong directory.
+      BIDS requires specific file types to live in specific locations — for
+      example, T1w images must be in sub-{label}/anat/, not at the dataset
+      root or in a custom folder.
+    fix_hint: >
+      Move the file to the correct BIDS directory. The error log shows both
+      the actual location and where BIDS expects the file to be.
+
+  - pattern: "NOT_INCLUDED"
+    explanation: >
+      One or more files exist in the dataset directory but are not recognized
+      as valid BIDS files. This usually means the filename or extension does
+      not conform to BIDS conventions, or the file type is not covered by
+      the BIDS specification.
+    fix_hint: >
+      Add a .bidsignore file at the dataset root listing patterns to exclude
+      (similar to .gitignore). Example: to ignore log files, add "*.log" on
+      its own line. Alternatively, rename the files to match BIDS conventions
+      or move them to a sourcedata/ or code/ folder, which BIDS explicitly
+      exempts from filename rules.
+
+  - pattern: "JSON_KEY_REQUIRED"
+    explanation: >
+      A required JSON sidecar key is missing. BIDS mandates certain metadata
+      fields depending on the acquisition type — for example, fMRI sidecars
+      must include RepetitionTime and TaskName.
+    fix_hint: >
+      Open the .json sidecar file alongside the flagged NIfTI and add the
+      missing key(s). The error log names the exact key(s) required and which
+      file triggered the error. dcm2niix automatically extracts many of these
+      fields from DICOM headers — if your sidecar is incomplete, the DICOM
+      export may have been lossy or the scanner may not have written those tags.

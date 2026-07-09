@@ -8,6 +8,7 @@ description: >
   (recon-surf) adds 30–90 minutes. --seg_only skips recon-surf and is the
   recommended starting point.
 homepage: https://deep-mi.org/research/fastsurfer/
+compute_profile: local-slow
 
 container:
   image: deepmi/fastsurfer

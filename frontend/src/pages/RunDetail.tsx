@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import RunProvenance from "../components/domain/RunProvenance";
 import RunResults from "../components/domain/RunResults";
 import { useRun } from "../hooks/useRuns";
+import type { RunProgress } from "../api/client";
 
 function getWsBase(): string {
   const apiUrl = import.meta.env.VITE_API_URL;
@@ -19,7 +20,41 @@ type LogMessage =
   | { type: "log"; line: string }
   | { type: "done"; status: string; error_message: string | null }
   | { type: "heartbeat" }
-  | { type: "error"; detail: string };
+  | { type: "error"; detail: string }
+  | { type: "progress"; data: RunProgress };
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function ProgressPanel({ progress }: { progress: RunProgress }) {
+  return (
+    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <div className="flex justify-between text-sm text-blue-800 mb-2">
+        <span className="font-medium">
+          {progress.current} / {progress.total} {progress.rate_unit}s · {progress.percent}%
+        </span>
+        <span className="text-blue-600">
+          {formatEta(progress.eta_seconds)} remaining · {progress.rate.toFixed(1)}s/{progress.rate_unit}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-blue-500 transition-all duration-500"
+          style={{ width: `${progress.percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -53,6 +88,7 @@ export default function RunDetail() {
   );
   const [lastActivityAt, setLastActivityAt] = useState<Date | null>(null);
   const [silentSeconds, setSilentSeconds] = useState(0);
+  const [progress, setProgress] = useState<RunProgress | null>(run?.progress ?? null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -76,6 +112,8 @@ export default function RunDetail() {
         // Server is alive — update activity timestamp so users know the
         // connection is healthy even during quiet processing phases.
         setLastActivityAt(new Date());
+      } else if (msg.type === "progress") {
+        setProgress(msg.data);
       } else if (msg.type === "done") {
         setWsStatus("closed");
         refetch();
@@ -165,6 +203,24 @@ export default function RunDetail() {
           ))}
         </div>
       )}
+
+      {/* Progress bar (live, running only) */}
+      {progress != null && run.status === "running" && (
+        <ProgressPanel progress={progress} />
+      )}
+
+      {/* Staleness warning */}
+      {run.status === "running" && progress?.last_updated && (() => {
+        const progressAgeMs = Date.now() - new Date(progress.last_updated).getTime();
+        const staleMinutes = Math.floor(progressAgeMs / 60000);
+        return staleMinutes >= 30 ? (
+          <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            ⚠ No progress update in {staleMinutes} minutes — pipeline may be stalled.
+            Check the log below for recent output. If the last log line is not advancing,
+            the container may need to be stopped and restarted.
+          </div>
+        ) : null;
+      })()}
 
       {/* Error translation panel */}
       {run.status === "failed" && run.error_message && (

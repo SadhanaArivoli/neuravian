@@ -1,0 +1,237 @@
+id: dcm2niix
+display_name: dcm2niix
+description: >
+  Converts raw DICOM scanner output to NIfTI/BIDS format. Fast and
+  lightweight — a typical scan session (30–100 DICOMs) converts in seconds.
+  Outputs .nii.gz files and optional BIDS JSON sidecars ready for immediate
+  use with MRIQC, fMRIPrep, FastSurfer, and other NeuroForge pipelines.
+  The recommended first step when you have DICOM files directly from a scanner.
+homepage: https://github.com/rordenlab/dcm2niix
+compute_profile: local-ok
+
+container:
+  image: svdvoort/dcm2niix
+  tag: "1.0.20250506"
+  engine: docker
+
+# dcm2niix takes a raw DICOM directory as its last positional argument,
+# not a BIDS dataset. dataset_positional:false skips the /data /out prefix.
+# The DICOM directory is mounted via the dicom-dir param (mount:true,
+# positional_suffix:true) and appended as the final positional arg.
+dataset_positional: false
+
+inputs:
+  - dicom_directory
+
+outputs:
+  - nifti
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: dicom-dir
+    type: directory_path
+    required: true
+    mount: true
+    positional_suffix: true
+    help: >
+      Full path to the folder containing DICOM files from the scanner.
+      Can be a subject folder, a session folder, or any directory dcm2niix
+      should search recursively. Subdirectories are included automatically
+      (search depth 5). Example: /Users/you/Documents/MRI/sub-01/DICOM.
+      The folder is mounted read-only into the container.
+
+  # ── Output settings ───────────────────────────────────────────────────
+  - name: output-dir
+    cli_flag: "-o"
+    type: string
+    required: false
+    default: /out
+    advanced: true
+    help: >
+      Output directory inside the container. The default /out maps to the
+      run's output folder on your machine — do not change this unless you
+      have a specific reason, as outputs written elsewhere will be lost
+      when the container stops.
+
+  - name: filename
+    cli_flag: "-f"
+    type: string
+    required: false
+    default: "%p_%t_%s"
+    help: >
+      Filename template for converted NIfTI files. Uses printf-style
+      substitutions: %p=protocol name, %t=time, %s=series number,
+      %n=patient name, %d=description, %f=folder name. The default
+      "%p_%t_%s" produces names like "MPRAGE_20240101120000_1.nii.gz".
+      For BIDS-compatible naming, "%p_%s" is simpler. See dcm2niix
+      documentation for the full list of substitution codes.
+
+  # ── Conversion options ────────────────────────────────────────────────
+  - name: bids-sidecar
+    cli_flag: "-b"
+    type: select
+    required: false
+    default: "y"
+    options:
+      - "y"
+      - "n"
+      - "o"
+    help: >
+      Generate BIDS JSON sidecar files alongside each NIfTI. "y" (default)
+      writes a .json sidecar with acquisition parameters (TR, TE, flip angle,
+      slice timing, etc.) — required for BIDS validation and fMRIPrep.
+      "n" skips sidecar generation. "o" generates only JSON sidecars with
+      no NIfTI files (useful for metadata extraction).
+
+  - name: compress
+    cli_flag: "-z"
+    type: select
+    required: false
+    default: "y"
+    options:
+      - "y"
+      - "i"
+      - "n"
+    help: >
+      Compress NIfTI output with gzip (.nii.gz). "y" (default) uses
+      pigz for parallel compression — fastest on multi-core machines.
+      "i" uses the internal zlib compressor — slower but no pigz dependency.
+      "n" writes uncompressed .nii files — larger but compatible with
+      software that cannot read .gz directly.
+
+  # ── Advanced ──────────────────────────────────────────────────────────
+  - name: depth
+    cli_flag: "-d"
+    type: integer
+    required: false
+    default: 5
+    advanced: true
+    help: >
+      How many levels of subdirectories to search for DICOM files under
+      the input folder. Default 5 covers virtually all scanner directory
+      structures. Set to 0 to only convert DICOMs directly in the input
+      folder without recursing into subdirectories.
+
+  - name: ignore-derived
+    cli_flag: "-i"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Ignore derived images, localizers, and 2D images during conversion.
+      Useful when your DICOM folder includes scout/localizer scans that you
+      do not want in the output. Disabled by default so all series are
+      converted — you can delete unwanted NIfTI files afterward.
+
+  - name: anonymize-bids
+    cli_flag: "-ba"
+    type: select
+    required: false
+    default: "y"
+    options:
+      - "y"
+      - "n"
+    advanced: true
+    help: >
+      Anonymize patient-identifying fields in the BIDS JSON sidecar. "y"
+      (default) removes or blanks name, date-of-birth, and similar fields
+      from the JSON output. "n" preserves all DICOM metadata in the JSON —
+      use only for internal datasets where you control data access.
+
+  - name: verbose
+    cli_flag: "-v"
+    type: select
+    required: false
+    default: "0"
+    options:
+      - "0"
+      - "1"
+      - "2"
+    advanced: true
+    help: >
+      Verbosity level. "0" (default) prints only errors and summary.
+      "1" prints each converted series. "2" (logorrheic) prints every
+      DICOM file processed — useful for debugging conversion problems.
+
+max_runtime_hours: 0.5
+
+# ── Manual testing reference ─────────────────────────────────────────────────
+# Two test datasets are available for manual validation via the UI:
+#
+# 1. CLEAN SUCCESS (recommended for "is this working?" checks):
+#    backend/tests/data/dicom-structural/dicoms
+#    Source: https://github.com/datalad/example-dicom-structural (PDDL — public domain)
+#    Contents: 384 DICOMs, single T1w structural series (274×384×384 @ 0.7×0.667×0.667 mm)
+#    StudyForrest project, de-faced and anonymised. Run 26 confirmed status=success,
+#    output: anat-T1w_20130717141500_401.nii.gz + BIDS JSON sidecar.
+#    Git-clone to populate: git clone --depth=1
+#      https://github.com/datalad/example-dicom-structural.git /tmp/example-dicom-structural
+#      cp -r /tmp/example-dicom-structural/dicoms backend/tests/data/dicom-structural/
+#    (The dicoms/ folder is .gitignored — must be re-cloned after a fresh checkout.)
+#
+# 2. PARTIAL CONVERSION (tests known_errors / exit-code-8 path):
+#    backend/.venv/lib/python3.12/site-packages/nibabel/tests/data
+#    Contains mixed formats (real DICOMs, PAR/REC, PET files, incomplete series).
+#    dcm2niix converts 6/34 files and exits code 8 → NeuroForge status=failed.
+#    Use this to verify the "Converted N of M files" known_error entry fires correctly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "Input folder invalid|No DICOMs found|Error: no DICOMs"
+    explanation: >
+      dcm2niix could not find any DICOM files in the folder you specified.
+      This usually means the path is wrong, the folder contains no .dcm
+      files, or all DICOMs were filtered out by the ignore-derived setting.
+    fix_hint: >
+      Verify the "dicom-dir" path points to a folder that directly contains
+      DICOM files or has them in subdirectories. DICOM files may have any
+      extension (.dcm, .ima, or no extension). If using ignore-derived=true,
+      try setting it to false to include all series.
+
+  - pattern: "Permission denied|cannot read"
+    explanation: >
+      dcm2niix could not read one or more DICOM files due to filesystem
+      permissions. This can happen if the DICOM folder is owned by a
+      different user or has restricted permissions.
+    fix_hint: >
+      Check that the DICOM folder is readable: run "ls -la /path/to/dicoms"
+      in a terminal and ensure your user has read access. If the folder was
+      created by root or another user, you may need to change ownership
+      or copy the DICOMs to a location you own.
+
+  - pattern: "Cannot allocate memory|out of memory"
+    explanation: >
+      dcm2niix ran out of memory during conversion. This is unusual for
+      standard clinical DICOMs but can occur with very large raw k-space
+      datasets or when many series are converted simultaneously.
+    fix_hint: >
+      Increase the memory allocated to Docker Desktop (Settings → Resources
+      → Memory) to at least 4 GB and retry. If the issue persists, try
+      converting a smaller subset of the DICOM folder.
+
+  - pattern: "Converted \\d+ of \\d+ files|Error: Converted"
+    explanation: >
+      dcm2niix converted some but not all files in the DICOM folder. This
+      is common when a folder contains mixed content — real acquisition DICOMs
+      alongside localizers, derived images, incomplete series, or files in
+      formats dcm2niix does not support (e.g. Philips PAR/REC without the
+      matching .rec file). Check the output folder: successfully converted
+      series will have .nii.gz and .json files ready to use.
+    fix_hint: >
+      Inspect the log for "Error:" lines — each names the problematic file.
+      If the files you care about were converted (check the output folder),
+      the run is effectively successful despite the exit code. Enable
+      ignore-derived=true to skip localizer and scout series automatically.
+      For Philips PAR/REC data, export from the scanner as classic DICOM
+      instead of PAR/REC format.
+
+  - pattern: "Warning.*no volumes|0 volumes"
+    explanation: >
+      dcm2niix processed the DICOM folder but produced no output volumes.
+      This happens when all series were filtered out (e.g. by ignore-derived)
+      or when the DICOMs are incomplete (missing slices in a series).
+    fix_hint: >
+      Set ignore-derived to false to include derived and localizer series.
+      Check the log for per-series warnings about missing slices. If the
+      DICOM transfer is incomplete, re-export from the scanner.

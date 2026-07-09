@@ -1,7 +1,22 @@
 import { useState } from "react";
-import type { PipelineSummary } from "../api/client";
+import type { ComputeProfile, PipelineSummary } from "../api/client";
 import PipelineParameterForm from "../components/domain/PipelineParameterForm";
 import { usePipeline, usePipelines } from "../hooks/usePipelines";
+
+const COMPUTE_PROFILE_BADGE: Record<ComputeProfile, { label: string; className: string }> = {
+  "local-ok": {
+    label: "Local OK",
+    className: "bg-green-100 text-green-700 border border-green-200",
+  },
+  "local-slow": {
+    label: "Slow locally",
+    className: "bg-amber-100 text-amber-700 border border-amber-200",
+  },
+  "local-unsafe": {
+    label: "Cloud recommended",
+    className: "bg-red-100 text-red-700 border border-red-200",
+  },
+};
 
 function PipelineCard({
   pipeline,
@@ -23,7 +38,14 @@ function PipelineCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-semibold text-gray-900">{pipeline.display_name}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-gray-900">{pipeline.display_name}</h3>
+            {pipeline.compute_profile && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COMPUTE_PROFILE_BADGE[pipeline.compute_profile].className}`}>
+                {COMPUTE_PROFILE_BADGE[pipeline.compute_profile].label}
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-sm text-gray-500 line-clamp-2">
             {pipeline.description}
           </p>
