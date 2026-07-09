@@ -137,6 +137,22 @@ parameters:
       macOS Docker configurations. Use "cpu" unless you have confirmed GPU
       support in your Docker setup.
 
+accepts:
+  - type: nifti_raw
+    param: t1
+    label: "T1w NIfTI"
+    description: "Raw structural T1w; typically the output of dcm2niix"
+  - type: nifti_skull_stripped
+    param: t1
+    label: "Skull-Stripped T1w"
+    description: "Pre-skull-stripped brain; output of BrainChop — skips internal skull-strip step"
+
+produces:
+  - type: freesurfer_dir
+    path_hint: ""
+    label: "FastSurfer Subject Directory"
+    description: "Reconstruction output directory (mri/, surf/, stats/) written to output_dir"
+
 max_runtime_hours: 40
 
 known_errors:

@@ -147,6 +147,22 @@ parameters:
       Skip metric computation and only regenerate HTML reports from a
       previous run's outputs.
 
+accepts:
+  - type: bids_dataset
+    dataset_slot: true
+    label: "BIDS Dataset"
+    description: "Any BIDS-organized dataset; select from the Datasets list"
+  - type: bids_dataset_validated
+    dataset_slot: true
+    label: "Validated BIDS Dataset"
+    description: "Recommended: output of a successful BIDS Validator run"
+
+produces:
+  - type: mriqc_report
+    path_hint: ""
+    label: "MRIQC Report"
+    description: "HTML reports and image quality metrics (IQMs) for all participants"
+
 max_runtime_hours: 6
 
 known_errors:

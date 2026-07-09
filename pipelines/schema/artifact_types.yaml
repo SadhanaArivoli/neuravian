@@ -1,0 +1,45 @@
+# NeuroForge artifact type vocabulary.
+# Each slug is stable — rename only with a migration.
+# Manifests reference these slugs in accepts[].type and produces[].type.
+
+artifact_types:
+
+  nifti_raw:
+    label: "Raw NIfTI"
+    description: "Unprocessed structural or functional NIfTI image (T1w, T2w, BOLD, etc.)"
+    extensions: [".nii", ".nii.gz"]
+
+  nifti_skull_stripped:
+    label: "Skull-Stripped Brain"
+    description: "NIfTI image with non-brain tissue removed"
+    extensions: [".nii", ".nii.gz"]
+
+  nifti_defaced:
+    label: "Defaced NIfTI"
+    description: "NIfTI image with facial features removed for de-identification"
+    extensions: [".nii", ".nii.gz"]
+
+  bids_dataset:
+    label: "BIDS Dataset"
+    description: "A directory conforming to the Brain Imaging Data Structure standard"
+    extensions: []
+
+  bids_dataset_validated:
+    label: "Validated BIDS Dataset"
+    description: "A BIDS dataset that has passed bids-validator with no errors"
+    extensions: []
+
+  freesurfer_dir:
+    label: "FreeSurfer Subject Directory"
+    description: "Output directory from recon-all or FastSurfer containing surf/, mri/, stats/"
+    extensions: []
+
+  mriqc_report:
+    label: "MRIQC Report"
+    description: "MRIQC output directory containing HTML reports and group-level TSV/JSON"
+    extensions: []
+
+  fmriprep_derivatives:
+    label: "fMRIPrep Derivatives"
+    description: "fMRIPrep output derivatives directory with preprocessed NIfTI and confounds"
+    extensions: []

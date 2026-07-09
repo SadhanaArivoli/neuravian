@@ -148,6 +148,12 @@ parameters:
       includes processed derivatives (e.g. from fMRIPrep or MRIQC) that you
       also want to check for BIDS Derivatives compliance.
 
+produces:
+  - type: bids_dataset_validated
+    source_param: bids-dir
+    label: "Validated BIDS Dataset"
+    description: "The input dataset, confirmed BIDS-compliant — safe to use as input to MRIQC or fMRIPrep"
+
 max_runtime_hours: 0.25
 
 # ── Manual testing reference ─────────────────────────────────────────────────

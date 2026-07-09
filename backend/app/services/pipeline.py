@@ -49,7 +49,53 @@ def _load_manifest(path: Path, schema: dict[str, Any]) -> dict[str, Any]:
         raise ManifestError(f"{path.name}: must have either 'container' or 'execution' block")
     if has_container and has_execution:
         raise ManifestError(f"{path.name}: cannot have both 'container' and 'execution' blocks")
+    _validate_chaining_fields(path.name, data)
     return data
+
+
+def _validate_chaining_fields(filename: str, data: dict[str, Any]) -> None:
+    """Emit startup warnings (not errors) for invalid accepts/produces fields.
+
+    Validates that:
+    - accepts[].param refers to an existing parameters[].name, unless dataset_slot is true
+    - accepts[] entries have either param or dataset_slot: true, not neither
+    - produces[] entries with source_param have that param in parameters[]
+    """
+    param_names = {p["name"] for p in data.get("parameters", [])}
+    pid = data.get("id", filename)
+
+    for i, slot in enumerate(data.get("accepts", [])):
+        is_dataset_slot = slot.get("dataset_slot", False)
+        param = slot.get("param")
+        if is_dataset_slot:
+            if param:
+                log.warning(
+                    "Manifest %s: accepts[%d] has both dataset_slot:true and param:'%s' — "
+                    "param is ignored when dataset_slot is true",
+                    pid, i, param,
+                )
+        else:
+            if not param:
+                log.warning(
+                    "Manifest %s: accepts[%d] (type:'%s') has no param and dataset_slot is false — "
+                    "this accept slot cannot be used for chaining",
+                    pid, i, slot.get("type", "?"),
+                )
+            elif param not in param_names:
+                log.warning(
+                    "Manifest %s: accepts[%d].param '%s' does not match any parameters[].name — "
+                    "chaining to this slot will fail at runtime. Valid names: %s",
+                    pid, i, param, sorted(param_names),
+                )
+
+    for i, slot in enumerate(data.get("produces", [])):
+        src = slot.get("source_param")
+        if src and src not in param_names:
+            log.warning(
+                "Manifest %s: produces[%d].source_param '%s' does not match any parameters[].name — "
+                "semantic artifact path resolution will fail. Valid names: %s",
+                pid, i, src, sorted(param_names),
+            )
 
 
 def load_all_manifests() -> dict[str, dict[str, Any]]:

@@ -128,6 +128,18 @@ parameters:
       the same voxel grid as the input. Useful if you need the mask to
       align exactly with the original scan for region-of-interest analysis.
 
+accepts:
+  - type: nifti_raw
+    param: input-file
+    label: "T1w NIfTI to skull-strip"
+    description: "Structural NIfTI; typically the output of dcm2niix"
+
+produces:
+  - type: nifti_skull_stripped
+    path_hint: "stripped.nii.gz"
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from BrainChop MindGrab model (stripped.nii.gz)"
+
 max_runtime_hours: 0.5
 
 # ── Manual testing reference ─────────────────────────────────────────────────

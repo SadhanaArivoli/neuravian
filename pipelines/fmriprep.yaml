@@ -235,6 +235,22 @@ parameters:
       If left blank, fMRIPrep creates a temporary directory that is deleted
       on completion.
 
+accepts:
+  - type: bids_dataset
+    dataset_slot: true
+    label: "BIDS Dataset"
+    description: "Any BIDS-organized dataset; select from the Datasets list"
+  - type: bids_dataset_validated
+    dataset_slot: true
+    label: "Validated BIDS Dataset"
+    description: "Recommended: output of a successful BIDS Validator run"
+
+produces:
+  - type: fmriprep_derivatives
+    path_hint: ""
+    label: "fMRIPrep Derivatives"
+    description: "Preprocessed BOLD derivatives with confound regressors, ready for first-level modelling"
+
 max_runtime_hours: 24
 
 known_errors:

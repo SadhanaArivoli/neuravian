@@ -103,6 +103,18 @@ parameters:
       output showing each registration step. Useful for debugging cases
       where the defacing mask appears misaligned.
 
+accepts:
+  - type: nifti_raw
+    param: nifti-file
+    label: "NIfTI to deface"
+    description: "Structural NIfTI; typically the output of dcm2niix"
+
+produces:
+  - type: nifti_defaced
+    path_hint: "defaced.nii.gz"
+    label: "Defaced NIfTI"
+    description: "De-identified NIfTI with facial features zeroed out (defaced.nii.gz)"
+
 max_runtime_hours: 1.0
 
 # ── Compute profile note ─────────────────────────────────────────────────────

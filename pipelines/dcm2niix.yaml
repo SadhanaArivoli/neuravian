@@ -156,6 +156,13 @@ parameters:
       "1" prints each converted series. "2" (logorrheic) prints every
       DICOM file processed — useful for debugging conversion problems.
 
+produces:
+  - type: nifti_raw
+    path_hint: "*.nii.gz"
+    label: "Converted NIfTI"
+    description: "NIfTI files converted from the DICOM input; can feed BrainChop, FastSurfer, or pydeface"
+    multiple: true
+
 max_runtime_hours: 0.5
 
 # ── Manual testing reference ─────────────────────────────────────────────────
