@@ -8,17 +8,24 @@ vi.mock("@niivue/niivue", () => ({
   Niivue: vi.fn().mockImplementation(() => ({
     attachToCanvas: vi.fn(),
     loadVolumes: vi.fn().mockResolvedValue(undefined),
+    setOpacity: vi.fn(),
   })),
+  cmapper: {
+    makeLabelLut: vi.fn().mockReturnValue({ lut: new Uint8ClampedArray(0) }),
+  },
 }));
 
 describe("NiivueViewer", () => {
+  const singleLayer = [
+    { url: "/api/datasets/5/files/sub-01/anat/sub-01_T1w.nii.gz", name: "sub-01_T1w.nii.gz" },
+  ];
+
   const defaultProps = {
-    fileUrl: "/api/datasets/5/files/sub-01/anat/sub-01_T1w.nii.gz",
-    fileName: "sub-01_T1w.nii.gz",
+    layers: singleLayer,
     onClose: vi.fn(),
   };
 
-  it("renders the file name in the header", () => {
+  it("renders the base layer name in the header", () => {
     render(<NiivueViewer {...defaultProps} />);
     expect(screen.getByText("sub-01_T1w.nii.gz")).toBeInTheDocument();
   });
@@ -28,9 +35,18 @@ describe("NiivueViewer", () => {
     expect(screen.getByTestId("niivue-canvas")).toBeInTheDocument();
   });
 
-  it("shows a loading indicator initially", () => {
+  it("shows a loading indicator initially (single layer)", () => {
     render(<NiivueViewer {...defaultProps} />);
     expect(screen.getByText("Loading scan…")).toBeInTheDocument();
+  });
+
+  it("shows a multi-layer loading message when given multiple layers", () => {
+    const multiLayers = [
+      { url: "/api/runs/1/files/orig.mgz", name: "orig.mgz" },
+      { url: "/api/runs/1/files/aseg.auto.mgz", name: "aseg.auto.mgz", isSegmentation: true as const },
+    ];
+    render(<NiivueViewer layers={multiLayers} onClose={vi.fn()} />);
+    expect(screen.getByText("Loading 2 layers…")).toBeInTheDocument();
   });
 
   it("calls onClose when the close button is clicked", () => {

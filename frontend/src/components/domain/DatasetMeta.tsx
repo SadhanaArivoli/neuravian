@@ -90,8 +90,10 @@ function ScanBrowser({ datasetId }: { datasetId: number }) {
     <>
       {viewerFile && (
         <NiivueViewer
-          fileUrl={scanFileUrl(datasetId, viewerFile.path)}
-          fileName={viewerFile.path.split("/").pop() ?? viewerFile.path}
+          layers={[{
+            url: scanFileUrl(datasetId, viewerFile.path),
+            name: viewerFile.path.split("/").pop() ?? viewerFile.path,
+          }]}
           onClose={() => setViewerFile(null)}
         />
       )}

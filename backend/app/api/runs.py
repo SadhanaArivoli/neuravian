@@ -113,14 +113,15 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.rglob("sub-*.json"))
     ]
-    # NIfTI derivatives: any .nii or .nii.gz file in the output tree.
-    # MRIQC produces none; fMRIPrep and similar tools produce many.
-    # FileResponse serves these as application/octet-stream, which is
-    # correct — Niivue reads format from the filename, not Content-Type.
+    # Volumetric files: NIfTI (.nii/.nii.gz) and FreeSurfer MGZ (.mgz).
+    # MRIQC produces none; fMRIPrep and FastSurfer produce many.
+    # NiiVue reads format from the filename, not Content-Type, so
+    # serving as application/octet-stream is correct for all three.
+    _VOL_EXTS = (".nii.gz", ".nii", ".mgz")
     niftis = [
         {"name": f.name, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.rglob("*"))
-        if f.name.endswith(".nii.gz") or f.name.endswith(".nii")
+        if any(f.name.endswith(ext) for ext in _VOL_EXTS)
     ]
     return {"reports": reports, "metrics": metrics, "niftis": niftis}
 

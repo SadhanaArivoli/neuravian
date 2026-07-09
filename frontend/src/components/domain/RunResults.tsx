@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRunFile, useRunResults } from "../../hooks/useRuns";
-import NiivueViewer from "./NiivueViewer";
+import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -91,6 +91,33 @@ interface RunResultFile {
   path: string;
 }
 
+/** Detect a FastSurfer base+segmentation pair and return pre-wired NiivueLayer[].
+ *  Returns null when the file list doesn't look like FastSurfer output. */
+function detectFastSurferLayers(
+  niftis: RunResultFile[],
+  runId: number
+): NiivueLayer[] | null {
+  const base = niftis.find(
+    (f) => f.name === "orig.mgz" || f.name === "T1.mgz"
+  );
+  const seg = niftis.find(
+    (f) =>
+      f.name === "aseg.auto.mgz" ||
+      (f.name.includes("aseg") && f.name.endsWith(".mgz")) ||
+      (f.name.includes("aparc") && f.name.endsWith(".mgz"))
+  );
+  if (!base || !seg) return null;
+  return [
+    { url: `/api/runs/${runId}/files/${base.path}`, name: base.name },
+    {
+      url: `/api/runs/${runId}/files/${seg.path}`,
+      name: seg.name,
+      isSegmentation: true,
+      opacity: 0.7,
+    },
+  ];
+}
+
 interface Props {
   runId: number;
 }
@@ -98,7 +125,7 @@ interface Props {
 export default function RunResults({ runId }: Props) {
   const { data: results, isLoading, error } = useRunResults(runId, true);
   const [activeReport, setActiveReport] = useState(0);
-  const [viewerNifti, setViewerNifti] = useState<RunResultFile | null>(null);
+  const [viewerLayers, setViewerLayers] = useState<NiivueLayer[] | null>(null);
 
   const firstMetricPath = results?.metrics[0]?.path ?? null;
   const { data: iqmData } = useRunFile<IqmData>(runId, firstMetricPath);
@@ -214,12 +241,13 @@ export default function RunResults({ runId }: Props) {
         </details>
       )}
 
-      {/* NIfTI derivative viewer — hidden for pipelines (e.g. MRIQC) that
-          produce no .nii/.nii.gz outputs; visible for fMRIPrep and others. */}
+      {/* Volumetric file viewer — .nii/.nii.gz/.mgz output from pipelines.
+          FastSurfer pairs (orig.mgz + aseg) are opened as a 2-layer overlay;
+          all other files open as single-volume. */}
       {niftis.length > 0 && (
         <div className="mt-4">
           <h3 className="text-sm font-semibold text-gray-100 mb-2">
-            NIfTI derivatives ({niftis.length})
+            Volume files ({niftis.length})
           </h3>
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
             {niftis.map((f) => (
@@ -229,7 +257,20 @@ export default function RunResults({ runId }: Props) {
               >
                 <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
                 <button
-                  onClick={() => setViewerNifti(f)}
+                  onClick={() => {
+                    const fastSurferLayers = detectFastSurferLayers(niftis, runId);
+                    if (
+                      fastSurferLayers &&
+                      (f.name === fastSurferLayers[0].name || f.name === fastSurferLayers[1].name)
+                    ) {
+                      setViewerLayers(fastSurferLayers);
+                    } else {
+                      setViewerLayers([{
+                        url: `/api/runs/${runId}/files/${f.path}`,
+                        name: f.name,
+                      }]);
+                    }
+                  }}
                   className="shrink-0 rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
                 >
                   View
@@ -237,15 +278,22 @@ export default function RunResults({ runId }: Props) {
               </div>
             ))}
           </div>
+          {(() => {
+            const fastSurferLayers = detectFastSurferLayers(niftis, runId);
+            return fastSurferLayers ? (
+              <p className="mt-2 text-xs text-gray-400">
+                FastSurfer output detected — clicking orig.mgz or aseg files opens base + segmentation overlay.
+              </p>
+            ) : null;
+          })()}
         </div>
       )}
 
-      {/* NiivueViewer modal — reuses the same component as the dataset scan browser */}
-      {viewerNifti && (
+      {/* NiivueViewer modal */}
+      {viewerLayers && (
         <NiivueViewer
-          fileUrl={`/api/runs/${runId}/files/${viewerNifti.path}`}
-          fileName={viewerNifti.name}
-          onClose={() => setViewerNifti(null)}
+          layers={viewerLayers}
+          onClose={() => setViewerLayers(null)}
         />
       )}
     </div>
