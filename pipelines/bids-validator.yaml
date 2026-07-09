@@ -148,6 +148,12 @@ parameters:
       includes processed derivatives (e.g. from fMRIPrep or MRIQC) that you
       also want to check for BIDS Derivatives compliance.
 
+accepts:
+  - type: bids_dataset
+    param: bids-dir
+    label: "BIDS Dataset to validate"
+    description: "A BIDS-organized dataset directory; typically the top-level folder containing dataset_description.json"
+
 produces:
   - type: bids_dataset_validated
     source_param: bids-dir
