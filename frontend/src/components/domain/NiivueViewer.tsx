@@ -12,8 +12,11 @@ async function loadNiivue() {
 export interface NiivueLayer {
   url: string;
   name: string;
-  /** When true, renders using the FreeSurfer aseg color LUT instead of grayscale. */
+  /** When true, renders using the FreeSurfer aseg color LUT (label overlay). */
   isSegmentation?: boolean;
+  /** NiiVue built-in colormap name for non-segmentation overlays (e.g. "hot", "green").
+   *  Ignored when isSegmentation is true. Defaults to "gray" for the base layer. */
+  colormap?: string;
   /** Initial opacity (0–1). Defaults to 1.0 for the base layer, 0.7 for overlays. */
   opacity?: number;
 }
@@ -79,7 +82,10 @@ export default function NiivueViewer({ layers, onClose }: Props) {
         const volumeOptions = layers.map((layer, idx) => ({
           url: layer.url,
           opacity: idx === 0 ? (layer.opacity ?? 1.0) : (layer.opacity ?? 0.7),
-          colormap: layer.isSegmentation ? "" : "gray",
+          // isSegmentation: suppress colormap, supply label LUT instead
+          // colormap set: use caller-specified built-in (e.g. "hot" for binary masks)
+          // default: "gray" for base, "gray" for unlabeled overlays
+          colormap: layer.isSegmentation ? "" : (layer.colormap ?? "gray"),
           ...(layer.isSegmentation && fsLut ? { colormapLabel: fsLut } : {}),
         }));
 

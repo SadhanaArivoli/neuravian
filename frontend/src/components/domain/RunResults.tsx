@@ -91,31 +91,70 @@ interface RunResultFile {
   path: string;
 }
 
-/** Detect a FastSurfer base+segmentation pair and return pre-wired NiivueLayer[].
- *  Returns null when the file list doesn't look like FastSurfer output. */
-function detectFastSurferLayers(
+interface LayerPairSpec {
+  /** Human-readable label shown in the hint line below the file list. */
+  label: string;
+  /** Names of files that belong to this pair (base + overlay). Used to
+   *  decide which "View" buttons trigger the multi-layer mode. */
+  memberNames: string[];
+  layers: NiivueLayer[];
+}
+
+/**
+ * Tries each known pipeline output pattern in order and returns the first
+ * match. Returns null when none of the file lists match a known pattern.
+ *
+ * Adding support for a new pipeline: append a new block that detects the
+ * pipeline's characteristic file names and returns a LayerPairSpec.
+ */
+function detectLayerPairs(
   niftis: RunResultFile[],
   runId: number
-): NiivueLayer[] | null {
-  const base = niftis.find(
-    (f) => f.name === "orig.mgz" || f.name === "T1.mgz"
-  );
-  const seg = niftis.find(
-    (f) =>
-      f.name === "aseg.auto.mgz" ||
-      (f.name.includes("aseg") && f.name.endsWith(".mgz")) ||
-      (f.name.includes("aparc") && f.name.endsWith(".mgz"))
-  );
-  if (!base || !seg) return null;
-  return [
-    { url: `/api/runs/${runId}/files/${base.path}`, name: base.name },
-    {
-      url: `/api/runs/${runId}/files/${seg.path}`,
-      name: seg.name,
-      isSegmentation: true,
-      opacity: 0.7,
-    },
-  ];
+): LayerPairSpec | null {
+  const url = (f: RunResultFile) => `/api/runs/${runId}/files/${f.path}`;
+
+  // ── FastSurfer ──────────────────────────────────────────────────────────
+  // orig.mgz (conformed T1) + aparc/aseg label overlay
+  {
+    const base = niftis.find((f) => f.name === "orig.mgz" || f.name === "T1.mgz");
+    const seg = niftis.find(
+      (f) =>
+        f.name === "aseg.auto.mgz" ||
+        (f.name.includes("aseg") && f.name.endsWith(".mgz")) ||
+        (f.name.includes("aparc") && f.name.endsWith(".mgz"))
+    );
+    if (base && seg) {
+      return {
+        label: "FastSurfer output detected — clicking orig.mgz or aseg files opens base + segmentation overlay.",
+        memberNames: [base.name, seg.name],
+        layers: [
+          { url: url(base), name: base.name },
+          { url: url(seg), name: seg.name, isSegmentation: true, opacity: 0.7 },
+        ],
+      };
+    }
+  }
+
+  // ── BrainChop ───────────────────────────────────────────────────────────
+  // stripped.nii.gz (skull-stripped T1) + brain_mask.nii.gz (binary mask)
+  // The mask is 0/1, not a label map, so we use the "hot" colormap rather
+  // than the FreeSurfer LUT.
+  {
+    const base = niftis.find((f) => f.name === "stripped.nii.gz");
+    const mask = niftis.find((f) => f.name === "brain_mask.nii.gz");
+    if (base && mask) {
+      return {
+        label: "BrainChop output detected — clicking either file opens skull-stripped T1 with brain mask overlay.",
+        memberNames: [base.name, mask.name],
+        layers: [
+          { url: url(base), name: base.name },
+          { url: url(mask), name: mask.name, colormap: "hot", opacity: 0.4 },
+        ],
+      };
+    }
+  }
+
+  return null;
 }
 
 interface Props {
@@ -242,52 +281,46 @@ export default function RunResults({ runId }: Props) {
       )}
 
       {/* Volumetric file viewer — .nii/.nii.gz/.mgz output from pipelines.
-          FastSurfer pairs (orig.mgz + aseg) are opened as a 2-layer overlay;
+          Known pairs (FastSurfer, BrainChop) open as multi-layer overlays;
           all other files open as single-volume. */}
-      {niftis.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold text-gray-100 mb-2">
-            Volume files ({niftis.length})
-          </h3>
-          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-            {niftis.map((f) => (
-              <div
-                key={f.path}
-                className="flex items-center justify-between px-3 py-2 bg-white gap-3"
-              >
-                <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
-                <button
-                  onClick={() => {
-                    const fastSurferLayers = detectFastSurferLayers(niftis, runId);
-                    if (
-                      fastSurferLayers &&
-                      (f.name === fastSurferLayers[0].name || f.name === fastSurferLayers[1].name)
-                    ) {
-                      setViewerLayers(fastSurferLayers);
-                    } else {
-                      setViewerLayers([{
-                        url: `/api/runs/${runId}/files/${f.path}`,
-                        name: f.name,
-                      }]);
-                    }
-                  }}
-                  className="shrink-0 rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+      {niftis.length > 0 && (() => {
+        const pair = detectLayerPairs(niftis, runId);
+        return (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-gray-100 mb-2">
+              Volume files ({niftis.length})
+            </h3>
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {niftis.map((f) => (
+                <div
+                  key={f.path}
+                  className="flex items-center justify-between px-3 py-2 bg-white gap-3"
                 >
-                  View
-                </button>
-              </div>
-            ))}
+                  <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
+                  <button
+                    onClick={() => {
+                      if (pair && pair.memberNames.includes(f.name)) {
+                        setViewerLayers(pair.layers);
+                      } else {
+                        setViewerLayers([{
+                          url: `/api/runs/${runId}/files/${f.path}`,
+                          name: f.name,
+                        }]);
+                      }
+                    }}
+                    className="shrink-0 rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                  >
+                    View
+                  </button>
+                </div>
+              ))}
+            </div>
+            {pair && (
+              <p className="mt-2 text-xs text-gray-400">{pair.label}</p>
+            )}
           </div>
-          {(() => {
-            const fastSurferLayers = detectFastSurferLayers(niftis, runId);
-            return fastSurferLayers ? (
-              <p className="mt-2 text-xs text-gray-400">
-                FastSurfer output detected — clicking orig.mgz or aseg files opens base + segmentation overlay.
-              </p>
-            ) : null;
-          })()}
-        </div>
-      )}
+        );
+      })()}
 
       {/* NiivueViewer modal */}
       {viewerLayers && (
