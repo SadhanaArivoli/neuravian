@@ -3,9 +3,10 @@ import { useHealth } from "../../hooks/useHealth";
 import { StatusBadge } from "./StatusBadge";
 
 const NAV_ITEMS = [
-  { to: "/datasets", label: "Datasets" },
-  { to: "/pipelines", label: "Pipelines" },
-  { to: "/runs", label: "Runs" },
+  { to: "/", label: "Home", end: true },
+  { to: "/datasets", label: "Datasets", end: false },
+  { to: "/pipelines", label: "Pipelines", end: false },
+  { to: "/runs", label: "Runs", end: false },
 ] as const;
 
 export function Sidebar() {
@@ -19,10 +20,11 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 flex-1">
-        {NAV_ITEMS.map(({ to, label }) => (
+        {NAV_ITEMS.map(({ to, label, end }) => (
           <NavLink
             key={to}
             to={to}
+            end={end}
             className={({ isActive }) =>
               `rounded-md px-3 py-2 text-sm transition-colors ${
                 isActive

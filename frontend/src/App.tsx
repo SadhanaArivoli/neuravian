@@ -1,10 +1,11 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { Sidebar } from "./components/primitives/Sidebar";
 import DatasetDetail from "./pages/DatasetDetail";
 import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
 import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
+import Welcome from "./pages/Welcome";
 
 export default function App() {
   return (
@@ -12,7 +13,7 @@ export default function App() {
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <Routes>
-          <Route path="/" element={<Navigate to="/datasets" replace />} />
+          <Route path="/" element={<Welcome />} />
           <Route path="/datasets" element={<Datasets />} />
           <Route path="/datasets/:id" element={<DatasetDetail />} />
           <Route path="/pipelines" element={<Pipelines />} />
