@@ -191,11 +191,13 @@ function SeriesCard({
 // ── Input field helper ────────────────────────────────────────────────────────
 
 function Field({
+  htmlFor,
   label,
   hint,
   required,
   children,
 }: {
+  htmlFor: string;
   label: string;
   hint?: string;
   required?: boolean;
@@ -203,7 +205,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-200 mb-1">
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-200 mb-1">
         {label}
         {required && <span className="ml-1 text-red-400">*</span>}
       </label>
@@ -292,27 +294,31 @@ export default function WizardDcm2bids() {
         <h3 className="text-sm font-semibold text-gray-200 mb-4">Step 1 — Choose DICOM source</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field
+            htmlFor="dicom-path"
             label="DICOM folder"
             required
             hint="Full path to the folder containing DICOM files from the scanner. Must be inside your configured data directory."
           >
             <input
+              id="dicom-path"
               className={inputCls}
               type="text"
               value={dicomPath}
               onChange={(e) => setDicomPath(e.target.value)}
-              placeholder="/Users/you/Documents/MRI/sub-01/DICOM"
+              placeholder="/Users/you/Documents/MRI/DICOM"
               required
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
             <Field
+              htmlFor="participant-id"
               label="Participant ID"
               required
               hint="BIDS subject label (e.g. sub-01)"
             >
               <input
+                id="participant-id"
                 className={inputCls}
                 type="text"
                 value={participantId}
@@ -323,10 +329,12 @@ export default function WizardDcm2bids() {
             </Field>
 
             <Field
+              htmlFor="session-id"
               label="Session ID"
               hint="Optional BIDS session label (e.g. ses-01)"
             >
               <input
+                id="session-id"
                 className={inputCls}
                 type="text"
                 value={sessionId}
@@ -337,10 +345,12 @@ export default function WizardDcm2bids() {
           </div>
 
           <Field
+            htmlFor="dataset-name"
             label="Dataset name"
             hint="A friendly name for this study — used in dataset_description.json"
           >
             <input
+              id="dataset-name"
               className={inputCls}
               type="text"
               value={datasetName}
