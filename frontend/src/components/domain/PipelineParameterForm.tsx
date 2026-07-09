@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ComputeProfile, Pipeline, PipelineParameter } from "../../api/client";
+import type { ComputeProfile, Pipeline, PipelineParameter, PrefillContext } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
 import { useCreateRun } from "../../hooks/useRuns";
 
 interface Props {
   pipeline: Pipeline;
+  prefill?: PrefillContext | null;
 }
 
 type FormValues = Record<string, string | boolean | string[]>;
@@ -191,10 +192,14 @@ function ParameterRow({
   param,
   value,
   onChange,
+  prefillText,
+  prefillOverridden,
 }: {
   param: PipelineParameter;
   value: string | boolean | string[];
   onChange: (val: string | boolean | string[]) => void;
+  prefillText?: string;
+  prefillOverridden?: boolean;
 }) {
   return (
     <div>
@@ -206,6 +211,13 @@ function ParameterRow({
         {param.help && <HelpTooltip text={param.help} />}
       </label>
       <ParameterField param={param} value={value} onChange={onChange} />
+      {prefillText && (
+        <p className={`mt-1 text-xs ${prefillOverridden ? "text-amber-600" : "text-purple-500"}`}>
+          {prefillOverridden ? "↩ Overridden — was: " : "↑ "}
+          {prefillText}
+          {prefillOverridden && ""}
+        </p>
+      )}
     </div>
   );
 }
@@ -375,7 +387,7 @@ function buildDefaults(params: PipelineParameter[]): FormValues {
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
-export default function PipelineParameterForm({ pipeline }: Props) {
+export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   const navigate = useNavigate();
   const { data: datasets } = useDatasets();
   const createRun = useCreateRun();
@@ -393,15 +405,26 @@ export default function PipelineParameterForm({ pipeline }: Props) {
   const advancedParams = visibleParams.filter((p) => p.advanced);
 
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | "">("");
-  const [values, setValues] = useState<FormValues>(() =>
-    buildDefaults(pipeline.parameters)
-  );
+  const [values, setValues] = useState<FormValues>(() => {
+    const defaults = buildDefaults(pipeline.parameters);
+    // Pre-populate the prefilled parameter from the upstream run artifact.
+    if (prefill?.param && prefill.path) {
+      defaults[prefill.param] = prefill.path;
+    }
+    return defaults;
+  });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showPreflightDialog, setShowPreflightDialog] = useState(false);
+  // Track whether the user has edited a prefilled field away from its prefilled value.
+  const [prefillOverridden, setPrefillOverridden] = useState(false);
 
-  const set = (name: string, val: string | boolean | string[]) =>
+  const set = (name: string, val: string | boolean | string[]) => {
     setValues((prev) => ({ ...prev, [name]: val }));
+    if (prefill?.param === name) {
+      setPrefillOverridden(val !== prefill.path);
+    }
+  };
 
   const selectedDataset = (datasets ?? []).find(
     (ds) => ds.id === selectedDatasetId
@@ -499,17 +522,40 @@ export default function PipelineParameterForm({ pipeline }: Props) {
         </select>
       </div>
 
+      {/* Provenance note for dataset-slot pipelines (MRIQC, fMRIPrep) navigated from Run Next.
+          These pipelines receive input via the dataset selector, not a named parameter,
+          so path prefill is not possible — prompt the user to select manually. */}
+      {prefill?.isDatasetSlot && (
+        <div className="flex gap-2.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5 text-sm text-purple-800">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0 mt-0.5 text-purple-500">
+            <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clipRule="evenodd" />
+          </svg>
+          <span>
+            Suggested from run #{prefill.runId} ({prefill.sourceDisplayName} · {prefill.artifactLabel}).
+            Select the appropriate BIDS dataset in the selector above.
+          </span>
+        </div>
+      )}
+
       <hr className="border-gray-200" />
 
       {/* Basic parameters */}
-      {basicParams.map((param) => (
-        <ParameterRow
-          key={param.name}
-          param={param}
-          value={values[param.name]}
-          onChange={(v) => set(param.name, v)}
-        />
-      ))}
+      {basicParams.map((param) => {
+        const isPrefilled = prefill?.param === param.name && !prefill.isDatasetSlot;
+        const helperText = isPrefilled
+          ? `From run #${prefill!.runId} · ${prefill!.sourceDisplayName} · ${prefill!.artifactLabel}`
+          : undefined;
+        return (
+          <ParameterRow
+            key={param.name}
+            param={param}
+            value={values[param.name]}
+            onChange={(v) => set(param.name, v)}
+            prefillText={helperText}
+            prefillOverridden={isPrefilled && prefillOverridden}
+          />
+        );
+      })}
 
       {/* Advanced parameters accordion */}
       {advancedParams.length > 0 && (
@@ -544,14 +590,22 @@ export default function PipelineParameterForm({ pipeline }: Props) {
                 These settings are safe to leave at their defaults for most runs.
                 Change them only if you know what you need.
               </p>
-              {advancedParams.map((param) => (
-                <ParameterRow
-                  key={param.name}
-                  param={param}
-                  value={values[param.name]}
-                  onChange={(v) => set(param.name, v)}
-                />
-              ))}
+              {advancedParams.map((param) => {
+                const isPrefilled = prefill?.param === param.name && !prefill.isDatasetSlot;
+                const helperText = isPrefilled
+                  ? `From run #${prefill!.runId} · ${prefill!.sourceDisplayName} · ${prefill!.artifactLabel}`
+                  : undefined;
+                return (
+                  <ParameterRow
+                    key={param.name}
+                    param={param}
+                    value={values[param.name]}
+                    onChange={(v) => set(param.name, v)}
+                    prefillText={helperText}
+                    prefillOverridden={isPrefilled && prefillOverridden}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

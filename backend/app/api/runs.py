@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, get_db
 from app.models.run import ProvenanceEvent, Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
+from app.execution.docker_executor import to_host_path
 from app.services.artifact_registry import resolve_run_artifacts
 from app.services.pipeline import get_registry
 from app.services.run import RunService, get_log_history, subscribe, unsubscribe
@@ -148,6 +149,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
                     "multiple": a.multiple,
                     "resolution_source": a.resolution_source,
                     "paths": a.paths,
+                    "host_paths": [to_host_path(p) for p in a.paths],
                 }
                 for a in resolved
             ]

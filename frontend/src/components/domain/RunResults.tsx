@@ -201,7 +201,7 @@ export default function RunResults({ runId }: Props) {
       {/* Workflow chaining: recommend compatible next pipelines.
           Rendered before the empty-files guard so pipelines like bids-validator
           (no downloadable outputs, but meaningful artifact types) still show recommendations. */}
-      <RunNextCard artifacts={results.artifacts ?? []} />
+      <RunNextCard artifacts={results.artifacts ?? []} runId={runId} />
 
       {/* Empty-files notice — shown after RunNextCard so chaining is still visible */}
       {!hasFiles && (

@@ -40,6 +40,7 @@ def list_compatible_pipelines(
                 "input_type": manifest.get("input_type"),
                 "compute_profile": manifest.get("compute_profile"),
                 "pipeline_description": manifest.get("description"),
+                "accept_type": slot.get("type"),
                 "accept_param": slot.get("param"),
                 "accept_dataset_slot": slot.get("dataset_slot", False),
                 "accept_label": slot.get("label"),

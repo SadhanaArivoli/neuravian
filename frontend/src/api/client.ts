@@ -234,6 +234,22 @@ export interface RunArtifact {
   multiple: boolean;
   resolution_source: string;
   paths: string[];
+  host_paths: string[];
+}
+
+/** Ephemeral prefill context passed via React Router state from Run Next → Pipelines. */
+export interface PrefillContext {
+  runId: number;
+  /** Display name of the upstream pipeline, e.g. "BrainChop". */
+  sourceDisplayName: string;
+  /** Label of the artifact being passed, e.g. "Skull-Stripped Brain". */
+  artifactLabel: string;
+  /** Parameter name to pre-fill, e.g. "t1". Null when accept_dataset_slot is true. */
+  param: string | null;
+  /** Host-accessible path to pre-fill. Null when accept_dataset_slot is true. */
+  path: string | null;
+  /** True when the pipeline receives the dataset via the dataset selector, not a named param. */
+  isDatasetSlot: boolean;
 }
 
 export interface RunResults {
@@ -254,6 +270,7 @@ export interface CompatiblePipeline {
   input_type: string | null;
   compute_profile: ComputeProfile | null;
   pipeline_description: string | null;
+  accept_type: string | null;
   accept_param: string | null;
   accept_dataset_slot: boolean;
   accept_label: string | null;

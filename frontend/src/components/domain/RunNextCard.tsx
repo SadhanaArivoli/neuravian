@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ComputeProfile, RunArtifact } from "../../api/client";
-import { useCompatiblePipelines } from "../../hooks/useRuns";
+import type { ComputeProfile, PrefillContext, RunArtifact } from "../../api/client";
+import { useCompatiblePipelines, useRun } from "../../hooks/useRuns";
+import { usePipelines } from "../../hooks/usePipelines";
 
 // ── Compute profile badge ─────────────────────────────────────────────────────
 
@@ -33,11 +35,12 @@ function ComputeProfileBadge({ profile }: { profile: ComputeProfile | null }) {
 
 interface Props {
   artifacts: RunArtifact[];
+  runId: number;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function RunNextCard({ artifacts }: Props) {
+export default function RunNextCard({ artifacts, runId }: Props) {
   const navigate = useNavigate();
 
   // Only resolved artifacts can feed downstream pipelines.
@@ -47,6 +50,15 @@ export default function RunNextCard({ artifacts }: Props) {
 
   const { data: compatible = [], isLoading } = useCompatiblePipelines(resolvedTypes);
 
+  // Fetch the current run and all pipeline summaries to get the upstream
+  // pipeline's display name for the provenance helper text.
+  const { data: run } = useRun(runId);
+  const { data: allPipelines } = usePipelines();
+  const sourceDisplayName = useMemo(() => {
+    if (!run || !allPipelines) return "";
+    return allPipelines.find((p) => p.id === run.pipeline_manifest_id)?.display_name ?? run.pipeline_manifest_id;
+  }, [run, allPipelines]);
+
   // Hide entirely when there is nothing to show.
   if (resolvedTypes.length === 0 || (!isLoading && compatible.length === 0)) {
     return null;
@@ -55,20 +67,48 @@ export default function RunNextCard({ artifacts }: Props) {
   // Don't flash an empty card while loading; wait silently.
   if (isLoading) return null;
 
-  function handleConfigure(pipelineId: string) {
+  function handleConfigure(pipelineId: string, p: (typeof compatible)[0]) {
+    // Find the resolved artifact whose type matches what this pipeline accepts.
+    const artifact = p.accept_type
+      ? artifacts.find((a) => a.resolved && a.type === p.accept_type)
+      : undefined;
+
+    const hostPath = artifact?.host_paths?.[0] ?? null;
+
+    let prefill: PrefillContext | null = null;
+
+    if (p.accept_dataset_slot) {
+      // Dataset-slot pipelines (MRIQC, fMRIPrep) receive the BIDS dataset via the
+      // dataset selector, not a named parameter. Path prefill is not supported here
+      // without a reverse DB lookup. The user must pick the dataset manually.
+      prefill = {
+        runId,
+        sourceDisplayName,
+        artifactLabel: artifact?.label ?? p.accept_label ?? "",
+        param: null,
+        path: null,
+        isDatasetSlot: true,
+      };
+    } else if (p.accept_param && hostPath) {
+      prefill = {
+        runId,
+        sourceDisplayName,
+        artifactLabel: artifact?.label ?? p.accept_label ?? "",
+        param: p.accept_param,
+        path: hostPath,
+        isDatasetSlot: false,
+      };
+    }
+
     // Navigate to the Pipelines page and signal which pipeline to pre-select.
-    // React Router state is used (not URL params) so:
-    //   - No JSON in URLs
-    //   - State is ephemeral (not bookmarked / shared)
-    //   - Future prefill data can be added to the same state object
-    navigate("/pipelines", { state: { selectPipeline: pipelineId } });
+    // React Router state (not URL params) keeps state ephemeral and URL clean.
+    navigate("/pipelines", { state: { selectPipeline: pipelineId, prefill } });
   }
 
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
-        {/* Arrow-circle icon */}
         <svg
           className="h-4 w-4 text-accent shrink-0"
           viewBox="0 0 20 20"
@@ -112,7 +152,7 @@ export default function RunNextCard({ artifacts }: Props) {
 
             <button
               type="button"
-              onClick={() => handleConfigure(p.pipeline_id)}
+              onClick={() => handleConfigure(p.pipeline_id, p)}
               className="shrink-0 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
             >
               Configure →

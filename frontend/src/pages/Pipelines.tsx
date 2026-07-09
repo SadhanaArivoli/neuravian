@@ -5,6 +5,7 @@ import type {
   PipelineCategory,
   PipelineInputType,
   PipelineSummary,
+  PrefillContext,
 } from "../api/client";
 import PipelineParameterForm from "../components/domain/PipelineParameterForm";
 import { usePipeline, usePipelines } from "../hooks/usePipelines";
@@ -161,7 +162,7 @@ function PipelineCard({
 
 // ── Pipeline detail panel ─────────────────────────────────────────────────────
 
-function PipelineDetail({ pipelineId }: { pipelineId: string }) {
+function PipelineDetail({ pipelineId, prefill }: { pipelineId: string; prefill: PrefillContext | null }) {
   const { data, isLoading, error } = usePipeline(pipelineId);
 
   if (isLoading) {
@@ -184,7 +185,7 @@ function PipelineDetail({ pipelineId }: { pipelineId: string }) {
     <div>
       <h2 className="text-xl font-semibold text-gray-100 mb-1">{data.display_name}</h2>
       <p className="text-sm text-gray-400 mb-6">{data.description}</p>
-      <PipelineParameterForm pipeline={data} />
+      <PipelineParameterForm pipeline={data} prefill={prefill} />
     </div>
   );
 }
@@ -196,19 +197,23 @@ const ALL_INPUT_TYPES = Object.keys(INPUT_TYPE_LABEL) as PipelineInputType[];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+type IncomingState = { selectPipeline?: string; prefill?: PrefillContext } | null;
+
 export default function Pipelines() {
   const { data: pipelines, isLoading, error } = usePipelines();
   const location = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activePrefill, setActivePrefill] = useState<PrefillContext | null>(null);
 
   // If navigated here from a "Configure →" button on a run results page,
-  // auto-select the requested pipeline. Uses React Router state (not URL params)
-  // so no JSON appears in the URL and the state is ephemeral.
+  // auto-select the requested pipeline and store any prefill context.
+  // Uses React Router state (not URL params) so no JSON appears in the URL.
   useEffect(() => {
-    const incoming = (location.state as { selectPipeline?: string } | null)?.selectPipeline;
-    if (incoming) {
-      setSelectedId(incoming);
-      // Clear state so navigating back/forward doesn't re-select unexpectedly.
+    const state = location.state as IncomingState;
+    if (state?.selectPipeline) {
+      setSelectedId(state.selectPipeline);
+      setActivePrefill(state.prefill ?? null);
+      // Clear state so navigating back/forward doesn't re-apply unexpectedly.
       window.history.replaceState({}, "");
     }
   }, [location.state]);
@@ -389,9 +394,12 @@ export default function Pipelines() {
                       <PipelineCard
                         pipeline={p}
                         selected={selectedId === p.id}
-                        onSelect={() =>
-                          setSelectedId(selectedId === p.id ? null : p.id)
-                        }
+                        onSelect={() => {
+                          const next = selectedId === p.id ? null : p.id;
+                          setSelectedId(next);
+                          // Clicking a card manually clears any Router-state prefill.
+                          setActivePrefill(null);
+                        }}
                       />
                     </li>
                   ))}
@@ -410,7 +418,7 @@ export default function Pipelines() {
       {/* Detail / parameter form panel */}
       <main className="flex-1 overflow-y-auto p-8">
         {selectedId ? (
-          <PipelineDetail pipelineId={selectedId} />
+          <PipelineDetail pipelineId={selectedId} prefill={activePrefill} />
         ) : (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-gray-500">
