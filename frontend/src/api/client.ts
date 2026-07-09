@@ -203,6 +203,7 @@ export interface RunCreate {
   pipeline_id: string;
   dataset_id: number;
   params: Record<string, unknown>;
+  lineage?: RunLineage | null;
 }
 
 export function createRun(body: RunCreate): Promise<Run> {
@@ -240,8 +241,12 @@ export interface RunArtifact {
 /** Ephemeral prefill context passed via React Router state from Run Next → Pipelines. */
 export interface PrefillContext {
   runId: number;
+  /** Manifest ID of the upstream pipeline, e.g. "brainchop". */
+  sourcePipelineId: string;
   /** Display name of the upstream pipeline, e.g. "BrainChop". */
   sourceDisplayName: string;
+  /** Artifact type string, e.g. "skull_stripped_t1". */
+  artifactType: string;
   /** Label of the artifact being passed, e.g. "Skull-Stripped Brain". */
   artifactLabel: string;
   /** Parameter name to pre-fill, e.g. "t1". Null when accept_dataset_slot is true. */
@@ -250,6 +255,16 @@ export interface PrefillContext {
   path: string | null;
   /** True when the pipeline receives the dataset via the dataset selector, not a named param. */
   isDatasetSlot: boolean;
+}
+
+export interface RunLineage {
+  upstream_run_id: number;
+  upstream_pipeline_id: string;
+  upstream_pipeline_display_name: string | null;
+  artifact_type: string;
+  artifact_label: string;
+  injected_param: string | null;
+  injected_path: string | null;
 }
 
 export interface RunMetadata {
@@ -271,6 +286,7 @@ export interface RunMetadata {
   output_dir: string | null;
   command_preview: string | null;
   params: Record<string, unknown>;
+  lineage: RunLineage | null;
 }
 
 export interface RunResults {

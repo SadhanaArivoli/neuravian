@@ -77,13 +77,17 @@ export default function RunNextCard({ artifacts, runId }: Props) {
 
     let prefill: PrefillContext | null = null;
 
+    const sourcePipelineId = run?.pipeline_manifest_id ?? "";
+
     if (p.accept_dataset_slot) {
       // Dataset-slot pipelines (MRIQC, fMRIPrep) receive the BIDS dataset via the
       // dataset selector, not a named parameter. Path prefill is not supported here
       // without a reverse DB lookup. The user must pick the dataset manually.
       prefill = {
         runId,
+        sourcePipelineId,
         sourceDisplayName,
+        artifactType: artifact?.type ?? p.accept_type ?? "",
         artifactLabel: artifact?.label ?? p.accept_label ?? "",
         param: null,
         path: null,
@@ -92,7 +96,9 @@ export default function RunNextCard({ artifacts, runId }: Props) {
     } else if (p.accept_param && hostPath) {
       prefill = {
         runId,
+        sourcePipelineId,
         sourceDisplayName,
+        artifactType: artifact?.type ?? p.accept_type ?? "",
         artifactLabel: artifact?.label ?? p.accept_label ?? "",
         param: p.accept_param,
         path: hostPath,

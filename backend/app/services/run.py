@@ -593,6 +593,12 @@ class RunService:
                 body.pipeline_id, body.dataset_id, work_dir,
             )
 
+        # Validate source_run_id if lineage was provided
+        if body.lineage:
+            src = self.db.get(Run, body.lineage.upstream_run_id)
+            if src is None:
+                raise ValueError(f"Source run {body.lineage.upstream_run_id} not found")
+
         # Create the DB record. params_json records effective_params (including
         # the auto-injected work-dir) so the provenance record is accurate.
         run = Run(
@@ -601,6 +607,8 @@ class RunService:
             pipeline_version=(manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command", "native"),
             params_json=json.dumps(effective_params),
             status="pending",
+            source_run_id=body.lineage.upstream_run_id if body.lineage else None,
+            source_artifacts_json=json.dumps(body.lineage.model_dump()) if body.lineage else None,
         )
         self.db.add(run)
         self.db.commit()

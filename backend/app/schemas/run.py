@@ -4,10 +4,23 @@ from typing import Any
 from pydantic import BaseModel
 
 
+class LineageCreate(BaseModel):
+    """Ephemeral lineage metadata passed by the frontend when a run is launched
+    from a Run Next recommendation. Stored durably; never affects execution."""
+    upstream_run_id: int
+    upstream_pipeline_id: str
+    upstream_pipeline_display_name: str | None = None
+    artifact_type: str
+    artifact_label: str
+    injected_param: str | None = None
+    injected_path: str | None = None
+
+
 class RunCreate(BaseModel):
     pipeline_id: str   # manifest string id, e.g. "mriqc"
     dataset_id: int
     params: dict[str, Any] = {}
+    lineage: LineageCreate | None = None
 
 
 class ResourceWarningSchema(BaseModel):

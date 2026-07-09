@@ -456,6 +456,17 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
         pipeline_id: pipeline.id,
         dataset_id: selectedDatasetId as number,
         params: buildParams(),
+        lineage: prefill
+          ? {
+              upstream_run_id: prefill.runId,
+              upstream_pipeline_id: prefill.sourcePipelineId,
+              upstream_pipeline_display_name: prefill.sourceDisplayName,
+              artifact_type: prefill.artifactType,
+              artifact_label: prefill.artifactLabel,
+              injected_param: prefill.param ?? null,
+              injected_path: prefill.path ?? null,
+            }
+          : null,
       });
       navigate(`/runs/${run.id}`);
     } catch (err) {

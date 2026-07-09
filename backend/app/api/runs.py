@@ -96,11 +96,11 @@ def get_run_provenance(run_id: int, db: Session = Depends(get_db)) -> dict:
     }
 
 
-def _build_run_metadata(run: Run, svc: RunService) -> dict:
+def _build_run_metadata(run, svc: RunService) -> dict:
     """Assemble provenance metadata for a run from stored fields and the manifest registry.
 
-    Uses only data that is already recorded — no new DB columns are added.
-    Fields that cannot be derived are omitted (not fabricated).
+    `run` is a RunRead schema (returned by svc.get_by_id). Lineage columns
+    live only on the ORM Run model, so we fetch the raw row for those fields.
     """
     registry = get_registry()
     manifest = registry.get(run.pipeline_manifest_id, {})
@@ -132,6 +132,17 @@ def _build_run_metadata(run: Run, svc: RunService) -> dict:
         to_host_path(run.output_dir) if run.output_dir else None
     )
 
+    # ── Workflow lineage ─────────────────────────────────────────────────────
+    # Lineage columns live on the ORM Run model, not the RunRead schema.
+    import json as _json
+    lineage: dict | None = None
+    orm_run: Run | None = svc.db.get(Run, run.id)
+    if orm_run and orm_run.source_artifacts_json:
+        try:
+            lineage = _json.loads(orm_run.source_artifacts_json)
+        except Exception:
+            pass
+
     return {
         "run_id": run.id,
         "pipeline_id": run.pipeline_manifest_id,
@@ -151,6 +162,7 @@ def _build_run_metadata(run: Run, svc: RunService) -> dict:
         "output_dir": output_dir_host,
         "command_preview": run.command_preview,
         "params": run.params,
+        "lineage": lineage,
     }
 
 

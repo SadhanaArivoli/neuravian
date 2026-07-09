@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RunMetadata } from "../../api/client";
+import type { RunLineage, RunMetadata } from "../../api/client";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,31 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+// ── LineageBlock ──────────────────────────────────────────────────────────────
+
+function LineageBlock({ lineage }: { lineage: RunLineage }) {
+  return (
+    <div className="rounded border border-purple-500/20 bg-purple-500/5 px-3 py-2 text-xs space-y-0.5">
+      <div className="text-purple-300 font-medium">
+        {lineage.upstream_pipeline_display_name ?? lineage.upstream_pipeline_id} run #{lineage.upstream_run_id}
+        {" → "}
+        <span className="text-gray-200">this run</span>
+      </div>
+      <div className="text-gray-400">
+        Artifact: <span className="text-gray-300">{lineage.artifact_label}</span>
+      </div>
+      {lineage.injected_param && (
+        <div className="text-gray-400">
+          Parameter: <code className="font-mono text-gray-300">{lineage.injected_param}</code>
+        </div>
+      )}
+      {!lineage.injected_param && (
+        <div className="text-gray-400">Dataset slot (selected manually)</div>
+      )}
+    </div>
+  );
+}
+
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -116,6 +141,13 @@ export default function RunMetadataPanel({ metadata }: Props) {
           </span>
           <span className="ml-2 text-gray-500">v{metadata.pipeline_version}</span>
         </Row>
+
+        {/* Workflow lineage — only shown for chained runs */}
+        {metadata.lineage && (
+          <Row label="Started from">
+            <LineageBlock lineage={metadata.lineage} />
+          </Row>
+        )}
 
         {/* Status */}
         <Row label="Status">
