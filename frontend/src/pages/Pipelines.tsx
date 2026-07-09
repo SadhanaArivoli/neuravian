@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import type {
   ComputeProfile,
   PipelineCategory,
@@ -197,7 +198,20 @@ const ALL_INPUT_TYPES = Object.keys(INPUT_TYPE_LABEL) as PipelineInputType[];
 
 export default function Pipelines() {
   const { data: pipelines, isLoading, error } = usePipelines();
+  const location = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // If navigated here from a "Configure →" button on a run results page,
+  // auto-select the requested pipeline. Uses React Router state (not URL params)
+  // so no JSON appears in the URL and the state is ephemeral.
+  useEffect(() => {
+    const incoming = (location.state as { selectPipeline?: string } | null)?.selectPipeline;
+    if (incoming) {
+      setSelectedId(incoming);
+      // Clear state so navigating back/forward doesn't re-select unexpectedly.
+      window.history.replaceState({}, "");
+    }
+  }, [location.state]);
 
   // Filter state
   const [query, setQuery] = useState("");

@@ -226,13 +226,42 @@ export interface RunResultFile {
   path: string;
 }
 
+export interface RunArtifact {
+  type: string;
+  label: string;
+  description: string;
+  resolved: boolean;
+  multiple: boolean;
+  resolution_source: string;
+  paths: string[];
+}
+
 export interface RunResults {
   reports: RunResultFile[];
   metrics: RunResultFile[];
+  niftis?: RunResultFile[];
+  artifacts: RunArtifact[];
 }
 
 export function fetchRunResults(runId: number): Promise<RunResults> {
   return apiFetch<RunResults>(`/runs/${runId}/results`);
+}
+
+export interface CompatiblePipeline {
+  pipeline_id: string;
+  display_name: string;
+  category: string | null;
+  input_type: string | null;
+  compute_profile: ComputeProfile | null;
+  pipeline_description: string | null;
+  accept_param: string | null;
+  accept_dataset_slot: boolean;
+  accept_label: string | null;
+  accept_description: string | null;
+}
+
+export function fetchCompatiblePipelines(artifactType: string): Promise<CompatiblePipeline[]> {
+  return apiFetch<CompatiblePipeline[]>(`/pipelines/compatible?artifact_type=${encodeURIComponent(artifactType)}`);
 }
 
 export function fetchRunFile<T>(runId: number, filePath: string): Promise<T> {

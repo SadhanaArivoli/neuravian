@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRunFile, useRunResults } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
+import RunNextCard from "./RunNextCard";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -186,15 +187,7 @@ export default function RunResults({ runId }: Props) {
   }
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
-
-  if (results.reports.length === 0 && results.metrics.length === 0 && niftis.length === 0) {
-    return (
-      <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Run completed but no output files were found in the output directory.
-        This may indicate the pipeline exited before writing its outputs — check the log above.
-      </div>
-    );
-  }
+  const hasFiles = results.reports.length > 0 || results.metrics.length > 0 || niftis.length > 0;
 
   const currentReport = results.reports[activeReport];
   const reportUrl = currentReport
@@ -204,6 +197,19 @@ export default function RunResults({ runId }: Props) {
   return (
     <div className="mt-4">
       <h2 className="text-base font-semibold text-gray-100 mb-3">Results</h2>
+
+      {/* Workflow chaining: recommend compatible next pipelines.
+          Rendered before the empty-files guard so pipelines like bids-validator
+          (no downloadable outputs, but meaningful artifact types) still show recommendations. */}
+      <RunNextCard artifacts={results.artifacts ?? []} />
+
+      {/* Empty-files notice — shown after RunNextCard so chaining is still visible */}
+      {!hasFiles && (
+        <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Run completed but no output files were found in the output directory.
+          This may indicate the pipeline exited before writing its outputs — check the log above.
+        </div>
+      )}
 
       {/* IQM summary card */}
       {iqmData && <IqmCard data={iqmData} />}

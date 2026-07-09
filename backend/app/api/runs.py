@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, get_db
 from app.models.run import ProvenanceEvent, Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
+from app.services.artifact_registry import resolve_run_artifacts
+from app.services.pipeline import get_registry
 from app.services.run import RunService, get_log_history, subscribe, unsubscribe
 
 log = logging.getLogger(__name__)
@@ -123,7 +125,36 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         for f in sorted(output_root.rglob("*"))
         if any(f.name.endswith(ext) for ext in _VOL_EXTS)
     ]
-    return {"reports": reports, "metrics": metrics, "niftis": niftis}
+    # Resolved artifact types from the manifest's produces[] declarations.
+    # Used by the frontend to query compatible downstream pipelines.
+    # Only populated for successful runs — no artifacts for failed/running runs.
+    artifacts: list[dict] = []
+    if run.status == "success":
+        try:
+            registry = get_registry()
+            manifest = registry.get(run.pipeline_manifest_id, {})
+            resolved = resolve_run_artifacts(
+                manifest=manifest,
+                output_dir=run.output_dir or "",
+                params=run.params,
+                status=run.status,
+            )
+            artifacts = [
+                {
+                    "type": a.type,
+                    "label": a.label,
+                    "description": a.description,
+                    "resolved": a.resolved,
+                    "multiple": a.multiple,
+                    "resolution_source": a.resolution_source,
+                    "paths": a.paths,
+                }
+                for a in resolved
+            ]
+        except Exception:
+            log.exception("Artifact resolution failed for run %d", run_id)
+
+    return {"reports": reports, "metrics": metrics, "niftis": niftis, "artifacts": artifacts}
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")
