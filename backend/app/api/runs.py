@@ -1,10 +1,12 @@
 import asyncio
+import io
 import json
 import logging
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
@@ -157,6 +159,44 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             log.exception("Artifact resolution failed for run %d", run_id)
 
     return {"reports": reports, "metrics": metrics, "niftis": niftis, "artifacts": artifacts}
+
+
+@router.get("/runs/{run_id}/download")
+def download_run_results(run_id: int, svc: RunService = Depends(_svc)) -> Response:
+    """Return the run's entire output directory as a ZIP archive.
+
+    Scoped strictly to output_dir — no files outside it are included.
+    Only available for successful runs that have an output directory.
+    """
+    try:
+        run = svc.get_by_id(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    if not run.output_dir:
+        raise HTTPException(status_code=404, detail="Run has no output directory")
+
+    output_root = Path(run.output_dir).resolve()
+    if not output_root.exists():
+        raise HTTPException(status_code=404, detail="Output directory not found on disk")
+
+    data_files = sorted(f for f in output_root.rglob("*") if f.is_file())
+    if not data_files:
+        raise HTTPException(status_code=404, detail="Output directory contains no files")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for fpath in data_files:
+            zf.write(fpath, fpath.relative_to(output_root))
+    buf.seek(0)
+
+    slug = run.pipeline_manifest_id.replace(" ", "-").lower()
+    filename = f"neuroforge-run-{run_id}-{slug}-results.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")

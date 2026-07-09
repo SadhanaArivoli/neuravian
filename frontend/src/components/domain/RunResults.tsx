@@ -188,6 +188,10 @@ export default function RunResults({ runId }: Props) {
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
   const hasFiles = results.reports.length > 0 || results.metrics.length > 0 || niftis.length > 0;
+  // Show Download All when any surfaced file or resolved artifact exists.
+  // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
+  // even when they aren't classified as report/metric/nifti.
+  const hasDownloadable = hasFiles || (results.artifacts ?? []).some((a) => a.resolved);
 
   const currentReport = results.reports[activeReport];
   const reportUrl = currentReport
@@ -196,7 +200,23 @@ export default function RunResults({ runId }: Props) {
 
   return (
     <div className="mt-4">
-      <h2 className="text-base font-semibold text-gray-100 mb-3">Results</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-gray-100">Results</h2>
+        {hasDownloadable && (
+          <a
+            href={`/api/runs/${runId}/download`}
+            download
+            className="flex items-center gap-1.5 rounded border border-gray-600 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-400 hover:text-gray-100 transition-colors"
+          >
+            {/* Download icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <path d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z" />
+              <path d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z" />
+            </svg>
+            Download All (.zip)
+          </a>
+        )}
+      </div>
 
       {/* Workflow chaining: recommend compatible next pipelines.
           Rendered before the empty-files guard so pipelines like bids-validator
