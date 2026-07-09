@@ -648,7 +648,10 @@ class RunService:
             and manifest.get("max_runtime_hours", 0) > 4
         ):
             work_dir = (
-                Path(settings.data_dir) / "work" / body.pipeline_id / str(body.dataset_id)
+                Path(settings.data_dir).resolve()
+                / "work"
+                / body.pipeline_id
+                / str(body.dataset_id)
             )
             work_dir.mkdir(parents=True, exist_ok=True)
             effective_params["work-dir"] = str(work_dir)
@@ -679,7 +682,12 @@ class RunService:
         self.db.refresh(run)
 
         # Output directory: ./data/derivatives/{pipeline_id}/{run_id}/
-        output_dir = Path(settings.data_dir) / "derivatives" / body.pipeline_id / str(run.id)
+        output_dir = (
+            Path(settings.data_dir).resolve()
+            / "derivatives"
+            / body.pipeline_id
+            / str(run.id)
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Build the execution context

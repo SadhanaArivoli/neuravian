@@ -24,6 +24,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
+from app.core.config import settings
 from app.execution.docker_executor import DockerExecutor, translate_errors, to_host_path
 from app.execution.executor import RunContext
 from app.main import app
@@ -393,6 +394,53 @@ def test_create_run_returns_201(api_client, tmp_path):
     assert data["status"] == "pending"
     assert data["command_preview"] is not None
     assert "nipreps/mriqc:24.0.2" in data["command_preview"]
+
+
+def test_create_run_resolves_relative_data_dir(api_client, tmp_path, monkeypatch):
+    """Local Docker mounts need absolute host paths, even with relative data_dir."""
+    dataset_id = _register_valid_dataset(api_client, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "data_dir", "relative_data")
+
+    with patch("app.services.run._execute_run_background", new_callable=AsyncMock):
+        with patch("app.execution.docker_executor.DockerExecutor.check_resources", return_value=[]):
+            with patch("app.execution.docker_executor._is_running_in_docker", return_value=False):
+                resp = api_client.post("/api/runs", json={
+                    "pipeline_id": "mriqc",
+                    "dataset_id": dataset_id,
+                    "params": {"analysis_level": "participant"},
+                })
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert Path(data["output_dir"]).is_absolute()
+    assert data["output_dir"] == str(
+        tmp_path / "relative_data" / "derivatives" / "mriqc" / str(data["id"])
+    )
+
+
+def test_dcm2bids_wizard_launch_resolves_config_path(api_client, tmp_path, monkeypatch):
+    """Wizard-generated config files must be bind-mounted via absolute paths."""
+    dicom_dir = tmp_path / "dicoms"
+    dicom_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "data_dir", "relative_data")
+
+    with patch("app.services.run._execute_run_background", new_callable=AsyncMock):
+        with patch("app.execution.docker_executor.DockerExecutor.check_resources", return_value=[]):
+            with patch("app.execution.docker_executor._is_running_in_docker", return_value=False):
+                resp = api_client.post("/api/wizard/dcm2bids/launch", json={
+                    "dicom_path": str(dicom_dir),
+                    "participant_id": "01",
+                    "session_id": None,
+                    "dataset_name": "DICOM source 01",
+                    "config": {"descriptions": []},
+                })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert Path(data["config_path"]).is_absolute()
+    assert data["config_path"].startswith(str(tmp_path / "relative_data"))
 
 
 def test_create_run_unknown_pipeline(api_client):

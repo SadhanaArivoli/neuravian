@@ -493,7 +493,7 @@ def launch_dcm2bids(
         )
 
     # ── 2. Save config.json to a stable path inside data_dir ────────────────
-    data_dir = Path(settings.data_dir)
+    data_dir = Path(settings.data_dir).resolve()
     config_dir = data_dir / "wizard_configs" / uuid.uuid4().hex
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "dcm2bids_config.json"
