@@ -1,7 +1,131 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { scoutDicom } from "../api/client";
 import type { WizardDiscoveredSeries, WizardScoutResponse } from "../api/client";
+
+// ── Mapping types ─────────────────────────────────────────────────────────────
+
+interface SeriesMapping {
+  included: boolean;
+  datatype: string;
+  suffix: string;
+  taskName: string;
+}
+
+type MappingMap = Record<number, SeriesMapping>;
+
+// ── Datatype / suffix options ─────────────────────────────────────────────────
+
+const DATATYPES = ["anat", "func", "dwi", "fmap", "perf", "beh"] as const;
+
+const SUFFIXES: Record<string, string[]> = {
+  anat: ["T1w", "T2w", "FLAIR", "T2starw", "PDw", "T1map", "T2map", "MEGRE", "inplaneT1"],
+  func: ["bold", "sbref", "cbv"],
+  dwi:  ["dwi", "sbref"],
+  fmap: ["phasediff", "magnitude1", "magnitude2", "phase1", "phase2", "fieldmap", "epi", "TB1map"],
+  perf: ["asl", "m0scan"],
+  beh:  ["events", "physio", "stim", "beh"],
+};
+
+function defaultSuffix(datatype: string, current: string): string {
+  const opts = SUFFIXES[datatype] ?? [];
+  return opts.includes(current) ? current : (opts[0] ?? "");
+}
+
+// ── Config generation ─────────────────────────────────────────────────────────
+
+interface ConfigDescription {
+  datatype: string;
+  suffix: string;
+  criteria: Record<string, string>;
+  custom_entities?: string;
+  sidecar_changes?: Record<string, unknown>;
+}
+
+interface GeneratedConfig {
+  descriptions: ConfigDescription[];
+}
+
+function generateConfig(
+  series: WizardDiscoveredSeries[],
+  mappings: MappingMap,
+): GeneratedConfig {
+  const descriptions: ConfigDescription[] = [];
+
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i];
+    const m = mappings[i];
+    if (!m?.included) continue;
+
+    const entry: ConfigDescription = {
+      datatype: m.datatype,
+      suffix: m.suffix,
+      criteria: {
+        SeriesDescription: s.series_description ?? "",
+      },
+    };
+
+    const sidecar_changes: Record<string, unknown> = {};
+
+    if (m.datatype === "anat" && m.suffix === "T1w") {
+      sidecar_changes["SkullStripped"] = false;
+    }
+
+    const task = m.taskName.trim();
+    if (m.datatype === "func" && m.suffix === "bold" && task) {
+      entry.custom_entities = `task-${task}`;
+      sidecar_changes["TaskName"] = task;
+    }
+
+    if (Object.keys(sidecar_changes).length > 0) {
+      entry.sidecar_changes = sidecar_changes;
+    }
+
+    descriptions.push(entry);
+  }
+
+  return { descriptions };
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+interface ValidationIssue {
+  index: number;
+  message: string;
+}
+
+function validateMappings(
+  series: WizardDiscoveredSeries[],
+  mappings: MappingMap,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (let i = 0; i < series.length; i++) {
+    const m = mappings[i];
+    if (!m?.included) continue;
+    if (m.datatype === "func" && m.suffix === "bold" && !m.taskName.trim()) {
+      issues.push({ index: i, message: "Task name required for BOLD series" });
+    }
+  }
+  return issues;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function initMappings(series: WizardDiscoveredSeries[]): MappingMap {
+  const m: MappingMap = {};
+  for (let i = 0; i < series.length; i++) {
+    const c = series[i].classification;
+    const datatype = c.suggested_datatype ?? "anat";
+    const suffix = c.suggested_suffix ?? (SUFFIXES[datatype]?.[0] ?? "");
+    m[i] = {
+      included: !c.skip_recommended && c.confidence !== "low",
+      datatype,
+      suffix,
+      taskName: "",
+    };
+  }
+  return m;
+}
 
 // ── Confidence badge ──────────────────────────────────────────────────────────
 
@@ -15,52 +139,50 @@ const CONFIDENCE: Record<string, { label: string; className: string }> = {
 
 function ModalityIcon({ modality }: { modality: string }) {
   const m = modality.toLowerCase();
-  // Brain outline SVG for structural; wave for functional; dots for diffusion; etc.
   if (m.includes("t1") || m.includes("structural")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-violet-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-violet-400">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     );
   }
   if (m.includes("flair") || m.includes("t2")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-blue-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-blue-400">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     );
   }
   if (m.includes("fmri") || m.includes("bold") || m.includes("resting") || m.includes("task")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-emerald-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-emerald-400">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
       </svg>
     );
   }
   if (m.includes("diffusion") || m.includes("dwi") || m.includes("dti")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-cyan-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-cyan-400">
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
       </svg>
     );
   }
   if (m.includes("fieldmap") || m.includes("fmap")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-orange-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-orange-400">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
       </svg>
     );
   }
   if (m.includes("localizer") || m.includes("scout")) {
     return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-gray-500">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-gray-500">
         <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
       </svg>
     );
   }
-  // Unknown / default
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-gray-500">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-gray-500">
       <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
     </svg>
   );
@@ -89,7 +211,9 @@ function AdvancedMetadata({ s }: { s: WizardDiscoveredSeries }) {
 
   return (
     <div className="mt-3 rounded border border-white/10 bg-surface-overlay p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Raw DICOM metadata</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+        Raw DICOM metadata
+      </p>
       <dl className="grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1">
         {rows.map(([label, val]) =>
           val != null ? (
@@ -97,93 +221,337 @@ function AdvancedMetadata({ s }: { s: WizardDiscoveredSeries }) {
               <dt className="text-[11px] text-gray-500 self-start">{label}</dt>
               <dd className="text-[11px] font-mono text-gray-300 break-all">{String(val)}</dd>
             </div>
-          ) : null
+          ) : null,
         )}
       </dl>
     </div>
   );
 }
 
-// ── Series card ───────────────────────────────────────────────────────────────
+// ── Select primitive ──────────────────────────────────────────────────────────
 
-function SeriesCard({
+const selectCls =
+  "rounded border border-white/10 bg-surface-overlay px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-accent/50 cursor-pointer";
+
+// ── Mapping card ──────────────────────────────────────────────────────────────
+
+function MappingCard({
   s,
   index,
+  mapping,
+  validationIssue,
   showAdvanced,
+  onChange,
 }: {
   s: WizardDiscoveredSeries;
   index: number;
+  mapping: SeriesMapping;
+  validationIssue: string | null;
   showAdvanced: boolean;
+  onChange: (patch: Partial<SeriesMapping>) => void;
 }) {
   const { classification: c } = s;
   const badge = CONFIDENCE[c.confidence] ?? CONFIDENCE.low;
-  const isSkip = c.skip_recommended;
+  const suffixOptions = SUFFIXES[mapping.datatype] ?? [];
+  const needsTaskName = mapping.datatype === "func" && mapping.suffix === "bold";
+
+  function handleDatatypeChange(dt: string) {
+    const newSuffix = defaultSuffix(dt, mapping.suffix);
+    onChange({ datatype: dt, suffix: newSuffix });
+  }
 
   return (
     <div
-      className={`rounded-lg border p-4 transition-colors ${
-        isSkip
-          ? "border-white/5 bg-surface-raised opacity-60"
-          : "border-white/10 bg-surface-raised"
+      className={`rounded-lg border transition-colors ${
+        mapping.included
+          ? "border-white/10 bg-surface-raised"
+          : "border-white/5 bg-surface-raised opacity-50"
       }`}
     >
-      {/* Header row */}
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0">
+      {/* ── Top bar: include toggle + modality label ── */}
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2 border-b border-white/5">
+        {/* Toggle */}
+        <button
+          type="button"
+          aria-label={mapping.included ? "Skip this series" : "Include this series"}
+          onClick={() => onChange({ included: !mapping.included })}
+          className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
+            mapping.included ? "bg-accent" : "bg-gray-700"
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+              mapping.included ? "translate-x-4" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+        <span className="text-xs font-medium text-gray-400 w-12 shrink-0">
+          {mapping.included ? "Include" : "Skip"}
+        </span>
+
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <ModalityIcon modality={c.modality} />
+          <span className="text-sm font-semibold text-gray-100 truncate">{c.modality}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
+            {badge.label}
+          </span>
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <span className="text-sm font-semibold text-gray-100 truncate">
-              {c.modality}
-            </span>
-            {isSkip && (
-              <span className="rounded-full bg-gray-700/60 px-2 py-0.5 text-[10px] font-medium text-gray-400 border border-white/10">
-                Skip recommended
-              </span>
-            )}
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
-              {badge.label}
-            </span>
-          </div>
-
-          <p className="text-xs text-gray-400 mb-1">
-            {s.series_description
-              ? <><span className="text-gray-300 font-mono">{s.series_description}</span></>
-              : <span className="italic text-gray-500">No series description</span>
-            }
-            {s.series_number != null && (
-              <span className="ml-2 text-gray-600">· #{s.series_number}</span>
-            )}
-          </p>
-
-          <p className="text-[11px] text-gray-500 italic">{c.reason}</p>
-
-          {/* Quick stats (always visible) */}
-          {(s.tr != null || s.te != null || (s.image_type?.length ?? 0) > 0) && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-              {s.tr != null && (
-                <span className="text-[11px] text-gray-500">TR <span className="text-gray-300 font-mono">{s.tr}s</span></span>
-              )}
-              {s.te != null && (
-                <span className="text-[11px] text-gray-500">TE <span className="text-gray-300 font-mono">{s.te}s</span></span>
-              )}
-              {s.manufacturer && (
-                <span className="text-[11px] text-gray-500">{s.manufacturer}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Series index badge */}
         <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-mono text-gray-500">
           {String(index + 1).padStart(2, "0")}
         </span>
       </div>
 
-      {/* Advanced metadata — only when toggle is on */}
-      {showAdvanced && <AdvancedMetadata s={s} />}
+      {/* ── Body ── */}
+      <div className="px-4 py-3 space-y-3">
+        {/* Series description + reason */}
+        <div>
+          <p className="text-xs text-gray-400">
+            {s.series_description ? (
+              <span className="font-mono text-gray-300">{s.series_description}</span>
+            ) : (
+              <span className="italic text-gray-600">No series description</span>
+            )}
+            {s.series_number != null && (
+              <span className="ml-2 text-gray-600">· #{s.series_number}</span>
+            )}
+          </p>
+          <p className="text-[11px] text-gray-500 italic mt-0.5">{c.reason}</p>
+        </div>
+
+        {/* Quick stats */}
+        {(s.tr != null || s.te != null) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+            {s.tr != null && (
+              <span className="text-[11px] text-gray-500">
+                TR <span className="text-gray-300 font-mono">{s.tr}s</span>
+              </span>
+            )}
+            {s.te != null && (
+              <span className="text-[11px] text-gray-500">
+                TE <span className="text-gray-300 font-mono">{s.te}s</span>
+              </span>
+            )}
+            {s.manufacturer && (
+              <span className="text-[11px] text-gray-500">{s.manufacturer}</span>
+            )}
+          </div>
+        )}
+
+        {/* Mapping controls — only when included */}
+        {mapping.included && (
+          <div className="rounded border border-white/10 bg-surface-overlay px-3 py-2.5 space-y-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              BIDS mapping
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Datatype */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] text-gray-500 shrink-0">Datatype</label>
+                <select
+                  aria-label="Datatype"
+                  value={mapping.datatype}
+                  onChange={(e) => handleDatatypeChange(e.target.value)}
+                  className={selectCls}
+                >
+                  {DATATYPES.map((dt) => (
+                    <option key={dt} value={dt}>{dt}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Suffix */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] text-gray-500 shrink-0">Suffix</label>
+                <select
+                  aria-label="Suffix"
+                  value={mapping.suffix}
+                  onChange={(e) => onChange({ suffix: e.target.value })}
+                  className={selectCls}
+                >
+                  {suffixOptions.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* BIDS path preview */}
+              <span className="text-[11px] font-mono text-gray-500 truncate">
+                → {mapping.datatype}/{mapping.suffix}
+              </span>
+            </div>
+
+            {/* Task name — only for func/bold */}
+            {needsTaskName && (
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-gray-500 shrink-0">
+                  Task name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  aria-label="Task name"
+                  type="text"
+                  value={mapping.taskName}
+                  onChange={(e) => onChange({ taskName: e.target.value })}
+                  placeholder="rest, learning, memory…"
+                  className="rounded border border-white/10 bg-surface-raised px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent/50 w-40"
+                />
+                <span className="text-[11px] text-gray-600 font-mono">
+                  {mapping.taskName.trim() ? `task-${mapping.taskName.trim()}` : "task-?"}
+                </span>
+              </div>
+            )}
+
+            {/* Validation warning */}
+            {validationIssue && (
+              <div className="flex items-center gap-1.5 text-amber-400 text-[11px]">
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                  <path fillRule="evenodd" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                </svg>
+                {validationIssue}
+              </div>
+            )}
+
+            {/* Injected sidecar_changes preview */}
+            {mapping.datatype === "anat" && mapping.suffix === "T1w" && (
+              <p className="text-[11px] text-gray-500">
+                Injects <code className="font-mono text-gray-400">SkullStripped: false</code> into sidecar automatically.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Advanced metadata */}
+        {showAdvanced && <AdvancedMetadata s={s} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Summary bar ───────────────────────────────────────────────────────────────
+
+function SummaryBar({
+  series,
+  mappings,
+}: {
+  series: WizardDiscoveredSeries[];
+  mappings: MappingMap;
+}) {
+  const counts: Record<string, number> = {};
+  for (const s of series) {
+    counts[s.classification.confidence] = (counts[s.classification.confidence] ?? 0) + 1;
+  }
+  const includedCount = Object.values(mappings).filter((m) => m.included).length;
+
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-lg border border-white/10 bg-surface-raised px-4 py-3 mb-4">
+      <span className="text-sm font-medium text-gray-200">
+        {series.length} series discovered
+      </span>
+      <div className="flex gap-2">
+        {counts.high != null && (
+          <span className="rounded-full bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 text-xs font-medium">
+            {counts.high} high
+          </span>
+        )}
+        {counts.medium != null && (
+          <span className="rounded-full bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 text-xs font-medium">
+            {counts.medium} medium
+          </span>
+        )}
+        {counts.low != null && (
+          <span className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 text-xs font-medium">
+            {counts.low} low / unknown
+          </span>
+        )}
+      </div>
+      <span className="ml-auto text-xs text-gray-500">
+        {includedCount} of {series.length} included
+      </span>
+    </div>
+  );
+}
+
+// ── Config preview ────────────────────────────────────────────────────────────
+
+function ConfigPreview({
+  series,
+  mappings,
+}: {
+  series: WizardDiscoveredSeries[];
+  mappings: MappingMap;
+}) {
+  const issues = validateMappings(series, mappings);
+  const config = generateConfig(series, mappings);
+  const json = JSON.stringify(config, null, 2);
+  const includedCount = config.descriptions.length;
+
+  function download() {
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "dcm2bids_config.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-surface-raised overflow-hidden mt-6">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-gray-400">
+            <path fillRule="evenodd" d="M2 2.5A2.5 2.5 0 0 1 4.5 0h7A2.5 2.5 0 0 1 14 2.5v11a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 13.5v-11Zm2.5-1a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-11a1 1 0 0 0-1-1h-7ZM5 5.75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 5 5.75Zm0 3a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 5 8.75Zm0 3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 0 1.5h-2A.75.75 0 0 1 5 11.75Z" clipRule="evenodd" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-200">Preview Config</h3>
+          <span className="text-xs text-gray-500">dcm2bids_config.json</span>
+        </div>
+        <button
+          type="button"
+          onClick={download}
+          disabled={includedCount === 0 || issues.length > 0}
+          aria-label="Download config.json"
+          className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+            <path d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z" />
+            <path d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z" />
+          </svg>
+          Download config.json
+        </button>
+      </div>
+
+      {/* Validation warnings */}
+      {issues.length > 0 && (
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+          {issues.map((iss) => (
+            <div key={iss.index} className="flex items-center gap-1.5 text-amber-400 text-xs">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                <path fillRule="evenodd" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+              </svg>
+              Series {iss.index + 1}: {iss.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {includedCount === 0 && issues.length === 0 && (
+        <div className="px-4 py-6 text-center text-sm text-gray-500">
+          No series included — toggle at least one series to generate a config.
+        </div>
+      )}
+
+      {/* JSON preview */}
+      {includedCount > 0 && (
+        <pre
+          aria-label="config preview"
+          className="px-4 py-3 text-[11px] font-mono text-gray-300 overflow-x-auto whitespace-pre leading-relaxed max-h-96 overflow-y-auto"
+        >
+          {json}
+        </pre>
+      )}
     </div>
   );
 }
@@ -218,40 +586,6 @@ function Field({
 const inputCls =
   "w-full rounded-md border border-white/10 bg-surface-overlay px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent/50";
 
-// ── Summary bar ───────────────────────────────────────────────────────────────
-
-function SummaryBar({ series }: { series: WizardDiscoveredSeries[] }) {
-  const counts: Record<string, number> = {};
-  for (const s of series) {
-    counts[s.classification.confidence] = (counts[s.classification.confidence] ?? 0) + 1;
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-4 rounded-lg border border-white/10 bg-surface-raised px-4 py-3 mb-4">
-      <span className="text-sm font-medium text-gray-200">
-        {series.length} series discovered
-      </span>
-      <div className="flex gap-2">
-        {counts.high != null && (
-          <span className="rounded-full bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 text-xs font-medium">
-            {counts.high} high
-          </span>
-        )}
-        {counts.medium != null && (
-          <span className="rounded-full bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 text-xs font-medium">
-            {counts.medium} medium
-          </span>
-        )}
-        {counts.low != null && (
-          <span className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 text-xs font-medium">
-            {counts.low} low / unknown
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function WizardDcm2bids() {
@@ -261,17 +595,45 @@ export default function WizardDcm2bids() {
   const [datasetName, setDatasetName] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [scoutResult, setScoutResult] = useState<WizardScoutResponse | null>(null);
+  const [mappings, setMappings] = useState<MappingMap>({});
 
   const scout = useMutation({
-    mutationFn: () => scoutDicom(dicomPath.trim(), participantId.trim(), sessionId.trim() || undefined),
-    onSuccess: (data) => setScoutResult(data),
+    mutationFn: () =>
+      scoutDicom(dicomPath.trim(), participantId.trim(), sessionId.trim() || undefined),
+    onSuccess: (data) => {
+      setScoutResult(data);
+    },
   });
+
+  // Initialise mappings whenever new scout results arrive
+  useEffect(() => {
+    if (scoutResult) {
+      setMappings(initMappings(scoutResult.series));
+    }
+  }, [scoutResult]);
+
+  const updateMapping = useCallback(
+    (index: number, patch: Partial<SeriesMapping>) => {
+      setMappings((prev) => ({
+        ...prev,
+        [index]: { ...prev[index], ...patch },
+      }));
+    },
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setScoutResult(null);
+    setMappings({});
     scout.mutate();
   }
+
+  const issues = scoutResult
+    ? validateMappings(scoutResult.series, mappings)
+    : [];
+  const issueMap: Record<number, string> = {};
+  for (const iss of issues) issueMap[iss.index] = iss.message;
 
   return (
     <div className="p-6 max-w-3xl">
@@ -289,7 +651,7 @@ export default function WizardDcm2bids() {
         </p>
       </div>
 
-      {/* Input form */}
+      {/* Step 1 — Input form */}
       <div className="rounded-xl border border-white/10 bg-surface-raised p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-200 mb-4">Step 1 — Choose DICOM source</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -386,7 +748,7 @@ export default function WizardDcm2bids() {
             {scoutResult && (
               <button
                 type="button"
-                onClick={() => setScoutResult(null)}
+                onClick={() => { setScoutResult(null); setMappings({}); }}
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
               >
                 Clear results
@@ -405,11 +767,14 @@ export default function WizardDcm2bids() {
         </form>
       </div>
 
-      {/* Results */}
+      {/* Step 2 — Review mappings */}
       {scoutResult && (
         <div>
+          {/* Section header + advanced toggle */}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-200">Discovered series</h3>
+            <h3 className="text-sm font-semibold text-gray-200">
+              Step 2 — Review Mappings
+            </h3>
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
@@ -426,8 +791,9 @@ export default function WizardDcm2bids() {
             </button>
           </div>
 
-          <SummaryBar series={scoutResult.series} />
+          <SummaryBar series={scoutResult.series} mappings={mappings} />
 
+          {/* Mapping cards */}
           <div className="space-y-3">
             {scoutResult.series.length === 0 ? (
               <div className="rounded-lg border border-white/10 bg-surface-raised p-6 text-center text-sm text-gray-500">
@@ -435,15 +801,21 @@ export default function WizardDcm2bids() {
               </div>
             ) : (
               scoutResult.series.map((s, i) => (
-                <SeriesCard
+                <MappingCard
                   key={`${s.series_number}-${s.acquisition_time}-${i}`}
                   s={s}
                   index={i}
+                  mapping={mappings[i] ?? { included: false, datatype: "anat", suffix: "T1w", taskName: "" }}
+                  validationIssue={issueMap[i] ?? null}
                   showAdvanced={showAdvanced}
+                  onChange={(patch) => updateMapping(i, patch)}
                 />
               ))
             )}
           </div>
+
+          {/* Config preview */}
+          <ConfigPreview series={scoutResult.series} mappings={mappings} />
 
           {/* dcm2bids_helper log — collapsed */}
           {scoutResult.helper_log && (
