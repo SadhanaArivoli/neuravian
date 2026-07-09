@@ -131,7 +131,10 @@ function PipelineCard({
           <p className="mt-1.5 text-sm text-gray-500 line-clamp-2">{pipeline.description}</p>
         </div>
         {pipeline.container ? (
-          <span className="shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 font-mono">
+          <span
+            className="shrink-0 max-w-[40%] truncate rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 font-mono"
+            title={`${pipeline.container.image}:${pipeline.container.tag}`}
+          >
             {pipeline.container.image}:{pipeline.container.tag}
           </span>
         ) : (
