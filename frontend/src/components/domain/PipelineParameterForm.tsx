@@ -88,7 +88,7 @@ function ParameterField({
           onChange={(e) => onChange(e.target.checked)}
           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
         />
-        <span className="text-sm text-gray-700">Enabled</span>
+        <span className="text-sm text-gray-200">Enabled</span>
       </label>
     );
   }
@@ -198,7 +198,7 @@ function ParameterRow({
 }) {
   return (
     <div>
-      <label htmlFor={`param-${param.name}`} className="flex items-center text-sm font-medium text-gray-800 mb-1.5">
+      <label htmlFor={`param-${param.name}`} className="flex items-center text-sm font-medium text-gray-200 mb-1.5">
         <span>{param.name}</span>
         {param.required && (
           <span className="ml-1 text-red-500" aria-label="required">*</span>
@@ -475,10 +475,10 @@ export default function PipelineParameterForm({ pipeline }: Props) {
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Dataset selector */}
       <div>
-        <label className="block text-sm font-medium text-gray-800 mb-1">
-          Dataset <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-gray-200 mb-1">
+          Dataset <span className="text-red-400">*</span>
         </label>
-        <p className="text-xs text-gray-500 mb-1.5">
+        <p className="text-xs text-gray-400 mb-1.5">
           Select which imported dataset to run {pipeline.display_name} on.
         </p>
         <select
@@ -521,7 +521,7 @@ export default function PipelineParameterForm({ pipeline }: Props) {
             aria-expanded={showAdvanced}
           >
             <span>Advanced options</span>
-            <span className="flex items-center gap-2 text-gray-500 text-xs font-normal">
+            <span className="flex items-center gap-2 text-gray-400 text-xs font-normal">
               {advancedParams.length} parameters
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -539,8 +539,8 @@ export default function PipelineParameterForm({ pipeline }: Props) {
           </button>
 
           {showAdvanced && (
-            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-5">
-              <p className="text-xs text-gray-500 -mt-1">
+            <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-4 space-y-5">
+              <p className="text-xs text-gray-400 -mt-1">
                 These settings are safe to leave at their defaults for most runs.
                 Change them only if you know what you need.
               </p>

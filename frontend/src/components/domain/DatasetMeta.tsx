@@ -121,7 +121,7 @@ function ScanBrowser({ datasetId }: { datasetId: number }) {
                         <p className="text-xs text-gray-300 font-mono truncate">
                           {scan.path.split("/").pop()}
                         </p>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-gray-400">
                           {scan.datatype}
                           {scan.session ? ` · ses-${scan.session}` : ""}
                           {" · "}

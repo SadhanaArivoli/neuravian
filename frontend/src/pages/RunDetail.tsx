@@ -156,11 +156,11 @@ export default function RunDetail() {
     <div className="p-8 max-w-5xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/runs" className="text-sm text-gray-500 hover:text-gray-700">
+        <Link to="/runs" className="text-sm text-gray-400 hover:text-gray-200">
           ← All runs
         </Link>
-        <span className="text-gray-300">/</span>
-        <h1 className="text-xl font-semibold text-gray-900">
+        <span className="text-gray-500">/</span>
+        <h1 className="text-xl font-semibold text-gray-100">
           Run #{run.id} — {run.pipeline_manifest_id}
         </h1>
         <StatusBadge status={run.status} />
@@ -170,22 +170,22 @@ export default function RunDetail() {
       <div className="grid grid-cols-2 gap-4 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
         <div>
           <span className="text-gray-500">Pipeline</span>
-          <p className="font-medium">{run.pipeline_manifest_id} {run.pipeline_version}</p>
+          <p className="font-medium text-gray-800">{run.pipeline_manifest_id} {run.pipeline_version}</p>
         </div>
         <div>
           <span className="text-gray-500">Dataset</span>
-          <p className="font-medium text-xs font-mono break-all">{run.output_dir ?? "—"}</p>
+          <p className="font-medium text-gray-800 text-xs font-mono break-all">{run.output_dir ?? "—"}</p>
         </div>
         {run.started_at && (
           <div>
             <span className="text-gray-500">Started</span>
-            <p className="font-medium">{new Date(run.started_at).toLocaleString()}</p>
+            <p className="font-medium text-gray-800">{new Date(run.started_at).toLocaleString()}</p>
           </div>
         )}
         {run.finished_at && (
           <div>
             <span className="text-gray-500">Finished</span>
-            <p className="font-medium">{new Date(run.finished_at).toLocaleString()}</p>
+            <p className="font-medium text-gray-800">{new Date(run.finished_at).toLocaleString()}</p>
           </div>
         )}
       </div>
@@ -233,7 +233,7 @@ export default function RunDetail() {
       {/* Command preview */}
       {run.command_preview && (
         <details className="mb-4">
-          <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 select-none">
+          <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none">
             Show exact Docker command
           </summary>
           <pre className="mt-2 rounded bg-gray-900 text-gray-100 text-xs p-4 overflow-x-auto whitespace-pre-wrap break-all">
@@ -244,7 +244,7 @@ export default function RunDetail() {
 
       {/* Provenance panel */}
       <details className="mb-4">
-        <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 select-none">
+        <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none">
           Provenance record
         </summary>
         <RunProvenance runId={run.id} />
@@ -271,7 +271,7 @@ export default function RunDetail() {
         </div>
         <div className="bg-gray-950 h-96 overflow-y-auto p-4 font-mono text-xs text-gray-200">
           {logLines.length === 0 && (
-            <span className="text-gray-600">
+            <span className="text-gray-400">
               {run.status === "pending"
                 ? "Waiting for run to start…"
                 : "No log output yet."}
@@ -283,7 +283,7 @@ export default function RunDetail() {
             </div>
           ))}
           {wsStatus === "connected" && isActive && silentSeconds >= 30 && (
-            <div className="mt-2 text-gray-600 italic">
+            <div className="mt-2 text-gray-400 italic">
               — pipeline is running, no new output for{" "}
               {silentSeconds < 60
                 ? `${silentSeconds}s`

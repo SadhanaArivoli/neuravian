@@ -37,9 +37,9 @@ export default function Runs() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Runs</h1>
+      <h1 className="text-2xl font-semibold text-gray-100 mb-6">Runs</h1>
 
-      {isLoading && <p className="text-sm text-gray-500">Loading run history…</p>}
+      {isLoading && <p className="text-sm text-gray-400">Loading run history…</p>}
       {error && (
         <p className="text-sm text-red-600">{(error as Error).message}</p>
       )}

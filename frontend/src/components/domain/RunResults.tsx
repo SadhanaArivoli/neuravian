@@ -137,7 +137,7 @@ export default function RunResults({ runId }: Props) {
 
   return (
     <div className="mt-4">
-      <h2 className="text-base font-semibold text-gray-900 mb-3">Results</h2>
+      <h2 className="text-base font-semibold text-gray-100 mb-3">Results</h2>
 
       {/* IQM summary card */}
       {iqmData && <IqmCard data={iqmData} />}
@@ -194,7 +194,7 @@ export default function RunResults({ runId }: Props) {
       {/* Metrics file list (secondary) */}
       {results.metrics.length > 0 && (
         <details className="mt-3">
-          <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none">
+          <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-200 select-none">
             Raw IQM files ({results.metrics.length})
           </summary>
           <ul className="mt-2 space-y-1">
@@ -218,7 +218,7 @@ export default function RunResults({ runId }: Props) {
           produce no .nii/.nii.gz outputs; visible for fMRIPrep and others. */}
       {niftis.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-sm font-semibold text-gray-800 mb-2">
+          <h3 className="text-sm font-semibold text-gray-100 mb-2">
             NIfTI derivatives ({niftis.length})
           </h3>
           <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">

@@ -90,7 +90,7 @@ export default function NiivueViewer({ fileUrl, fileName, onClose }: Props) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-950 z-10">
               <div className="h-6 w-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
               <span className="text-sm text-gray-400">Loading scan…</span>
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-gray-400">
                 Large files may take a moment
               </span>
             </div>

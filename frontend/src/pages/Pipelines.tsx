@@ -162,7 +162,7 @@ function PipelineDetail({ pipelineId }: { pipelineId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-gray-500">
+      <div className="flex items-center gap-2 text-sm text-gray-400">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
         Loading…
       </div>
@@ -178,8 +178,8 @@ function PipelineDetail({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-1">{data.display_name}</h2>
-      <p className="text-sm text-gray-500 mb-6">{data.description}</p>
+      <h2 className="text-xl font-semibold text-gray-100 mb-1">{data.display_name}</h2>
+      <p className="text-sm text-gray-400 mb-6">{data.description}</p>
       <PipelineParameterForm pipeline={data} />
     </div>
   );
@@ -249,10 +249,10 @@ export default function Pipelines() {
   return (
     <div className="flex h-full">
       {/* Pipeline list + filter bar */}
-      <aside className="w-80 shrink-0 border-r border-gray-200 flex flex-col">
+      <aside className="w-80 shrink-0 border-r border-white/10 flex flex-col">
         {/* Header + search */}
-        <div className="p-4 border-b border-gray-100 space-y-3">
-          <h1 className="text-lg font-semibold text-gray-900">Pipelines</h1>
+        <div className="p-4 border-b border-white/10 space-y-3">
+          <h1 className="text-lg font-semibold text-gray-100">Pipelines</h1>
 
           {/* Search */}
           <div className="relative">
@@ -279,7 +279,7 @@ export default function Pipelines() {
 
           {/* Category chips */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-1.5">Category</p>
+            <p className="text-xs font-medium text-gray-400 mb-1.5">Category</p>
             <div className="flex flex-wrap gap-1.5">
               {ALL_CATEGORIES.map((c) => (
                 <FilterChip
@@ -294,7 +294,7 @@ export default function Pipelines() {
 
           {/* Input type chips */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-1.5">Input data</p>
+            <p className="text-xs font-medium text-gray-400 mb-1.5">Input data</p>
             <div className="flex flex-wrap gap-1.5">
               {ALL_INPUT_TYPES.map((t) => (
                 <FilterChip
@@ -324,7 +324,7 @@ export default function Pipelines() {
                 }`}
               />
             </button>
-            <span className="text-xs text-gray-600">
+            <span className="text-xs text-gray-300">
               Local OK only
             </span>
           </label>
@@ -334,7 +334,7 @@ export default function Pipelines() {
             <button
               type="button"
               onClick={clearFilters}
-              className="text-xs text-blue-600 hover:text-blue-800 focus:outline-none"
+              className="text-xs text-blue-400 hover:text-blue-200 focus:outline-none"
             >
               Clear all filters
             </button>
@@ -344,7 +344,7 @@ export default function Pipelines() {
         {/* Pipeline list */}
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading && (
-            <p className="text-sm text-gray-500">Loading manifests…</p>
+            <p className="text-sm text-gray-400">Loading manifests…</p>
           )}
           {error && (
             <p className="text-sm text-red-600">{(error as Error).message}</p>
@@ -354,12 +354,12 @@ export default function Pipelines() {
             <>
               {filtered.length === 0 ? (
                 <div className="py-8 text-center">
-                  <p className="text-sm text-gray-500">No pipelines match these filters.</p>
+                  <p className="text-sm text-gray-400">No pipelines match these filters.</p>
                   {filtersActive && (
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="mt-2 text-xs text-blue-600 hover:text-blue-800 focus:outline-none"
+                      className="mt-2 text-xs text-blue-400 hover:text-blue-200 focus:outline-none"
                     >
                       Clear filters
                     </button>
@@ -396,7 +396,7 @@ export default function Pipelines() {
           <PipelineDetail pipelineId={selectedId} />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-500">
               Select a pipeline on the left to configure a run.
             </p>
           </div>
