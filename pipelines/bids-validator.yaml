@@ -148,6 +148,25 @@ parameters:
 
 max_runtime_hours: 0.25
 
+# ── Manual testing reference ─────────────────────────────────────────────────
+# Two test datasets are available for manual validation via the UI:
+#
+# 1. VALID DATASET (exit 0 → status=success) — registered as dataset ID 8:
+#    backend/tests/data/bids-valid
+#    Contents: single T1w, sub-01/anat/sub-01_T1w.nii.gz (from dcm2niix run 26)
+#    dataset_description.json present; participants.tsv present. Only warnings.
+#    Run 27 confirmed status=success in 7.9s.
+#    UI path for bids-dir: /Users/<you>/Documents/neuroforge/backend/tests/data/bids-valid
+#
+# 2. INVALID DATASET (exit 16 → status=failed) — registered as dataset ID 9:
+#    backend/tests/data/bids-invalid
+#    Intentional errors: missing dataset_description.json, T1w.nii.gz has no
+#    sub- entity in filename, file placed in wrong path.
+#    3 ERRORs: MISSING_DATASET_DESCRIPTION, MISSING_REQUIRED_ENTITY, INVALID_LOCATION.
+#    Run 28 confirmed status=failed in ~8s.
+#    UI path for bids-dir: /Users/<you>/Documents/neuroforge/backend/tests/data/bids-invalid
+# ─────────────────────────────────────────────────────────────────────────────
+
 known_errors:
   - pattern: "MISSING_DATASET_DESCRIPTION"
     explanation: >

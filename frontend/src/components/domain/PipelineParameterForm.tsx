@@ -457,6 +457,17 @@ export default function PipelineParameterForm({ pipeline }: Props) {
       return;
     }
 
+    // TODO: Pre-flight BIDS validation suggestion
+    // Before submitting MRIQC, fMRIPrep, FastSurfer, or any pipeline that
+    // requires a valid BIDS dataset, check whether the selected dataset has a
+    // recent successful BIDS Validator run (within the last N days). If not,
+    // surface a non-blocking suggestion: "This pipeline works best with a
+    // validated BIDS dataset. Run BIDS Validator first?" with a "Skip" option.
+    // Implementation: query GET /api/runs?pipeline_id=bids-validator&dataset_id=X
+    // and check for a recent status=success entry. The manifest can declare
+    // `preflight_for: ["mriqc", "fmriprep", "fastsurfer"]` to drive this logic
+    // without hardcoding pipeline IDs here.
+
     void doSubmit();
   }
 
