@@ -137,16 +137,16 @@ function detectLayerPairs(
     }
   }
 
-  // ── BrainChop ───────────────────────────────────────────────────────────
-  // stripped.nii.gz (skull-stripped T1) + brain_mask.nii.gz (binary mask)
-  // The mask is 0/1, not a label map, so we use the "hot" colormap rather
-  // than the FreeSurfer LUT.
+  // ── BrainChop / SynthStrip ──────────────────────────────────────────────
+  // Both tools write stripped.nii.gz (skull-stripped T1) and brain_mask.nii.gz
+  // (binary mask) to the same output directory. The mask is a 0/1 volume, so
+  // we render it with the "hot" colormap rather than the FreeSurfer label LUT.
   {
     const base = niftis.find((f) => f.name === "stripped.nii.gz");
     const mask = niftis.find((f) => f.name === "brain_mask.nii.gz");
     if (base && mask) {
       return {
-        label: "BrainChop output detected — clicking either file opens skull-stripped T1 with brain mask overlay.",
+        label: "Skull-strip output detected — clicking either file opens the stripped T1 with brain mask overlay.",
         memberNames: [base.name, mask.name],
         layers: [
           { url: url(base), name: base.name },

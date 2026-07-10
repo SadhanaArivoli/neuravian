@@ -31,7 +31,8 @@ Pipeline support is defined by YAML manifests in `pipelines/`. Relationships are
 | dcm2niix | Convert raw DICOMs to NIfTI/BIDS-like outputs | DICOM directory | Docker | `local-ok` | Lightweight conversion path for NIfTI-oriented workflows. |
 | BIDS Validator | Validate BIDS structure and metadata | BIDS dataset | Docker | `local-ok` | Recommended before MRIQC or fMRIPrep; failed run status can simply mean the dataset has BIDS errors. |
 | MRIQC | Generate MRI quality-control metrics and reports | BIDS dataset | Docker | `local-ok` | Intended local QC path after BIDS validation. |
-| BrainChop (MindGrab skull-strip) | Skull-strip structural NIfTI images | Structural NIfTI | Native subprocess | `local-ok` | Runs through the native executor rather than a Docker pipeline container. |
+| BrainChop (MindGrab skull-strip) | Skull-strip structural NIfTI images | Structural NIfTI | Native subprocess | `local-ok` | Runs through the native executor rather than a Docker pipeline container. 21 s on Apple Silicon (no emulation). |
+| SynthStrip | Skull-strip any-contrast MRI (T1w, T2w, FLAIR, DWI b0, etc.) | Structural NIfTI | Docker | `local-slow` | FreeSurfer-team 3D CNN. linux/amd64 image; 5–15 min on Apple Silicon via Rosetta 2 emulation. |
 | FastSurfer | Segmentation and surface reconstruction | T1w NIfTI | Docker | `local-slow` | Can run locally, but expect substantial runtime; requires host UID/GID setup. |
 | fMRIPrep | fMRI preprocessing derivatives and reports | BIDS dataset | Docker | `local-unsafe` | Manifest exists, but this is not considered locally safe for ordinary laptop use. |
 | pydeface | Deface structural MRI for data sharing | Structural NIfTI | Docker | `local-unsafe` | Manifest exists, but this is not considered locally safe yet. |

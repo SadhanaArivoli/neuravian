@@ -14,6 +14,11 @@ artifact_types:
     description: "NIfTI image with non-brain tissue removed"
     extensions: [".nii", ".nii.gz"]
 
+  brain_mask:
+    label: "Brain Mask"
+    description: "Binary NIfTI mask distinguishing brain (1) from background (0)"
+    extensions: [".nii", ".nii.gz"]
+
   nifti_defaced:
     label: "Defaced NIfTI"
     description: "NIfTI image with facial features removed for de-identification"

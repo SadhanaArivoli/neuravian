@@ -50,6 +50,11 @@ const MANIFESTS: Record<string, ManifestSlim> = {
     accepts: [{ type: "nifti_raw", param: "nifti-file" }],
     produces: [{ type: "nifti_defaced" }],
   },
+  synthstrip: {
+    id: "synthstrip",
+    accepts: [{ type: "nifti_raw", param: "input" }],
+    produces: [{ type: "nifti_skull_stripped" }, { type: "brain_mask" }],
+  },
 };
 
 // ── Valid templates ───────────────────────────────────────────────────────────
@@ -57,8 +62,8 @@ const MANIFESTS: Record<string, ManifestSlim> = {
 describe("WORKFLOW_TEMPLATES — all live templates pass validation", () => {
   const liveTemplates = WORKFLOW_TEMPLATES.filter((t) => !t.disabled);
 
-  it("there are at least 4 live templates", () => {
-    expect(liveTemplates.length).toBeGreaterThanOrEqual(4);
+  it("there are at least 5 live templates", () => {
+    expect(liveTemplates.length).toBeGreaterThanOrEqual(5);
   });
 
   for (const template of liveTemplates) {
@@ -197,6 +202,16 @@ describe("validateTemplateEdges — known invalid chains are rejected", () => {
     expect(sourceErrors.length).toBeGreaterThan(0);
   });
 
+  // ── SynthStrip → FastSurfer chain ────────────────────────────────────────
+  // synthstrip: nifti_raw → nifti_skull_stripped; fastsurfer: nifti_skull_stripped → freesurfer_dir
+  it("accepts SynthStrip → FastSurfer (nifti_raw → nifti_skull_stripped → freesurfer_dir)", () => {
+    const template = WORKFLOW_TEMPLATES.find((t) => t.id === "synthstrip-surface");
+    expect(template).toBeDefined();
+    const result = validateTemplateEdges(template!, MANIFESTS);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   // ── Disabled template with empty steps passes ─────────────────────────────
   it("passes validation for disabled (coming-soon) templates with no steps", () => {
     const disabled = WORKFLOW_TEMPLATES.find((t) => t.disabled);
@@ -213,12 +228,13 @@ describe("validateTemplateEdges — known invalid chains are rejected", () => {
 // declares the required artifact type should qualify automatically.
 
 const PRODUCES_CACHE: Record<string, string[]> = {
-  "dcm2niix":      ["nifti_raw"],
-  "brainchop":     ["nifti_skull_stripped"],
-  "mriqc":         ["mriqc_report"],
+  "dcm2niix":       ["nifti_raw"],
+  "brainchop":      ["nifti_skull_stripped"],
+  "synthstrip":     ["nifti_skull_stripped", "brain_mask"],
+  "mriqc":          ["mriqc_report"],
   "bids-validator": ["bids_dataset_validated"],
   // Hypothetical future pipeline — not dcm2niix, but also produces nifti_raw
-  "dicom-custom":  ["nifti_raw", "nifti_defaced"],
+  "dicom-custom":   ["nifti_raw", "nifti_defaced"],
 };
 
 const RUNS = [

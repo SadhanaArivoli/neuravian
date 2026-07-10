@@ -1,0 +1,215 @@
+id: synthstrip
+display_name: SynthStrip
+description: >
+  FreeSurfer's SynthStrip is a learning-based skull-stripping tool that works
+  on any brain MRI contrast (T1w, T2w, FLAIR, MP2RAGE, DWI b0, etc.) without
+  requiring contrast-specific retraining. A 3D CNN estimates the brain surface
+  and produces a signed distance transform, from which a binary mask and a
+  skull-stripped volume are derived. Because the model was trained on a broad
+  synthetic distribution, it generalises across scanners, field strengths, and
+  pathological cases where atlas-based methods fail.
+  Runs via Docker (linux/amd64 image). On Apple Silicon, expect 5–15 minutes
+  via Rosetta 2 emulation. On native x86_64 Linux or cloud instances the same
+  scan completes in 2–5 minutes on CPU.
+homepage: https://surfer.nmr.mgh.harvard.edu/docs/synthstrip/
+category: segmentation
+input_type: nifti
+
+# compute_profile: local-slow
+# SynthStrip uses an x86_64-only Docker image. On Apple Silicon Docker Desktop,
+# every container launch uses Rosetta 2 emulation. Empirical expectation for a
+# standard 0.7mm T1w (274×384×384): 5–15 minutes. On native x86_64 the same
+# image runs in 2–5 minutes.
+compute_profile: local-slow
+
+container:
+  image: freesurfer/synthstrip
+  tag: "1.6"
+  engine: docker
+
+# SynthStrip is a flag-only tool: input via -i (mount: true), output via -o
+# and -m pointing inside /out. No BIDS directory argument.
+dataset_positional: false
+
+inputs:
+  - structural_nifti
+
+outputs:
+  - skull_stripped_nifti
+  - brain_mask
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────
+  - name: input
+    cli_flag: "-i"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to the structural NIfTI file to skull-strip (.nii or .nii.gz).
+      SynthStrip accepts any MRI contrast — T1w, T2w, FLAIR, DWI b0, MP2RAGE,
+      or synthetic images. Point it at a single file, e.g.
+      /path/to/data/derivatives/dcm2niix/26/anat-T1w.nii.gz.
+      The file is mounted read-only into the container.
+
+  # ── Output control ────────────────────────────────────────────────────
+  - name: out
+    cli_flag: "-o"
+    type: string
+    required: false
+    default: /out/stripped.nii.gz
+    help: >
+      Container-internal path for the skull-stripped output volume.
+      The default /out/stripped.nii.gz writes to the run's output directory
+      as stripped.nii.gz. The stripped image retains the same voxel grid,
+      field of view, and intensity values as the input; non-brain voxels are
+      zeroed. Do not change this unless you have a specific reason to write
+      the output elsewhere inside the container.
+
+  - name: mask
+    cli_flag: "-m"
+    type: string
+    required: false
+    default: /out/brain_mask.nii.gz
+    help: >
+      Container-internal path for the binary brain mask (0=background,
+      1=brain). Written alongside the stripped volume. The mask can be passed
+      to downstream tools for region-of-interest analysis, defacing with
+      pydeface, or as an explicit brain mask argument for registration tools
+      (FSL FLIRT, ANTs). Defaults to brain_mask.nii.gz in the run's output
+      directory.
+
+  # ── Anatomical boundary ───────────────────────────────────────────────
+  - name: no-csf
+    cli_flag: "--no-csf"
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Exclude CSF from the brain border. By default SynthStrip includes a thin
+      layer of subarachnoid CSF in the mask. Enable this flag if you need a
+      tighter mask that stops at the pial surface, e.g. when passing the mask
+      to tools that are sensitive to CSF-contaminated ROIs. In most workflows,
+      including CSF is the correct default.
+
+  - name: border
+    cli_flag: "--border"
+    type: float
+    required: false
+    default: 1
+    help: >
+      Mask border threshold in mm (default 1). Controls how far the mask
+      boundary extends beyond the estimated brain surface. Increasing this
+      value produces a slightly larger mask that includes more dura and
+      meningeal tissue — useful before defacing to ensure the face region is
+      fully covered. Decreasing toward 0 gives a tighter mask suited for
+      cortical surface reconstruction with FastSurfer.
+
+  # ── Advanced ──────────────────────────────────────────────────────────
+  - name: gpu
+    cli_flag: "-g"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Use a CUDA GPU for inference. Reduces typical runtime from 2–5 minutes
+      to ~20 seconds. Requires an NVIDIA GPU, the NVIDIA Container Toolkit,
+      and the GPU passed through to the Docker container — none of which is
+      available in standard Docker Desktop on macOS. Leave disabled unless
+      you have confirmed CUDA support in your Docker setup. The CPU path
+      (default) works on all platforms and produces identical results.
+
+accepts:
+  - type: nifti_raw
+    param: input
+    label: "Structural NIfTI"
+    description: "Input NIfTI image to skull-strip; typically from dcm2niix"
+
+produces:
+  - type: nifti_skull_stripped
+    path_hint: "stripped.nii.gz"
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from SynthStrip; non-brain voxels zeroed"
+
+  - type: brain_mask
+    path_hint: "brain_mask.nii.gz"
+    label: "Brain Mask"
+    description: "Binary brain mask from SynthStrip (0=background, 1=brain)"
+
+max_runtime_hours: 2.0
+
+# ── Manual testing reference ─────────────────────────────────────────────────
+# Test dataset: backend/tests/data/dicom-structural/dicoms (run 26 T1w output)
+# File: data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
+# Platform: Apple Silicon M-series via Docker Desktop (linux/amd64 → Rosetta 2)
+# Image verified: freesurfer/synthstrip:1.6
+#   Digest: sha256:16181aeb75cab4fa0bf7ab4f79ba77eca466cc0e28a384f3ecb007c4a376ea09
+#   Architecture: linux/amd64 (x86_64 only; ARM native image not available)
+#
+# CLI verified manually:
+#   docker run --rm --platform linux/amd64 \
+#     -v <host_t1w>:/inputs/anat-T1w.nii.gz:ro \
+#     -v <out_dir>:/out \
+#     freesurfer/synthstrip:1.6 \
+#     -i /inputs/anat-T1w.nii.gz \
+#     -o /out/stripped.nii.gz \
+#     -m /out/brain_mask.nii.gz
+#
+# Expected log:
+#   Configuring model on the CPU
+#   Running SynthStrip model version 1
+#   Input image read from: /inputs/anat-T1w.nii.gz
+#   Processing frame (of 1): 1
+#   Saving stripped image: /out/stripped.nii.gz
+#   Saving brain mask: /out/brain_mask.nii.gz
+#
+# Exit code: 0
+# Outputs: stripped.nii.gz + brain_mask.nii.gz in the run output directory
+# ─────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "FileNotFoundError|No such file or directory|cannot open.*\\.nii"
+    explanation: >
+      SynthStrip could not find the input NIfTI file at the path you specified.
+      The file may not exist at that path, or the path may point to a directory
+      rather than a .nii/.nii.gz file.
+    fix_hint: >
+      Verify the "input" path points to a real .nii or .nii.gz file on your
+      machine. Use the absolute host path. The file is mounted read-only into
+      the container at /inputs/input/<filename> — if the host path is wrong,
+      the container receives an empty bind mount and cannot find the file.
+
+  - pattern: "CUDA.*not available|CUDA error|RuntimeError.*cuda|device.*cuda.*not found"
+    explanation: >
+      The "gpu" option was enabled but CUDA is not available in the container.
+      SynthStrip requires an NVIDIA GPU and the NVIDIA Container Toolkit for
+      GPU inference; it will not fall back to CPU when --gpu is explicitly set.
+    fix_hint: >
+      Disable the "gpu" parameter (set to false) and retry. CPU inference
+      produces identical results and works on all platforms, including Apple
+      Silicon under Docker Desktop. GPU support requires NVIDIA hardware and
+      the NVIDIA Container Toolkit, neither of which is available in standard
+      Docker Desktop on macOS.
+
+  - pattern: "MemoryError|Cannot allocate memory|Killed"
+    explanation: >
+      SynthStrip ran out of memory during inference. The 3D CNN loads the
+      entire volume into RAM; very large FOV or high-resolution scans may
+      exceed the memory allocated to Docker Desktop.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources → Memory, increase the limit
+      to at least 4 GB and retry. If the scan is unusually large (> 300 slices
+      at sub-millimetre resolution), consider cropping to the brain bounding box
+      first using FSL's robustfov before running SynthStrip.
+
+  - pattern: "pull access denied|not found|manifest unknown"
+    explanation: >
+      Docker could not pull the SynthStrip image from Docker Hub. This can
+      happen when the image tag no longer exists or when Docker Hub rate limits
+      are hit.
+    fix_hint: >
+      Run: docker pull freesurfer/synthstrip:1.6
+      to pre-pull the image. If the tag is unavailable, check
+      https://hub.docker.com/r/freesurfer/synthstrip/tags for the current
+      recommended tag and update the pipeline manifest accordingly.

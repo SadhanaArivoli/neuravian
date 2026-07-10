@@ -285,7 +285,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     estimatedRuntime: "Varies per file",
     requiredSourceKind: "run",
     requiredSourceArtifact: "nifti_raw",
-    requiredSourceLabel: "Completed dcm2niix run (produces nifti_raw)",
+    requiredSourceLabel: "Completed run producing nifti_raw (e.g. dcm2niix)",
     worstComputeProfile: "local-unsafe",
     steps: [
       {
@@ -312,7 +312,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     estimatedRuntime: "10 min – 48 hrs",
     requiredSourceKind: "run",
     requiredSourceArtifact: "nifti_raw",
-    requiredSourceLabel: "Completed dcm2niix run (produces nifti_raw)",
+    requiredSourceLabel: "Completed run producing nifti_raw (e.g. dcm2niix)",
     worstComputeProfile: "local-slow",
     computeWarning: "FastSurfer can take 8–48 hrs under Docker on Apple Silicon.",
     steps: [
@@ -339,7 +339,47 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 5. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 5. SynthStrip + Surface Reconstruction ────────────────────────────────
+  // synthstrip (nifti_raw → nifti_skull_stripped) → fastsurfer (nifti_skull_stripped)
+  // FreeSurfer-team chain: SynthStrip skull-strips, FastSurfer reconstructs surfaces.
+  // Both tools originate from the Fischl lab; the stripped T1 feeds FastSurfer's --t1.
+  {
+    id: "synthstrip-surface",
+    name: "SynthStrip + Segmentation",
+    description:
+      "Skull-strip a T1w NIfTI with FreeSurfer's SynthStrip (any contrast), then run FastSurfer for CNN segmentation and cortical surface reconstruction.",
+    categoryKey: "segmentation",
+    estimatedRuntime: "30 min – 50 hrs",
+    requiredSourceKind: "run",
+    requiredSourceArtifact: "nifti_raw",
+    requiredSourceLabel: "Completed run producing nifti_raw (e.g. dcm2niix)",
+    worstComputeProfile: "local-slow",
+    computeWarning: "FastSurfer can take 8–48 hrs under Docker on Apple Silicon. SynthStrip adds ~5–15 min.",
+    steps: [
+      {
+        pipelineId: "synthstrip",
+        inputArtifactType: "nifti_raw",
+        edge: {
+          artifactType: "nifti_raw",
+          acceptParam: "input",
+          acceptDatasetSlot: false,
+          acceptLabel: "Structural NIfTI",
+        },
+      },
+      {
+        pipelineId: "fastsurfer",
+        inputArtifactType: "nifti_skull_stripped",
+        edge: {
+          artifactType: "nifti_skull_stripped",
+          acceptParam: "t1",
+          acceptDatasetSlot: false,
+          acceptLabel: "Skull-Stripped T1w",
+        },
+      },
+    ],
+  },
+
+  // ── 6. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.
