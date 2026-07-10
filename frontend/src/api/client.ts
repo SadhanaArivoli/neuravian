@@ -122,6 +122,23 @@ export interface PipelineParameter {
   mount?: boolean;
 }
 
+export interface PipelineAcceptSlot {
+  type: string;
+  param?: string;
+  dataset_slot?: boolean;
+  label?: string;
+  description?: string;
+}
+
+export interface PipelineProduceSlot {
+  type: string;
+  label?: string;
+  description?: string;
+  path_hint?: string | null;
+  source_param?: string;
+  multiple?: boolean;
+}
+
 export interface PipelineKnownError {
   pattern: string;
   explanation: string;
@@ -146,6 +163,8 @@ export interface PipelineSummary {
 export interface Pipeline extends PipelineSummary {
   inputs: string[];
   outputs: string[];
+  accepts?: PipelineAcceptSlot[];
+  produces?: PipelineProduceSlot[];
   parameters: PipelineParameter[];
   known_errors?: PipelineKnownError[];
   command_template?: string;

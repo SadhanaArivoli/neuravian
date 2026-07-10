@@ -6,6 +6,7 @@ import Pipelines from "./pages/Pipelines";
 import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
+import WorkflowBuilder from "./pages/WorkflowBuilder";
 import WizardDcm2bids from "./pages/WizardDcm2bids";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/runs" element={<Runs />} />
           <Route path="/runs/:id" element={<RunDetail />} />
+          <Route path="/workflows/new" element={<WorkflowBuilder />} />
           <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
         </Routes>
       </main>
