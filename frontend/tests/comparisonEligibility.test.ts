@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   classifyEligibility,
   computeDice,
+  detectComparisonFamily,
+  findCompatibleConnectivityRun,
   findVerifiedSibling,
   geometriesCompatible,
   sortByEligibility,
@@ -233,5 +235,64 @@ describe("geometriesCompatible", () => {
     const a: NiftiGeometry = { ...base, dims: [274, 384, 384] };
     const b: NiftiGeometry = { ...base, dims: [256, 256, 256] };
     expect(geometriesCompatible(a, b)).toBe(false);
+  });
+});
+
+// ── detectComparisonFamily ─────────────────────────────────────────────────────
+
+describe("detectComparisonFamily", () => {
+  it("returns connectivity when both runs produce connectivity artifacts", () => {
+    const conn = ["connectivity_matrix_csv", "connectivity_matrix_png"];
+    expect(detectComparisonFamily(conn, conn)).toBe("connectivity");
+  });
+
+  it("returns anatomical when both runs produce brain masks", () => {
+    const anat = ["brain_mask", "skull_stripped_t1"];
+    expect(detectComparisonFamily(anat, anat)).toBe("anatomical");
+  });
+
+  it("returns mixed when one run is anatomical and one is connectivity", () => {
+    const anat = ["brain_mask"];
+    const conn = ["connectivity_matrix_csv"];
+    expect(detectComparisonFamily(anat, conn)).toBe("mixed");
+    expect(detectComparisonFamily(conn, anat)).toBe("mixed");
+  });
+
+  it("returns none when neither run has known artifact types", () => {
+    expect(detectComparisonFamily(["some_other_type"], ["another_type"])).toBe("none");
+  });
+
+  it("anatomical check is unchanged (regression)", () => {
+    const anat = ["skull_stripped_t1"];
+    const conn = ["connectivity_matrix_npy"];
+    expect(detectComparisonFamily(anat, anat)).toBe("anatomical");
+    expect(detectComparisonFamily(conn, conn)).toBe("connectivity");
+  });
+});
+
+// ── findCompatibleConnectivityRun ──────────────────────────────────────────────
+
+describe("findCompatibleConnectivityRun", () => {
+  const ref = makeRun({ id: 45, pipeline_manifest_id: "functional-connectivity", source_run_id: 44, dataset_id: 1 });
+
+  it("prefers same-source sibling (shared source_run_id)", () => {
+    const sameSource = makeRun({ id: 46, pipeline_manifest_id: "functional-connectivity", source_run_id: 44, dataset_id: 1 });
+    const other = makeRun({ id: 50, pipeline_manifest_id: "functional-connectivity", source_run_id: null, dataset_id: 1 });
+    expect(findCompatibleConnectivityRun(ref, [other, sameSource])?.id).toBe(46);
+  });
+
+  it("falls back to same-dataset run when no same-source sibling", () => {
+    const other = makeRun({ id: 50, pipeline_manifest_id: "functional-connectivity", source_run_id: null, dataset_id: 1 });
+    expect(findCompatibleConnectivityRun(ref, [other])?.id).toBe(50);
+  });
+
+  it("returns null when no candidates", () => {
+    expect(findCompatibleConnectivityRun(ref, [])).toBeNull();
+  });
+
+  it("does not return the ref run itself", () => {
+    // Caller is responsible for filtering out ref before passing candidates
+    const other = makeRun({ id: 99, pipeline_manifest_id: "functional-connectivity", source_run_id: null, dataset_id: 9 });
+    expect(findCompatibleConnectivityRun(ref, [other])).toBeNull();
   });
 });

@@ -158,6 +158,72 @@ export function computeDice(
   return { dice, intersection, aOnly, bOnly, totalForeground };
 }
 
+// ── Comparison family detection ────────────────────────────────────────────────
+
+export type ComparisonFamily = "anatomical" | "connectivity" | "mixed" | "none";
+
+const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
+
+function hasConnectivity(types: string[]): boolean {
+  return types.some((t) => t.startsWith("connectivity_"));
+}
+function hasAnatomical(types: string[]): boolean {
+  return types.some((t) => ANATOMICAL_TYPES.has(t));
+}
+
+/**
+ * Determine which comparison family applies to a pair of runs, based on their
+ * produced artifact types.  "mixed" means one run is anatomical and the other
+ * is connectivity — these cannot be meaningfully compared.
+ */
+export function detectComparisonFamily(
+  producedTypesA: string[],
+  producedTypesB: string[],
+): ComparisonFamily {
+  const connA = hasConnectivity(producedTypesA);
+  const connB = hasConnectivity(producedTypesB);
+  const anatA = hasAnatomical(producedTypesA);
+  const anatB = hasAnatomical(producedTypesB);
+  if ((connA || connB) && (anatA || anatB)) return "mixed";
+  if (connA || connB) return "connectivity";
+  if (anatA || anatB) return "anatomical";
+  return "none";
+}
+
+/**
+ * Detect the family for a single run's output types.
+ */
+export function detectRunFamily(
+  producedTypes: string[],
+): "connectivity" | "anatomical" | "other" {
+  if (hasConnectivity(producedTypes)) return "connectivity";
+  if (hasAnatomical(producedTypes)) return "anatomical";
+  return "other";
+}
+
+/**
+ * Find a compatible connectivity sibling among `candidates`.
+ * Priority: same source_run_id (same import) → same dataset_id.
+ * All candidates are assumed to already produce connectivity matrices.
+ * Returns null if none found.
+ */
+export function findCompatibleConnectivityRun(
+  ref: RunSummary,
+  candidates: RunSummary[],
+): RunSummary | null {
+  // Prefer same-source (shared import run)
+  if (ref.source_run_id !== null && ref.source_run_id !== undefined) {
+    const sameSource = candidates.find(
+      (c) =>
+        c.source_run_id === ref.source_run_id &&
+        c.source_run_id !== null,
+    );
+    if (sameSource) return sameSource;
+  }
+  // Cross-subject: any run on the same dataset
+  return candidates.find((c) => c.dataset_id === ref.dataset_id) ?? null;
+}
+
 // ── NIfTI geometry compatibility ───────────────────────────────────────────────
 
 export interface NiftiGeometry {

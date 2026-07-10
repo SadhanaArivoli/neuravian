@@ -14,6 +14,73 @@ export interface ConnectivityMatrixDifference {
   frobenius: number;
   minDiff: number;
   maxDiff: number;
+  largestAbsDiff: number;
+}
+
+export interface ConnectivityMetadata {
+  atlas: string;
+  atlas_id: string;
+  correlation_method: string;
+  n_rois: number;
+  n_volumes: number;
+  matrix_shape: [number, number];
+  roi_labels: string[];
+  correlation_min: number;
+  correlation_max: number;
+  correlation_mean: number;
+  subject: string | null;
+  task: string | null;
+  bold_file: string | null;
+  confounds_file: string | null;
+  runtime_seconds: number;
+}
+
+export type MatrixComparisonMode = "same-source" | "cross-subject";
+
+export interface MatrixCompatibilityResult {
+  compatible: boolean;
+  reason: string;
+  mode?: MatrixComparisonMode;
+}
+
+export function checkMatrixCompatibility(
+  a: ConnectivityMetadata,
+  b: ConnectivityMetadata,
+): MatrixCompatibilityResult {
+  if (a.atlas_id !== b.atlas_id) {
+    return { compatible: false, reason: `Atlas mismatch: "${a.atlas_id}" vs "${b.atlas_id}"` };
+  }
+  if (a.n_rois !== b.n_rois) {
+    return { compatible: false, reason: `ROI count mismatch: ${a.n_rois} vs ${b.n_rois}` };
+  }
+  const aShape = a.matrix_shape;
+  const bShape = b.matrix_shape;
+  if (aShape[0] !== bShape[0] || aShape[1] !== bShape[1]) {
+    return {
+      compatible: false,
+      reason: `Matrix dimensions differ: ${aShape.join("×")} vs ${bShape.join("×")}`,
+    };
+  }
+  if (a.correlation_method !== b.correlation_method) {
+    return {
+      compatible: false,
+      reason: `Correlation method mismatch: "${a.correlation_method}" vs "${b.correlation_method}"`,
+    };
+  }
+  const labelsMatch =
+    a.roi_labels.length === b.roi_labels.length &&
+    a.roi_labels.every((l, i) => l === b.roi_labels[i]);
+  if (!labelsMatch) {
+    return { compatible: false, reason: "ROI label ordering differs between runs" };
+  }
+  const sameSource = a.bold_file !== null && a.bold_file === b.bold_file;
+  return {
+    compatible: true,
+    reason: sameSource
+      ? "Same source BOLD file (deterministic result expected)"
+      : "Compatible atlas and ROI label ordering across subjects",
+    mode: sameSource ? "same-source" : "cross-subject",
+  };
 }
 
 export function parseConnectivityMatrixCsv(text: string): ConnectivityMatrixData {
@@ -54,10 +121,13 @@ export function connectivityMatrixDifference(
       maxDiff = Math.max(maxDiff, diff);
     }
   }
+  const finalMin = Number.isFinite(minDiff) ? minDiff : 0;
+  const finalMax = Number.isFinite(maxDiff) ? maxDiff : 0;
   return {
     frobenius: Math.sqrt(sum),
-    minDiff: Number.isFinite(minDiff) ? minDiff : 0,
-    maxDiff: Number.isFinite(maxDiff) ? maxDiff : 0,
+    minDiff: finalMin,
+    maxDiff: finalMax,
+    largestAbsDiff: Math.max(Math.abs(finalMin), Math.abs(finalMax)),
   };
 }
 

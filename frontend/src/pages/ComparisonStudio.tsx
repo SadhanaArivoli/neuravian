@@ -1,45 +1,53 @@
 /**
  * Pipeline Comparison Studio
  *
- * Compares outputs from two different pipelines run on the same source data.
+ * Compares outputs from two different pipelines (anatomical family) or two
+ * runs of the same connectivity pipeline on different data (connectivity family).
  * Route: /compare?a=<runId>&b=<runId>
  *
- * Candidate discovery uses three-tier lineage-safe eligibility:
- *   verified   – shared source_run_id (confirmed same ancestor)
- *   unverified – same dataset_id only (fallback with warning)
- *   ineligible – different datasets (excluded)
+ * Comparison families:
+ *   anatomical   – brain masks / skull-stripped NIfTI (SynthStrip vs BrainChop etc.)
+ *   connectivity – Pearson correlation matrices from functional-connectivity
  *
- * Four viewer modes: Side-by-Side, Linked, Mask Overlay, Difference.
- * "Difference" requires geometry-compatible masks and computes voxel-wise
- * binary disagreement via a Web Worker.
+ * Candidate eligibility (three tiers, from comparisonEligibility.ts):
+ *   verified   – shared source_run_id (same ancestor)
+ *   unverified – same dataset_id only
+ *   ineligible – different datasets
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Niivue } from "@niivue/niivue";
 import { useRuns } from "../hooks/useRuns";
 import { useRunResults } from "../hooks/useRuns";
-import { fetchPipeline, fetchRunTextFile } from "../api/client";
+import { fetchPipeline, fetchRunFile, fetchRunTextFile } from "../api/client";
 import type { RunMetadata, RunResults, RunSummary } from "../api/client";
 import NiivuePanel from "../components/domain/NiivuePanel";
 import type { NiivueLayer } from "../components/domain/NiivuePanel";
 import {
   classifyEligibility,
+  detectComparisonFamily,
+  detectRunFamily,
   sortByEligibility,
   geometriesCompatible,
+  type ComparisonFamily,
   type DiceStats,
   type NiftiGeometry,
 } from "../lib/comparisonEligibility";
 import {
+  checkMatrixCompatibility,
   connectivityMatrixDifference,
   connectivityMatrixRange,
   parseConnectivityMatrixCsv,
   type ConnectivityMatrixData,
+  type ConnectivityMetadata,
+  type MatrixCompatibilityResult,
 } from "../lib/connectivityMatrix";
 import { parseNiftiHeader, DATATYPE_LABELS } from "../lib/niftiHeader";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ViewMode = "sidebyside" | "linked" | "maskoverlay" | "difference";
+type AnatomicalViewMode = "sidebyside" | "linked" | "maskoverlay" | "difference";
+type MatrixViewMode = "sidebyside" | "difference" | "summary";
 
 interface RunOption {
   run: RunSummary;
@@ -57,9 +65,13 @@ interface ConnectivityCompareState {
   message?: string;
   a?: ConnectivityMatrixData;
   b?: ConnectivityMatrixData;
+  metaA?: ConnectivityMetadata;
+  metaB?: ConnectivityMetadata;
+  compatibility?: MatrixCompatibilityResult;
   frobenius?: number;
   minDiff?: number;
   maxDiff?: number;
+  largestAbsDiff?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -384,43 +396,92 @@ function DicePanel({ diceState }: { diceState: DiceState }) {
   );
 }
 
-function MatrixPreview({ matrix, mode }: { matrix: ConnectivityMatrixData; mode: "matrix" | "diff" }) {
-  const size = matrix.values.length;
-  const cells = matrix.values.slice(0, 40).map((row, y) =>
-    row.slice(0, 40).map((value, x) => {
-      const scaled = mode === "diff" ? Math.max(-1, Math.min(1, value)) : Math.max(-1, Math.min(1, value));
-      const t = (scaled + 1) / 2;
-      const color = `rgb(${Math.round(40 + t * 200)}, ${Math.round(90 + (1 - Math.abs(t - 0.5) * 2) * 80)}, ${Math.round(220 - t * 170)})`;
-      return <div key={`${y}-${x}`} title={`${matrix.labels[y] ?? y + 1} x ${matrix.labels[x] ?? x + 1}: ${value.toFixed(3)}`} style={{ backgroundColor: color }} />;
-    }),
-  );
+// ── MatrixHeatmap ─────────────────────────────────────────────────────────────
+
+function MatrixHeatmap({
+  matrix,
+  mode,
+  otherMatrix,
+}: {
+  matrix: ConnectivityMatrixData;
+  mode: "matrix" | "diff";
+  otherMatrix?: ConnectivityMatrixData;
+}) {
+  const MAX_CELLS = 40;
+  const size = Math.min(matrix.values.length, MAX_CELLS);
+
   return (
     <div
-      className="grid h-48 w-48 overflow-hidden rounded border border-white/10"
-      style={{ gridTemplateColumns: `repeat(${Math.min(size, 40)}, minmax(0, 1fr))` }}
+      className="grid overflow-hidden rounded border border-white/10"
+      style={{
+        gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+        width: "100%",
+        aspectRatio: "1",
+      }}
     >
-      {cells}
+      {matrix.values.slice(0, size).map((row, y) =>
+        row.slice(0, size).map((value, x) => {
+          const scaled = Math.max(-1, Math.min(1, value));
+          const t = (scaled + 1) / 2;
+          const r = Math.round(40 + t * 200);
+          const g = Math.round(90 + (1 - Math.abs(t - 0.5) * 2) * 80);
+          const b = Math.round(220 - t * 170);
+          const color = `rgb(${r},${g},${b})`;
+
+          const labelY = matrix.labels[y] ?? `ROI ${y + 1}`;
+          const labelX = matrix.labels[x] ?? `ROI ${x + 1}`;
+          let title: string;
+          if (mode === "diff") {
+            title = `${labelY} × ${labelX}\nΔ = ${value.toFixed(4)}`;
+          } else {
+            title = `${labelY} × ${labelX}: ${value.toFixed(4)}`;
+            if (otherMatrix) {
+              const other = otherMatrix.values[y]?.[x];
+              if (other !== undefined) {
+                title += `\nOther: ${other.toFixed(4)}\nΔ = ${(value - other).toFixed(4)}`;
+              }
+            }
+          }
+
+          return (
+            <div
+              key={`${y}-${x}`}
+              title={title}
+              style={{ backgroundColor: color }}
+            />
+          );
+        }),
+      )}
     </div>
   );
 }
+
+// ── ConnectivityComparisonPanel ───────────────────────────────────────────────
 
 function ConnectivityComparisonPanel({
   state,
   labelA,
   labelB,
+  matrixViewMode,
+  onMatrixViewModeChange,
 }: {
   state: ConnectivityCompareState;
   labelA: string;
   labelB: string;
+  matrixViewMode: MatrixViewMode;
+  onMatrixViewModeChange: (mode: MatrixViewMode) => void;
 }) {
   if (state.status === "idle") return null;
+
   if (state.status === "loading") {
     return (
-      <div className="rounded-lg border border-white/10 bg-surface-raised px-4 py-3 text-xs text-gray-400">
+      <div className="rounded-lg border border-white/10 bg-surface-raised px-4 py-3 text-xs text-gray-400 flex items-center gap-2">
+        <div className="h-3 w-3 rounded-full border border-blue-500 border-t-transparent animate-spin shrink-0" />
         Loading connectivity matrices…
       </div>
     );
   }
+
   if (state.status === "error") {
     return (
       <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
@@ -428,46 +489,186 @@ function ConnectivityComparisonPanel({
       </div>
     );
   }
+
   if (!state.a || !state.b) return null;
 
+  const compat = state.compatibility;
   const rangeA = connectivityMatrixRange(state.a);
   const rangeB = connectivityMatrixRange(state.b);
-  const diffValues: ConnectivityMatrixData = {
+
+  const diffMatrix: ConnectivityMatrixData = {
     labels: state.a.labels,
-    values: state.a.values.map((row, y) => row.map((value, x) => value - (state.b!.values[y]?.[x] ?? 0))),
+    values: state.a.values.map((row, y) =>
+      row.map((value, x) => value - (state.b!.values[y]?.[x] ?? 0)),
+    ),
   };
 
+  const MATRIX_VIEW_MODES: Array<{ mode: MatrixViewMode; label: string }> = [
+    { mode: "sidebyside", label: "Side by side" },
+    { mode: "difference", label: "Difference" },
+    { mode: "summary", label: "Summary" },
+  ];
+
   return (
-    <div>
-      <SectionHeading>Connectivity matrix comparison</SectionHeading>
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
-          <p className="mb-2 text-xs font-medium text-gray-300">{labelA}</p>
-          <MatrixPreview matrix={state.a} mode="matrix" />
+    <div className="space-y-4">
+      {/* Header: mode badge + view switcher */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <SectionHeading>Connectivity matrix comparison</SectionHeading>
+          {compat && (
+            <span
+              className={`mb-3 text-xs px-2 py-0.5 rounded-full font-medium ${
+                compat.compatible
+                  ? compat.mode === "same-source"
+                    ? "bg-blue-500/10 text-blue-300 border border-blue-500/20"
+                    : "bg-green-500/10 text-green-400 border border-green-500/20"
+                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+              }`}
+            >
+              {compat.compatible
+                ? compat.mode === "same-source"
+                  ? "Same-source comparison"
+                  : "Cross-subject comparison"
+                : `Incompatible: ${compat.reason}`}
+            </span>
+          )}
         </div>
-        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
-          <p className="mb-2 text-xs font-medium text-gray-300">{labelB}</p>
-          <MatrixPreview matrix={state.b} mode="matrix" />
-        </div>
-        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
-          <p className="mb-2 text-xs font-medium text-gray-300">Difference</p>
-          <MatrixPreview matrix={diffValues} mode="diff" />
+        <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-surface-raised p-1 mb-3">
+          {MATRIX_VIEW_MODES.map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => onMatrixViewModeChange(mode)}
+              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
+                matrixViewMode === mode
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {[
-          ["A dimensions", `${rangeA.rows} x ${rangeA.cols}`],
-          ["B dimensions", `${rangeB.rows} x ${rangeB.cols}`],
-          ["A range", `${rangeA.min.toFixed(3)} to ${rangeA.max.toFixed(3)}`],
-          ["B range", `${rangeB.min.toFixed(3)} to ${rangeB.max.toFixed(3)}`],
-          ["Frobenius diff", state.frobenius?.toFixed(4) ?? "—"],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded border border-white/10 bg-white/5 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-            <div className="font-mono text-xs font-semibold text-gray-200">{value}</div>
+
+      {/* Cross-subject warning */}
+      {compat?.mode === "cross-subject" && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">
+          ⚠ Cross-subject comparison: these matrices are from different source BOLD files.
+          Connectivity values reflect different subjects/sessions. Differences may reflect
+          biology, not pipeline variation.
+        </div>
+      )}
+
+      {/* Heatmaps */}
+      {matrixViewMode === "sidebyside" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-white/10 bg-surface-raised p-3">
+            <p className="mb-2 text-xs font-medium text-blue-300">{labelA}</p>
+            <MatrixHeatmap matrix={state.a} mode="matrix" otherMatrix={state.b} />
           </div>
-        ))}
-      </div>
+          <div className="rounded-lg border border-white/10 bg-surface-raised p-3">
+            <p className="mb-2 text-xs font-medium text-violet-300">{labelB}</p>
+            <MatrixHeatmap matrix={state.b} mode="matrix" otherMatrix={state.a} />
+          </div>
+        </div>
+      )}
+
+      {matrixViewMode === "difference" && (
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-3">
+          <p className="mb-1 text-xs font-medium text-gray-300">
+            Difference heatmap — {labelA} minus {labelB}
+          </p>
+          <p className="mb-3 text-[10px] text-gray-500">
+            Blue = A &lt; B · Red = A &gt; B · Teal = near-zero difference
+          </p>
+          <MatrixHeatmap matrix={diffMatrix} mode="diff" />
+        </div>
+      )}
+
+      {/* Metrics grid */}
+      {matrixViewMode !== "summary" && (
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { label: "Dimensions", value: `${rangeA.rows}×${rangeA.cols}` },
+            { label: "Atlas", value: state.metaA?.atlas_id ?? "—", title: state.metaA?.atlas },
+            { label: "A range", value: `${rangeA.min.toFixed(3)} → ${rangeA.max.toFixed(3)}` },
+            { label: "B range", value: `${rangeB.min.toFixed(3)} → ${rangeB.max.toFixed(3)}` },
+            { label: "Frobenius diff", value: state.frobenius?.toFixed(4) ?? "—", title: "||A - B||_F (entry-wise Euclidean distance)" },
+            { label: "Max |Δ|", value: state.largestAbsDiff?.toFixed(4) ?? "—", title: "Largest single-entry absolute difference" },
+          ].map(({ label, value, title }) => (
+            <div key={label} title={title} className="rounded border border-white/10 bg-white/5 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+              <div className="font-mono text-xs font-semibold text-gray-200 truncate" title={value}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Summary panel */}
+      {matrixViewMode === "summary" && (
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* Run A summary */}
+            <div className="rounded border border-blue-500/20 bg-blue-500/5 p-3">
+              <p className="text-xs font-medium text-blue-300 mb-2">{labelA}</p>
+              <dl className="space-y-1 text-xs">
+                {[
+                  ["Atlas", state.metaA?.atlas ?? "—"],
+                  ["Subject", state.metaA?.subject ?? "—"],
+                  ["Task", state.metaA?.task ?? "—"],
+                  ["ROIs", String(state.metaA?.n_rois ?? rangeA.rows)],
+                  ["Volumes", String(state.metaA?.n_volumes ?? "—")],
+                  ["r range", `${state.metaA?.correlation_min?.toFixed(3) ?? rangeA.min.toFixed(3)} → ${state.metaA?.correlation_max?.toFixed(3) ?? rangeA.max.toFixed(3)}`],
+                  ["Mean r (off-diag)", state.metaA?.correlation_mean?.toFixed(4) ?? "—"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <dt className="text-gray-500 w-28 shrink-0">{k}</dt>
+                    <dd className="text-gray-200 font-mono">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            {/* Run B summary */}
+            <div className="rounded border border-violet-500/20 bg-violet-500/5 p-3">
+              <p className="text-xs font-medium text-violet-300 mb-2">{labelB}</p>
+              <dl className="space-y-1 text-xs">
+                {[
+                  ["Atlas", state.metaB?.atlas ?? "—"],
+                  ["Subject", state.metaB?.subject ?? "—"],
+                  ["Task", state.metaB?.task ?? "—"],
+                  ["ROIs", String(state.metaB?.n_rois ?? rangeB.rows)],
+                  ["Volumes", String(state.metaB?.n_volumes ?? "—")],
+                  ["r range", `${state.metaB?.correlation_min?.toFixed(3) ?? rangeB.min.toFixed(3)} → ${state.metaB?.correlation_max?.toFixed(3) ?? rangeB.max.toFixed(3)}`],
+                  ["Mean r (off-diag)", state.metaB?.correlation_mean?.toFixed(4) ?? "—"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <dt className="text-gray-500 w-28 shrink-0">{k}</dt>
+                    <dd className="text-gray-200 font-mono">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+
+          {/* Difference stats */}
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Difference statistics (A − B)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Frobenius norm", value: state.frobenius?.toFixed(4) ?? "—", color: "text-gray-200", title: "||A - B||_F" },
+                { label: "Max |Δ|", value: state.largestAbsDiff?.toFixed(4) ?? "—", color: "text-amber-300", title: "Largest single-entry absolute difference" },
+                { label: "Min Δ", value: state.minDiff?.toFixed(4) ?? "—", color: "text-blue-300" },
+                { label: "Max Δ", value: state.maxDiff?.toFixed(4) ?? "—", color: "text-violet-300" },
+              ].map(({ label, value, color, title }) => (
+                <div key={label} title={title} className="rounded border border-white/10 bg-white/5 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+                  <div className={`font-mono text-sm font-semibold ${color}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -489,44 +690,46 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
   return (
     <div>
       <SectionHeading>Output files</SectionHeading>
-      <div className="rounded-lg border border-white/10 overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-white/5 border-b border-white/10">
-              <th className="px-3 py-2 text-xs font-medium text-gray-400">File</th>
-              <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelA}</th>
-              <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelB}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {allNames.map((name) => {
-              const fA = niftisA.find((f) => f.name === name);
-              const fB = niftisB.find((f) => f.name === name);
-              return (
-                <tr key={name}>
-                  <td className="px-3 py-2 text-xs text-gray-300 font-mono">{name}</td>
-                  <td className="px-3 py-2 text-xs text-gray-400">
-                    {fA ? (
-                      <a href={`/api/runs/${runIdA}/files/${fA.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                        ↗ view
-                      </a>
-                    ) : <span className="text-red-400">missing</span>}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-400">
-                    {fB ? (
-                      <a href={`/api/runs/${runIdB}/files/${fB.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                        ↗ view
-                      </a>
-                    ) : <span className="text-red-400">missing</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {allNames.length > 0 && (
+        <div className="rounded-lg border border-white/10 overflow-hidden mb-3">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">File</th>
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelA}</th>
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelB}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {allNames.map((name) => {
+                const fA = niftisA.find((f) => f.name === name);
+                const fB = niftisB.find((f) => f.name === name);
+                return (
+                  <tr key={name}>
+                    <td className="px-3 py-2 text-xs text-gray-300 font-mono">{name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-400">
+                      {fA ? (
+                        <a href={`/api/runs/${runIdA}/files/${fA.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                          ↗ view
+                        </a>
+                      ) : <span className="text-red-400">missing</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-400">
+                      {fB ? (
+                        <a href={`/api/runs/${runIdB}/files/${fB.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                          ↗ view
+                        </a>
+                      ) : <span className="text-red-400">missing</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      <div className="mt-3 rounded-lg border border-white/10 overflow-hidden">
+      <div className="rounded-lg border border-white/10 overflow-hidden">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-white/5 border-b border-white/10">
@@ -610,7 +813,6 @@ function RunSelector({
   ref?: RunSummary | null;
   onChange: (id: number | null) => void;
 }) {
-  // When a reference run is known, group options by eligibility tier
   const grouped = refRun
     ? sortByEligibility(refRun, options.map((o) => ({ run: o.run, producedTypes: o.producedTypes })))
     : null;
@@ -664,16 +866,18 @@ export default function ComparisonStudio() {
   const runAId = searchParams.get("a") ? Number(searchParams.get("a")) : null;
   const runBId = searchParams.get("b") ? Number(searchParams.get("b")) : null;
 
-  const [viewMode, setViewMode] = useState<ViewMode>("sidebyside");
+  const [anatomicalViewMode, setAnatomicalViewMode] = useState<AnatomicalViewMode>("sidebyside");
+  const [matrixViewMode, setMatrixViewMode] = useState<MatrixViewMode>("sidebyside");
   const nvARef = useRef<Niivue | null>(null);
   const nvBRef = useRef<Niivue | null>(null);
 
   // Pipeline produces cache: id → produced artifact types
   const [producesCache, setProducesCache] = useState<Record<string, string[]>>({});
 
-  // Geometry + Dice state
+  // Geometry + Dice state (anatomical family)
   const [geomState, setGeomState] = useState<GeomState>({ status: "idle" });
   const [diceState, setDiceState] = useState<DiceState>({ status: "idle" });
+  // Connectivity comparison state
   const [connectivityState, setConnectivityState] = useState<ConnectivityCompareState>({ status: "idle" });
   const workerRef = useRef<Worker | null>(null);
 
@@ -698,34 +902,60 @@ export default function ComparisonStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRuns]);
 
-  // Build run options: successful volumetric or connectivity outputs
+  // Build run options: successful runs producing volumetric or connectivity artifacts
   const runOptions: RunOption[] = (allRuns ?? [])
     .filter((r) => r.status === "success")
     .map((r) => ({ run: r, producedTypes: producesCache[r.pipeline_manifest_id] ?? [] }))
-    .filter((o) => o.producedTypes.some((t) => t.includes("nifti") || t.includes("brain") || t.includes("mask") || t.startsWith("connectivity_")));
+    .filter((o) =>
+      o.producedTypes.some(
+        (t) =>
+          t.includes("nifti") ||
+          t.includes("brain") ||
+          t.includes("mask") ||
+          t.startsWith("connectivity_"),
+      ),
+    );
 
   const runAOption = runOptions.find((o) => o.run.id === runAId);
   const runBOption = runOptions.find((o) => o.run.id === runBId);
 
-  // B candidates: different pipeline, shares at least one artifact type with A
+  // Determine comparison family for Run A (single-run)
+  const runAFamily = runAOption ? detectRunFamily(runAOption.producedTypes) : null;
+
+  // B candidates depend on Run A's family:
+  // - connectivity: same-pipeline OK (comparing two FC runs across subjects/sessions)
+  // - anatomical: different pipeline required (comparing two skull-strippers)
   const bOptions = runAOption
-    ? runOptions.filter(
-        (o) =>
-          o.run.id !== runAId &&
-          o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id &&
-          o.producedTypes.some((t) => runAOption.producedTypes.includes(t))
-      )
+    ? runOptions.filter((o) => {
+        if (o.run.id === runAId) return false;
+        const sharedTypes = o.producedTypes.filter((t) =>
+          runAOption.producedTypes.includes(t),
+        );
+        if (sharedTypes.length === 0) return false;
+        if (runAFamily === "connectivity") return true;
+        return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
+      })
     : runOptions.filter((o) => o.run.id !== runBId);
 
-  // A candidates: symmetric filter against B
+  // A candidates: symmetric
+  const runBFamily = runBOption ? detectRunFamily(runBOption.producedTypes) : null;
   const aOptions = runBOption
-    ? runOptions.filter(
-        (o) =>
-          o.run.id !== runBId &&
-          o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id &&
-          o.producedTypes.some((t) => runBOption.producedTypes.includes(t))
-      )
+    ? runOptions.filter((o) => {
+        if (o.run.id === runBId) return false;
+        const sharedTypes = o.producedTypes.filter((t) =>
+          runBOption.producedTypes.includes(t),
+        );
+        if (sharedTypes.length === 0) return false;
+        if (runBFamily === "connectivity") return true;
+        return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
+      })
     : runOptions;
+
+  // Comparison family between the two selected runs
+  const comparisonFamily: ComparisonFamily =
+    runAOption && runBOption
+      ? detectComparisonFamily(runAOption.producedTypes, runBOption.producedTypes)
+      : "none";
 
   // Eligibility between the two selected runs
   const runASummary = runAOption?.run ?? null;
@@ -733,25 +963,27 @@ export default function ComparisonStudio() {
   const eligibility =
     runASummary && runBSummary ? classifyEligibility(runASummary, runBSummary) : null;
 
+  function resetState() {
+    setGeomState({ status: "idle" });
+    setDiceState({ status: "idle" });
+    setConnectivityState({ status: "idle" });
+  }
+
   function setRunA(id: number | null) {
     const p = new URLSearchParams(searchParams);
     if (id) p.set("a", String(id)); else p.delete("a");
     setSearchParams(p);
-    setGeomState({ status: "idle" });
-    setDiceState({ status: "idle" });
-    setConnectivityState({ status: "idle" });
+    resetState();
   }
 
   function setRunB(id: number | null) {
     const p = new URLSearchParams(searchParams);
     if (id) p.set("b", String(id)); else p.delete("b");
     setSearchParams(p);
-    setGeomState({ status: "idle" });
-    setDiceState({ status: "idle" });
-    setConnectivityState({ status: "idle" });
+    resetState();
   }
 
-  // Auto-suggest: when A is selected and B is empty, pick first verified-or-only compatible B
+  // Auto-suggest: when A is selected and B is empty, pick first compatible B
   useEffect(() => {
     if (runAId && !runBId && bOptions.length === 1) {
       setRunB(bOptions[0].run.id);
@@ -759,10 +991,10 @@ export default function ComparisonStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runAId, runBId, bOptions.length]);
 
-  // Parse NIfTI headers when both runs are loaded and have masks
+  // Parse NIfTI headers when both anatomical runs are loaded with masks
   useEffect(() => {
-    if (!resultsA || !resultsB || !runAId || !runBId) {
-      setGeomState({ status: "idle" });
+    if (comparisonFamily !== "anatomical" || !resultsA || !resultsB || !runAId || !runBId) {
+      if (comparisonFamily !== "anatomical") setGeomState({ status: "idle" });
       return;
     }
     const urlA = getMaskUrl(resultsA, runAId);
@@ -792,39 +1024,65 @@ export default function ComparisonStudio() {
       .catch((err: unknown) => {
         setGeomState({ status: "error", error: err instanceof Error ? err.message : String(err) });
       });
-  }, [resultsA, resultsB, runAId, runBId]);
+  }, [resultsA, resultsB, runAId, runBId, comparisonFamily]);
 
+  // Load connectivity matrices and metadata when both connectivity runs are loaded
   useEffect(() => {
-    if (!resultsA || !resultsB || !runAId || !runBId) {
-      setConnectivityState({ status: "idle" });
+    if (comparisonFamily !== "connectivity" || !resultsA || !resultsB || !runAId || !runBId) {
+      if (comparisonFamily !== "connectivity") setConnectivityState({ status: "idle" });
       return;
     }
     const matrixA = resultsA.connectivity_matrices?.[0];
     const matrixB = resultsB.connectivity_matrices?.[0];
+    const metaFileA = resultsA.connectivity_metadata?.[0];
+    const metaFileB = resultsB.connectivity_metadata?.[0];
+
     if (!matrixA || !matrixB) {
       setConnectivityState({ status: "idle" });
       return;
     }
+
     setConnectivityState({ status: "loading" });
+
     Promise.all([
       fetchRunTextFile(runAId, matrixA.path),
       fetchRunTextFile(runBId, matrixB.path),
+      metaFileA ? fetchRunFile<ConnectivityMetadata>(runAId, metaFileA.path).catch(() => null) : Promise.resolve(null),
+      metaFileB ? fetchRunFile<ConnectivityMetadata>(runBId, metaFileB.path).catch(() => null) : Promise.resolve(null),
     ])
-      .then(([textA, textB]) => {
+      .then(([textA, textB, metaA, metaB]) => {
         const a = parseConnectivityMatrixCsv(textA);
         const b = parseConnectivityMatrixCsv(textB);
-        if (a.values.length !== b.values.length || (a.values[0]?.length ?? 0) !== (b.values[0]?.length ?? 0)) {
+        if (
+          a.values.length !== b.values.length ||
+          (a.values[0]?.length ?? 0) !== (b.values[0]?.length ?? 0)
+        ) {
           throw new Error("Connectivity matrices have different dimensions.");
         }
-        setConnectivityState({ status: "done", a, b, ...connectivityMatrixDifference(a, b) });
+        const diffStats = connectivityMatrixDifference(a, b);
+        const compatibility =
+          metaA && metaB ? checkMatrixCompatibility(metaA, metaB) : undefined;
+        setConnectivityState({
+          status: "done",
+          a,
+          b,
+          metaA: metaA ?? undefined,
+          metaB: metaB ?? undefined,
+          compatibility,
+          ...diffStats,
+        });
       })
       .catch((err: unknown) => {
-        setConnectivityState({ status: "error", message: err instanceof Error ? err.message : String(err) });
+        setConnectivityState({
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
       });
-  }, [resultsA, resultsB, runAId, runBId]);
+  }, [resultsA, resultsB, runAId, runBId, comparisonFamily]);
 
-  // Compute Dice via Web Worker when geometry is compatible
+  // Compute Dice via Web Worker when anatomical geometry is compatible
   useEffect(() => {
+    if (comparisonFamily !== "anatomical") return;
     if (geomState.status !== "done" || !resultsA || !resultsB || !runAId || !runBId) return;
     if (!geomState.geomA || !geomState.geomB) return;
     if (!geometriesCompatible(geomState.geomA, geomState.geomB)) return;
@@ -833,9 +1091,7 @@ export default function ComparisonStudio() {
     const urlB = getMaskUrl(resultsB, runBId);
     if (!urlA || !urlB) return;
 
-    // Terminate any previous worker
     workerRef.current?.terminate();
-
     setDiceState({ status: "loading", message: "Starting…" });
 
     const worker = new Worker(
@@ -865,7 +1121,6 @@ export default function ComparisonStudio() {
           bOnly: msg.bOnly!,
           totalForeground: msg.totalForeground!,
         };
-        // Validate with our pure function for consistency
         setDiceState({ status: "done", stats });
         worker.terminate();
         workerRef.current = null;
@@ -892,9 +1147,9 @@ export default function ComparisonStudio() {
       workerRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geomState.status, geomState.geomA, geomState.geomB]);
+  }, [geomState.status, geomState.geomA, geomState.geomB, comparisonFamily]);
 
-  // Validate: if geometry is incompatible, disable "Difference" mode
+  // Geometry compatibility (for disabling Difference mode)
   const geomCompatible =
     geomState.status === "done" &&
     geomState.geomA &&
@@ -905,24 +1160,24 @@ export default function ComparisonStudio() {
   const handleNvAReady = useCallback(
     (nv: Niivue) => {
       nvARef.current = nv;
-      if (viewMode === "linked" && nvBRef.current) nv.broadcastTo(nvBRef.current);
+      if (anatomicalViewMode === "linked" && nvBRef.current) nv.broadcastTo(nvBRef.current);
     },
-    [viewMode]
+    [anatomicalViewMode]
   );
 
   const handleNvBReady = useCallback(
     (nv: Niivue) => {
       nvBRef.current = nv;
-      if (viewMode === "linked" && nvARef.current) nvARef.current.broadcastTo(nv);
+      if (anatomicalViewMode === "linked" && nvARef.current) nvARef.current.broadcastTo(nv);
     },
-    [viewMode]
+    [anatomicalViewMode]
   );
 
   useEffect(() => {
-    if (viewMode === "linked" && nvARef.current && nvBRef.current) {
+    if (anatomicalViewMode === "linked" && nvARef.current && nvBRef.current) {
       nvARef.current.broadcastTo(nvBRef.current);
     }
-  }, [viewMode]);
+  }, [anatomicalViewMode]);
 
   const metaA = resultsA?.metadata ?? null;
   const metaB = resultsB?.metadata ?? null;
@@ -937,22 +1192,22 @@ export default function ComparisonStudio() {
   const bothSelected = runAId !== null && runBId !== null;
   const bothLoaded = resultsA !== undefined && resultsB !== undefined;
 
-  // Build viewer layers based on mode
+  // Anatomical viewer layers
   const layersA: NiivueLayer[] =
-    resultsA && runAId
-      ? viewMode === "maskoverlay" || viewMode === "difference"
+    comparisonFamily === "anatomical" && resultsA && runAId
+      ? anatomicalViewMode === "maskoverlay" || anatomicalViewMode === "difference"
         ? buildMaskLayers(resultsA, runAId, "blue")
         : buildLayers(resultsA, runAId)
       : [];
 
   const layersB: NiivueLayer[] =
-    resultsB && runBId
-      ? viewMode === "maskoverlay" || viewMode === "difference"
+    comparisonFamily === "anatomical" && resultsB && runBId
+      ? anatomicalViewMode === "maskoverlay" || anatomicalViewMode === "difference"
         ? buildMaskLayers(resultsB, runBId, "red")
         : buildLayers(resultsB, runBId)
       : [];
 
-  const VIEW_MODES: Array<{ mode: ViewMode; label: string; disabled?: boolean; title?: string }> = [
+  const ANATOMICAL_VIEW_MODES: Array<{ mode: AnatomicalViewMode; label: string; disabled?: boolean; title?: string }> = [
     { mode: "sidebyside", label: "Side by side" },
     { mode: "linked", label: "Linked" },
     { mode: "maskoverlay", label: "Mask Overlay" },
@@ -960,17 +1215,21 @@ export default function ComparisonStudio() {
       mode: "difference",
       label: "Difference",
       disabled: geomState.status === "done" && !geomCompatible,
-      title: geomState.status === "done" && !geomCompatible
-        ? "Disabled: geometry mismatch between masks"
-        : undefined,
+      title:
+        geomState.status === "done" && !geomCompatible
+          ? "Disabled: geometry mismatch between masks"
+          : undefined,
     },
   ];
 
-  const viewerNote =
-    viewMode === "maskoverlay"
-      ? "Mask Overlay: each panel shows one pipeline's brain mask. Blue = Run A, Red = Run B."
-      : viewMode === "difference"
-      ? "Difference: each panel shows one pipeline's binary mask. Areas of agreement are in both panels; areas of disagreement appear in only one."
+  // Prompt message when Run A is set but no compatible Run B exists
+  const noCompatibleBMessage =
+    runAId && !runBId && bOptions.length === 0
+      ? runAFamily === "connectivity"
+        ? "No compatible connectivity runs found. Run functional-connectivity again (on this or another subject) to enable matrix comparison."
+        : "No compatible runs found to compare with Run A. Run another skull-stripping pipeline first."
+      : runAId && !runBId && bOptions.length > 0
+      ? `Select Run B above. ${bOptions.length} compatible run${bOptions.length === 1 ? "" : "s"} found.`
       : null;
 
   return (
@@ -990,17 +1249,17 @@ export default function ComparisonStudio() {
             </p>
           </div>
 
-          {/* Mode switcher */}
-          {bothSelected && bothLoaded && (
+          {/* Anatomical mode switcher — only when family is anatomical */}
+          {bothSelected && bothLoaded && comparisonFamily === "anatomical" && (
             <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-surface-raised p-1">
-              {VIEW_MODES.map(({ mode, label, disabled, title }) => (
+              {ANATOMICAL_VIEW_MODES.map(({ mode, label, disabled, title }) => (
                 <button
                   key={mode}
-                  onClick={() => !disabled && setViewMode(mode)}
+                  onClick={() => !disabled && setAnatomicalViewMode(mode)}
                   title={title}
                   disabled={disabled}
                   className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
-                    viewMode === mode
+                    anatomicalViewMode === mode
                       ? "bg-blue-600 text-white shadow-sm"
                       : disabled
                       ? "text-gray-600 cursor-not-allowed"
@@ -1034,7 +1293,7 @@ export default function ComparisonStudio() {
           />
         </div>
 
-        {/* Eligibility badge — shown when both runs are selected */}
+        {/* Eligibility badge */}
         {eligibility && bothSelected && (
           <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 max-w-2xl ${
             eligibility.tier === "verified"
@@ -1053,24 +1312,31 @@ export default function ComparisonStudio() {
         {/* Loading state */}
         {runsLoading && <div className="text-sm text-gray-500">Loading runs…</div>}
 
-        {/* No runs with nifti outputs yet */}
+        {/* No eligible runs found */}
         {!runsLoading && runOptions.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-surface-raised px-5 py-4 text-sm text-gray-400 max-w-xl">
             No completed runs with comparable volumetric or connectivity outputs found yet.
           </div>
         )}
 
-        {/* Prompt to select runs */}
+        {/* Prompt to select / no compatible runs */}
         {!runsLoading && runOptions.length > 0 && (!runAId || !runBId) && (
           <div className="rounded-lg border border-white/10 bg-surface-raised px-5 py-4 text-sm text-gray-400 max-w-xl">
             {!runAId && !runBId && "Select two runs above to compare their outputs."}
-            {runAId && !runBId && bOptions.length === 0 && "No compatible runs found to compare with Run A. Run another skull-stripping pipeline first."}
-            {runAId && !runBId && bOptions.length > 0 && `Select Run B above. ${bOptions.length} compatible run${bOptions.length === 1 ? "" : "s"} found.`}
+            {noCompatibleBMessage}
+          </div>
+        )}
+
+        {/* Mixed-family warning */}
+        {bothSelected && bothLoaded && comparisonFamily === "mixed" && (
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-4 text-sm text-amber-300 max-w-xl">
+            ⚠ These runs produce different artifact families (one anatomical, one connectivity).
+            Select two runs from the same family to compare.
           </div>
         )}
 
         {/* Main comparison content */}
-        {bothSelected && bothLoaded && (
+        {bothSelected && bothLoaded && comparisonFamily !== "mixed" && (
           <>
             {/* Run badges */}
             <div className="flex items-center gap-3 flex-wrap">
@@ -1091,30 +1357,38 @@ export default function ComparisonStudio() {
               </div>
             </div>
 
-            {/* Viewer panels */}
-            <ConnectivityComparisonPanel
-              state={connectivityState}
-              labelA={labelA}
-              labelB={labelB}
-            />
+            {/* Connectivity comparison panel */}
+            {comparisonFamily === "connectivity" && (
+              <ConnectivityComparisonPanel
+                state={connectivityState}
+                labelA={labelA}
+                labelB={labelB}
+                matrixViewMode={matrixViewMode}
+                onMatrixViewModeChange={setMatrixViewMode}
+              />
+            )}
 
-            {/* Viewer panels */}
-            {(layersA.length > 0 || layersB.length > 0) && (
+            {/* Anatomical NIfTI viewer */}
+            {comparisonFamily === "anatomical" && (layersA.length > 0 || layersB.length > 0) && (
               <div>
                 <SectionHeading>
-                  {viewMode === "sidebyside" && "Side-by-side view"}
-                  {viewMode === "linked" && "Linked view — scroll one panel to move both"}
-                  {viewMode === "maskoverlay" && "Mask Overlay — brain mask per pipeline"}
-                  {viewMode === "difference" && "Difference — binary masks side by side"}
+                  {anatomicalViewMode === "sidebyside" && "Side-by-side view"}
+                  {anatomicalViewMode === "linked" && "Linked view — scroll one panel to move both"}
+                  {anatomicalViewMode === "maskoverlay" && "Mask Overlay — brain mask per pipeline"}
+                  {anatomicalViewMode === "difference" && "Difference — binary masks side by side"}
                 </SectionHeading>
-                {viewerNote && <p className="text-xs text-gray-500 mb-3">{viewerNote}</p>}
+                {anatomicalViewMode === "maskoverlay" && (
+                  <p className="text-xs text-gray-500 mb-3">
+                    Mask Overlay: each panel shows one pipeline's brain mask. Blue = Run A, Red = Run B.
+                  </p>
+                )}
                 <div
                   className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden border border-white/10"
                   style={{ height: "55vh" }}
                 >
                   {layersA.length > 0 ? (
                     <NiivuePanel
-                      key={`a-${viewMode}-${layersA.map((l) => l.url).join()}`}
+                      key={`a-${anatomicalViewMode}-${layersA.map((l) => l.url).join()}`}
                       layers={layersA}
                       label={labelA}
                       onReady={handleNvAReady}
@@ -1127,7 +1401,7 @@ export default function ComparisonStudio() {
                   )}
                   {layersB.length > 0 ? (
                     <NiivuePanel
-                      key={`b-${viewMode}-${layersB.map((l) => l.url).join()}`}
+                      key={`b-${anatomicalViewMode}-${layersB.map((l) => l.url).join()}`}
                       layers={layersB}
                       label={labelB}
                       onReady={handleNvBReady}
@@ -1142,11 +1416,15 @@ export default function ComparisonStudio() {
               </div>
             )}
 
-            {/* Geometry table (Item 4) */}
-            <GeometryTable geomState={geomState} labelA={labelA} labelB={labelB} />
+            {/* Geometry table — anatomical only */}
+            {comparisonFamily === "anatomical" && (
+              <GeometryTable geomState={geomState} labelA={labelA} labelB={labelB} />
+            )}
 
-            {/* Dice coefficient (Item 3) */}
-            <DicePanel diceState={diceState} />
+            {/* Dice coefficient — anatomical only */}
+            {comparisonFamily === "anatomical" && (
+              <DicePanel diceState={diceState} />
+            )}
 
             {/* Metadata comparison */}
             {metaA && metaB && (
