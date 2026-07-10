@@ -41,7 +41,12 @@ artifact_types:
 
   mriqc_report:
     label: "MRIQC Report"
-    description: "MRIQC output directory containing HTML reports and group-level TSV/JSON"
+    description: "MRIQC participant-level output directory containing subject HTML reports and IQM JSON files"
+    extensions: []
+
+  mriqc_group_report:
+    label: "MRIQC Group Report"
+    description: "MRIQC group-level output directory containing aggregate HTML reports and group IQM TSV tables"
     extensions: []
 
   fmriprep_derivatives:

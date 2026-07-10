@@ -107,6 +107,10 @@
       "default": true,
       "description": "If true (default), the container command starts with the fixed positional pair '/data /out' and /data is mounted read-only to the BIDS dataset. If false, no positional prefix is emitted and /data is not mounted — used for flag-only pipelines like FastSurfer that address inputs via --flag mounts rather than a BIDS directory argument."
     },
+    "seed_output_from_lineage_artifact_type": {
+      "type": "string",
+      "description": "Optional artifact type slug. When a run is launched from lineage carrying this artifact, NeuroForge copies the upstream artifact directory into this run's output_dir before execution. Used for tools whose official group-level mode expects a pre-populated output directory."
+    },
     "deprecated_params": {
       "type": "object",
       "additionalProperties": { "type": "string" },
@@ -197,6 +201,11 @@
           "type": "boolean",
           "default": false,
           "description": "If true and type is 'file_path' or 'directory_path', the path is bind-mounted into the container as a read-only volume and the CLI flag receives the container-internal path instead of the host path. Required for any file/directory that the container must read but that isn't the BIDS dataset or work-dir."
+        },
+        "internal": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, this parameter can receive manifest/lineage values but is not rendered in the UI and is never emitted as a CLI flag. Use for NeuroForge orchestration metadata, not tool arguments."
         }
       }
     },

@@ -117,6 +117,7 @@ export interface PipelineParameter {
   options?: string[];
   help?: string;
   advanced?: boolean;
+  internal?: boolean;
   positional_index?: number;
   multiple?: boolean;
   mount?: boolean;
@@ -314,6 +315,7 @@ export interface RunMetadata {
 export interface RunResults {
   reports: RunResultFile[];
   metrics: RunResultFile[];
+  group_tables?: RunResultFile[];
   niftis?: RunResultFile[];
   artifacts: RunArtifact[];
   metadata?: RunMetadata;
@@ -343,6 +345,15 @@ export function fetchCompatiblePipelines(artifactType: string): Promise<Compatib
 
 export function fetchRunFile<T>(runId: number, filePath: string): Promise<T> {
   return apiFetch<T>(`/runs/${runId}/files/${filePath}`);
+}
+
+export async function fetchRunTextFile(runId: number, filePath: string): Promise<string> {
+  const res = await fetch(`${BASE_URL}/runs/${runId}/files/${filePath}`);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((detail as { detail?: string }).detail ?? res.statusText);
+  }
+  return res.text();
 }
 
 export interface ProvenanceEvent {

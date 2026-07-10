@@ -24,6 +24,11 @@ const MANIFESTS: Record<string, ManifestSlim> = {
     ],
     produces: [{ type: "mriqc_report" }],
   },
+  "mriqc-group": {
+    id: "mriqc-group",
+    accepts: [{ type: "mriqc_report", param: "upstream-mriqc-dir" }],
+    produces: [{ type: "mriqc_group_report" }],
+  },
   fmriprep: {
     id: "fmriprep",
     accepts: [
@@ -232,6 +237,7 @@ const PRODUCES_CACHE: Record<string, string[]> = {
   "brainchop":      ["nifti_skull_stripped"],
   "synthstrip":     ["nifti_skull_stripped", "brain_mask"],
   "mriqc":          ["mriqc_report"],
+  "mriqc-group":    ["mriqc_group_report"],
   "bids-validator": ["bids_dataset_validated"],
   // Hypothetical future pipeline — not dcm2niix, but also produces nifti_raw
   "dicom-custom":   ["nifti_raw", "nifti_defaced"],

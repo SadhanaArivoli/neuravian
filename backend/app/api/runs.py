@@ -195,14 +195,14 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
 
     if not run.output_dir:
         return {
-            "reports": [], "metrics": [], "niftis": [], "artifacts": [],
+            "reports": [], "metrics": [], "group_tables": [], "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
     output_root = Path(run.output_dir)
     if not output_root.exists():
         return {
-            "reports": [], "metrics": [], "niftis": [], "artifacts": [],
+            "reports": [], "metrics": [], "group_tables": [], "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -213,6 +213,10 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     metrics = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.rglob("sub-*.json"))
+    ]
+    group_tables = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("group_*.tsv"))
     ]
     # Volumetric files: NIfTI (.nii/.nii.gz) and FreeSurfer MGZ (.mgz).
     # MRIQC produces none; fMRIPrep and FastSurfer produce many.
@@ -257,6 +261,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     return {
         "reports": reports,
         "metrics": metrics,
+        "group_tables": group_tables,
         "niftis": niftis,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),

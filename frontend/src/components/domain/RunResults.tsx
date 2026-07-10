@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchRunTextFile } from "../../api/client";
 import { useRunFile, useRunResults, useRuns } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 import RunMetadataPanel from "./RunMetadataPanel";
@@ -85,6 +86,157 @@ function IqmCard({ data }: { data: IqmData }) {
       <p className="mt-3 text-xs text-gray-400">
         Hover metric names for descriptions. Full plots and details in the report below.
       </p>
+    </div>
+  );
+}
+
+interface GroupTableSummary {
+  headers: string[];
+  rows: Record<string, string>[];
+  subjectCount: number;
+  modalityCount: number;
+  missingCount: number;
+}
+
+function parseTsv(text: string): GroupTableSummary | null {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return null;
+  const headers = lines[0].split("\t");
+  const rows = lines.slice(1).map((line) => {
+    const values = line.split("\t");
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+  });
+  const subjectKeys = ["bids_name", "subject_id", "subject", "sub"];
+  const subjectKey = subjectKeys.find((key) => headers.includes(key));
+  const subjects = new Set(
+    rows
+      .map((row) => (subjectKey ? row[subjectKey] : ""))
+      .filter(Boolean),
+  );
+  const modalities = new Set(rows.map((row) => row.modality ?? row.suffix ?? "").filter(Boolean));
+  const missingCount = rows.reduce(
+    (count, row) => count + headers.filter((header) => row[header] === "" || row[header] === "n/a").length,
+    0,
+  );
+  return {
+    headers,
+    rows,
+    subjectCount: subjects.size || rows.length,
+    modalityCount: modalities.size,
+    missingCount,
+  };
+}
+
+const PREFERRED_GROUP_COLUMNS = [
+  "bids_name",
+  "subject_id",
+  "modality",
+  "snr_total",
+  "cnr",
+  "cjv",
+  "efc",
+  "fber",
+  "fwhm_avg",
+];
+
+function MriqcGroupSummary({ runId, tablePath }: { runId: number; tablePath: string }) {
+  const [summary, setSummary] = useState<GroupTableSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSummary(null);
+    setError(null);
+    fetchRunTextFile(runId, tablePath)
+      .then((text) => {
+        if (!cancelled) setSummary(parseTsv(text));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load group table.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, tablePath]);
+
+  const columns = useMemo(() => {
+    if (!summary) return [];
+    const preferred = PREFERRED_GROUP_COLUMNS.filter((column) => summary.headers.includes(column));
+    return preferred.length > 0 ? preferred.slice(0, 7) : summary.headers.slice(0, 7);
+  }, [summary]);
+
+  if (error) {
+    return (
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        MRIQC group table is available for download, but the preview could not be loaded: {error}
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <div className="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
+        Loading MRIQC group table…
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">MRIQC Group Summary</h3>
+          <p className="text-xs text-gray-500">Official aggregate IQM table preview.</p>
+        </div>
+        <a
+          href={`/api/runs/${runId}/files/${tablePath}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Open TSV
+        </a>
+      </div>
+      <div className="mb-3 grid grid-cols-4 gap-2">
+        <div className="rounded bg-gray-50 p-2">
+          <div className="text-xs text-gray-500">Rows</div>
+          <div className="font-mono text-sm font-semibold text-gray-900">{summary.rows.length}</div>
+        </div>
+        <div className="rounded bg-gray-50 p-2">
+          <div className="text-xs text-gray-500">Subjects</div>
+          <div className="font-mono text-sm font-semibold text-gray-900">{summary.subjectCount}</div>
+        </div>
+        <div className="rounded bg-gray-50 p-2">
+          <div className="text-xs text-gray-500">Modalities</div>
+          <div className="font-mono text-sm font-semibold text-gray-900">{summary.modalityCount || "—"}</div>
+        </div>
+        <div className="rounded bg-gray-50 p-2">
+          <div className="text-xs text-gray-500">Missing values</div>
+          <div className="font-mono text-sm font-semibold text-gray-900">{summary.missingCount}</div>
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded border border-gray-100">
+        <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              {columns.map((column) => (
+                <th key={column} className="whitespace-nowrap px-3 py-2 font-medium">{column}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-gray-700">
+            {summary.rows.slice(0, 8).map((row, index) => (
+              <tr key={index}>
+                {columns.map((column) => (
+                  <td key={column} className="whitespace-nowrap px-3 py-2 font-mono">
+                    {row[column] || "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -195,7 +347,8 @@ export default function RunResults({ runId }: Props) {
   }
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
-  const hasFiles = results.reports.length > 0 || results.metrics.length > 0 || niftis.length > 0;
+  const groupTables = results.group_tables ?? [];
+  const hasFiles = results.reports.length > 0 || results.metrics.length > 0 || groupTables.length > 0 || niftis.length > 0;
   // Show Download All when any surfaced file or resolved artifact exists.
   // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
   // even when they aren't classified as report/metric/nifti.
@@ -264,6 +417,11 @@ export default function RunResults({ runId }: Props) {
       {/* IQM summary card */}
       {iqmData && <IqmCard data={iqmData} />}
 
+      {/* MRIQC group TSV summary */}
+      {groupTables.length > 0 && (
+        <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
+      )}
+
       {/* Report tabs (multiple subjects / group report) */}
       {results.reports.length > 0 && (
         <div className="rounded-lg border border-gray-200 overflow-hidden">
@@ -329,6 +487,28 @@ export default function RunResults({ runId }: Props) {
                   className="text-xs text-blue-600 hover:underline font-mono"
                 >
                   {m.path}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {groupTables.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
+            Group IQM tables ({groupTables.length})
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {groupTables.map((table) => (
+              <li key={table.path}>
+                <a
+                  href={`/api/runs/${runId}/files/${table.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-blue-600 hover:underline"
+                >
+                  {table.path}
                 </a>
               </li>
             ))}

@@ -395,6 +395,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   // Positional params with only one option are not user-configurable — hide them
   const visibleParams = pipeline.parameters.filter(
     (p) =>
+      !p.internal &&
       !(
         p.positional_index !== undefined &&
         (p.options ?? []).length <= 1

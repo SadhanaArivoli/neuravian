@@ -267,6 +267,28 @@ def test_build_command_workdir_mount(mriqc_manifest, tmp_path):
     assert "/work" in cmd[cmd.index("--work-dir") + 1]
 
 
+def test_build_command_skips_internal_params(tmp_path):
+    """Internal lineage params are recorded in run params but never emitted as CLI flags."""
+    manifest = get_registry()["mriqc-group"]
+    ctx = RunContext(
+        run_id=1,
+        manifest=manifest,
+        params={
+            "analysis_level": "group",
+            "upstream-mriqc-dir": str(tmp_path / "mriqc"),
+            "no-sub": True,
+        },
+        dataset_path="/data/ds001",
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor._is_running_in_docker", return_value=False):
+        cmd = DockerExecutor().build_command(ctx)
+    assert "group" in cmd
+    assert "--no-sub" in cmd
+    assert "--upstream-mriqc-dir" not in cmd
+    assert str(tmp_path / "mriqc") not in cmd
+
+
 # ------------------------------------------------------------------ #
 # translate_errors                                                      #
 # ------------------------------------------------------------------ #
@@ -417,6 +439,53 @@ def test_create_run_resolves_relative_data_dir(api_client, tmp_path, monkeypatch
     assert data["output_dir"] == str(
         tmp_path / "relative_data" / "derivatives" / "mriqc" / str(data["id"])
     )
+
+
+def test_mriqc_group_run_seeds_output_from_lineage(api_client, tmp_path, monkeypatch):
+    """MRIQC group runs copy participant MRIQC outputs into their own output_dir."""
+    dataset_id = _register_valid_dataset(api_client, tmp_path)
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path / "data"))
+    upstream_dir = tmp_path / "participant-mriqc"
+    upstream_json = upstream_dir / "sub-01" / "anat" / "sub-01_T1w.json"
+    upstream_json.parent.mkdir(parents=True)
+    upstream_json.write_text('{"snr_total": 10.5}', encoding="utf-8")
+
+    with patch("app.services.run._execute_run_background", new_callable=AsyncMock):
+        with patch("app.execution.docker_executor.DockerExecutor.check_resources", return_value=[]):
+            with patch("app.execution.docker_executor._is_running_in_docker", return_value=False):
+                source_resp = api_client.post("/api/runs", json={
+                    "pipeline_id": "mriqc",
+                    "dataset_id": dataset_id,
+                    "params": {"analysis_level": "participant"},
+                })
+                assert source_resp.status_code == 201
+                source_run_id = source_resp.json()["id"]
+
+                group_resp = api_client.post("/api/runs", json={
+                    "pipeline_id": "mriqc-group",
+                    "dataset_id": dataset_id,
+                    "params": {
+                        "analysis_level": "group",
+                        "upstream-mriqc-dir": str(upstream_dir),
+                    },
+                    "lineage": {
+                        "upstream_run_id": source_run_id,
+                        "upstream_pipeline_id": "mriqc",
+                        "upstream_pipeline_display_name": "MRIQC",
+                        "artifact_type": "mriqc_report",
+                        "artifact_label": "MRIQC Report",
+                        "injected_param": "upstream-mriqc-dir",
+                        "injected_path": str(upstream_dir),
+                    },
+                })
+
+    assert group_resp.status_code == 201
+    data = group_resp.json()
+    assert data["pipeline_manifest_id"] == "mriqc-group"
+    assert "--upstream-mriqc-dir" not in data["command_preview"]
+    seeded_json = Path(data["output_dir"]) / "sub-01" / "anat" / "sub-01_T1w.json"
+    assert seeded_json.exists()
+    assert seeded_json.read_text(encoding="utf-8") == '{"snr_total": 10.5}'
 
 
 def test_dcm2bids_wizard_launch_resolves_config_path(api_client, tmp_path, monkeypatch):

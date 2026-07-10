@@ -181,6 +181,8 @@ class DockerExecutor(Executor):
         #   → --fs-license-file /inputs/fs-license-file/license.txt
         _mounted_paths: dict[str, str] = {}  # param name → container path
         for p in manifest["parameters"]:
+            if p.get("internal"):
+                continue
             if not p.get("mount"):
                 continue
             name = p["name"]
@@ -209,7 +211,7 @@ class DockerExecutor(Executor):
 
         # Positional parameters (sorted by positional_index)
         positionals = sorted(
-            [p for p in manifest["parameters"] if p.get("positional_index") is not None],
+            [p for p in manifest["parameters"] if not p.get("internal") and p.get("positional_index") is not None],
             key=lambda p: p["positional_index"],
         )
         for p in positionals:
@@ -221,6 +223,8 @@ class DockerExecutor(Executor):
 
         # Flag parameters
         for p in manifest["parameters"]:
+            if p.get("internal"):
+                continue
             if p.get("positional_index") is not None:
                 continue  # already handled above
             if p.get("positional_suffix"):
@@ -275,6 +279,8 @@ class DockerExecutor(Executor):
         # args using their container-internal path when mount:true. Used for tools
         # like dcm2niix where the input directory is the final positional argument.
         for p in manifest["parameters"]:
+            if p.get("internal"):
+                continue
             if not p.get("positional_suffix"):
                 continue
             name = p["name"]

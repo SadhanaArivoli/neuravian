@@ -192,7 +192,7 @@ export function filterRunsByArtifact<T extends { pipeline_manifest_id: string }>
 //
 // Artifact graph for reference:
 //   bids_dataset       → bids-validator → bids_dataset_validated
-//   bids_dataset_validated → mriqc      → mriqc_report
+//   bids_dataset_validated → mriqc      → mriqc_report → mriqc-group → mriqc_group_report
 //   bids_dataset_validated → fmriprep   → fmriprep_derivatives
 //   nifti_raw          → brainchop      → nifti_skull_stripped
 //   nifti_skull_stripped → fastsurfer   → freesurfer_dir
@@ -200,12 +200,12 @@ export function filterRunsByArtifact<T extends { pipeline_manifest_id: string }>
 
 export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   // ── 1. BIDS Validation + QC ────────────────────────────────────────────────
-  // bids-validator (bids_dataset → bids_dataset_validated) → mriqc (dataset_slot)
+  // bids-validator (bids_dataset → bids_dataset_validated) → mriqc (dataset_slot) → mriqc-group
   {
     id: "bids-validation-qc",
     name: "BIDS Validation + QC",
     description:
-      "Validate a BIDS dataset for structural compliance, then run MRIQC to generate image quality metrics and visual reports.",
+      "Validate a BIDS dataset, run participant-level MRIQC, then aggregate the results into a group report.",
     categoryKey: "quality_control",
     estimatedRuntime: "30 min – 6 hrs",
     requiredSourceKind: "dataset",
@@ -231,6 +231,16 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           acceptParam: null,
           acceptDatasetSlot: true,
           acceptLabel: "Validated BIDS Dataset",
+        },
+      },
+      {
+        pipelineId: "mriqc-group",
+        inputArtifactType: "mriqc_report",
+        edge: {
+          artifactType: "mriqc_report",
+          acceptParam: "upstream-mriqc-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "Participant MRIQC Report",
         },
       },
     ],

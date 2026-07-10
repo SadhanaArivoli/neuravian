@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.execution.progress_parser import parse_tqdm_line
-from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, to_host_path, translate_errors
+from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, from_host_path, to_host_path, translate_errors
 from app.execution.native_executor import NativeExecutor
 from app.execution.executor import Executor, RunContext
 from app.models.dataset import Dataset
@@ -327,6 +328,55 @@ def _get_executor(manifest: dict) -> Executor:
     if exec_type == "native":
         return NativeExecutor()
     return DockerExecutor()
+
+
+def _lineage_seed_source(
+    manifest: dict[str, Any],
+    lineage: Any | None,
+) -> Path | None:
+    """Return a host/backend-accessible lineage artifact path for output seeding.
+
+    Some official tools, notably MRIQC's group mode, expect their output
+    directory to already contain participant-level derivatives. NeuroForge keeps
+    each run isolated by copying that upstream artifact into this run's fresh
+    output_dir before launch.
+    """
+    required_type = manifest.get("seed_output_from_lineage_artifact_type")
+    if not required_type:
+        return None
+    if lineage is None:
+        raise ValueError(
+            f"{manifest['display_name']} must be launched from a completed run "
+            f"that produced {required_type}."
+        )
+    if lineage.artifact_type != required_type:
+        raise ValueError(
+            f"{manifest['display_name']} requires a {required_type} artifact, "
+            f"but received {lineage.artifact_type}."
+        )
+    if not lineage.injected_path:
+        raise ValueError(
+            f"{manifest['display_name']} requires a resolved upstream artifact path."
+        )
+
+    raw = str(lineage.injected_path)
+    candidates = [Path(raw), Path(from_host_path(raw))]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise ValueError(
+        f"{manifest['display_name']} could not access upstream artifact path: {raw}"
+    )
+
+
+def _seed_output_from_lineage(source: Path | None, output_dir: Path) -> None:
+    if source is None:
+        return
+    if source.is_dir():
+        shutil.copytree(source, output_dir, dirs_exist_ok=True)
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, output_dir / source.name)
 
 
 async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
@@ -675,6 +725,8 @@ class RunService:
             if src is None:
                 raise ValueError(f"Source run {body.lineage.upstream_run_id} not found")
 
+        lineage_seed_source = _lineage_seed_source(manifest, body.lineage)
+
         # Create the DB record. params_json records effective_params (including
         # the auto-injected work-dir) so the provenance record is accurate.
         run = Run(
@@ -698,6 +750,15 @@ class RunService:
             / str(run.id)
         )
         output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            _seed_output_from_lineage(lineage_seed_source, output_dir)
+        except Exception as exc:
+            run.status = "failed"
+            run.error_message = (
+                f"Could not prepare upstream artifact for {manifest['display_name']}: {exc}"
+            )
+            self.db.commit()
+            raise ValueError(run.error_message) from exc
 
         # Build the execution context
         ctx = RunContext(

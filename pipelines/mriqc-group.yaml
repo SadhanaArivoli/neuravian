@@ -1,0 +1,115 @@
+id: mriqc-group
+display_name: MRIQC Group Report
+description: >
+  Aggregates completed participant-level MRIQC image quality metrics into
+  group-level HTML reports and TSV tables.
+homepage: https://mriqc.readthedocs.io/en/24.0.2/running.html
+
+container:
+  image: nipreps/mriqc
+  tag: 24.0.2
+  engine: docker
+
+inputs:
+  - mriqc_report
+outputs:
+  - mriqc_group_report
+
+compute_profile: local-ok
+category: quality_control
+input_type: bids_dataset
+
+seed_output_from_lineage_artifact_type: mriqc_report
+
+parameters:
+  - name: analysis_level
+    type: select
+    required: true
+    default: group
+    options: [group]
+    positional_index: 1
+    help: >
+      MRIQC group mode aggregates IQM JSON files that were produced by a
+      prior participant-level MRIQC run. NeuroForge keeps this fixed to
+      group for the dedicated group-report pipeline.
+
+  - name: upstream-mriqc-dir
+    type: directory_path
+    required: true
+    internal: true
+    help: >
+      Internal NeuroForge lineage path. This is copied into the run output
+      directory before MRIQC group mode starts; it is not passed to MRIQC as
+      a command-line flag.
+
+  - name: no-sub
+    type: boolean
+    default: true
+    advanced: true
+    help: >
+      Disable MRIQC's optional anonymized metrics submission. NeuroForge
+      keeps this enabled by default to avoid sending data without explicit
+      user intent.
+
+  - name: modalities
+    type: multiselect
+    options: [T1w, T2w, bold]
+    advanced: true
+    help: >
+      Optional modalities to aggregate. Leave blank to let MRIQC discover
+      modalities from the precomputed participant outputs.
+
+  - name: nprocs
+    type: integer
+    default: 1
+    advanced: true
+    help: >
+      Number of worker processes. Group aggregation is lightweight compared
+      with participant-level MRIQC, so 1 is usually enough.
+
+  - name: omp-nthreads
+    type: integer
+    default: 1
+    advanced: true
+    help: >
+      Threads per process. Keep at 1 for predictable local execution.
+
+accepts:
+  - type: mriqc_report
+    param: upstream-mriqc-dir
+    label: Participant MRIQC Report
+    description: >
+      A completed participant-level MRIQC output directory containing per-run
+      IQM JSON files.
+    required: true
+
+produces:
+  - type: mriqc_group_report
+    path_hint: ""
+    label: MRIQC Group Report
+    description: "Group-level MRIQC HTML reports and aggregate IQM TSV tables"
+
+max_runtime_hours: 1
+
+known_errors:
+  - pattern: "No IQM-JSON files were found|No files were found|No input runs"
+    explanation: >
+      MRIQC group mode did not find participant-level IQM JSON files to
+      aggregate in the upstream MRIQC output directory.
+    fix_hint: >
+      Run participant-level MRIQC successfully first, then launch MRIQC Group
+      Report from that run's Run Next recommendation.
+
+  - pattern: "BIDSLayoutIndexer|database is locked|sqlite"
+    explanation: >
+      MRIQC could not read or update its local BIDS layout cache.
+    fix_hint: >
+      Retry the run. If it repeats, remove the copied .bids_db folder from the
+      failed group output directory and launch a fresh group report.
+
+command_template: >
+  docker run --rm
+  -v {dataset_path}:/data:ro
+  -v {output_dir}:/out:rw
+  nipreps/mriqc:24.0.2
+  /data /out group --no-sub --nprocs {nprocs} --omp-nthreads {omp-nthreads}

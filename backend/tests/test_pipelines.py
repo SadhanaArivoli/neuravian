@@ -58,6 +58,14 @@ def test_mriqc_manifest_loads_without_error():
     assert manifest["container"]["engine"] == "docker"
 
 
+def test_mriqc_group_manifest_loads_without_error():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "mriqc-group.yaml", schema)
+    assert manifest["id"] == "mriqc-group"
+    assert manifest["container"]["tag"] == "24.0.2"
+    assert manifest["seed_output_from_lineage_artifact_type"] == "mriqc_report"
+
+
 def test_mriqc_manifest_has_required_fields():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "mriqc.yaml", schema)
@@ -186,6 +194,17 @@ def test_get_pipeline_by_id(api_client):
     assert data["id"] == "mriqc"
     assert data["container"]["tag"] == "24.0.2"
     assert "parameters" in data
+
+
+def test_mriqc_report_compatible_pipeline_includes_group_report(api_client):
+    resp = api_client.get("/api/pipelines/compatible?artifact_type=mriqc_report")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(
+        item["pipeline_id"] == "mriqc-group"
+        and item["accept_param"] == "upstream-mriqc-dir"
+        for item in data
+    )
 
 
 def test_get_pipeline_not_found(api_client):
