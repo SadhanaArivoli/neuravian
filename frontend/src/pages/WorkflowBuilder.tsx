@@ -20,6 +20,121 @@ import {
 import { useDatasets } from "../hooks/useDatasets";
 import { useRunResults, useRuns } from "../hooks/useRuns";
 
+// ── Workflow templates ────────────────────────────────────────────────────────
+
+interface TemplateStepDef {
+  pipelineId: string;
+  inputArtifactType: string;
+  edge: {
+    artifactType: string;
+    acceptParam: string | null;
+    acceptDatasetSlot: boolean;
+    acceptLabel: string | null;
+  };
+}
+
+interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  categoryKey: PipelineCategory | "unknown";
+  estimatedRuntime: string;
+  steps: TemplateStepDef[];
+  defaultSourceKind: "dataset" | "run";
+}
+
+const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: "structural-mri",
+    name: "Structural MRI",
+    description:
+      "DICOM conversion, BIDS validation, quality control, and cortical segmentation with FastSurfer.",
+    categoryKey: "segmentation",
+    estimatedRuntime: "8 – 48 hrs",
+    defaultSourceKind: "dataset",
+    steps: [
+      {
+        pipelineId: "dcm2bids",
+        inputArtifactType: "dicom",
+        edge: { artifactType: "dicom", acceptParam: null, acceptDatasetSlot: false, acceptLabel: "DICOM folder" },
+      },
+      {
+        pipelineId: "bids-validator",
+        inputArtifactType: "bids_dataset",
+        edge: { artifactType: "bids_dataset", acceptParam: "bids-dir", acceptDatasetSlot: false, acceptLabel: "BIDS Dataset" },
+      },
+      {
+        pipelineId: "mriqc",
+        inputArtifactType: "bids_dataset_validated",
+        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
+      },
+      {
+        pipelineId: "fastsurfer",
+        inputArtifactType: "nifti_raw",
+        edge: { artifactType: "nifti_raw", acceptParam: "t1", acceptDatasetSlot: false, acceptLabel: "T1 NIfTI" },
+      },
+    ],
+  },
+  {
+    id: "fmri-preprocessing",
+    name: "fMRI Preprocessing",
+    description:
+      "Validate a BIDS dataset, run quality control with MRIQC, then preprocess with fMRIPrep.",
+    categoryKey: "preprocessing",
+    estimatedRuntime: "6 – 24 hrs",
+    defaultSourceKind: "dataset",
+    steps: [
+      {
+        pipelineId: "bids-validator",
+        inputArtifactType: "bids_dataset",
+        edge: { artifactType: "bids_dataset", acceptParam: "bids-dir", acceptDatasetSlot: false, acceptLabel: "BIDS Dataset" },
+      },
+      {
+        pipelineId: "mriqc",
+        inputArtifactType: "bids_dataset_validated",
+        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
+      },
+      {
+        pipelineId: "fmriprep",
+        inputArtifactType: "bids_dataset_validated",
+        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
+      },
+    ],
+  },
+  {
+    id: "quality-control",
+    name: "Quality Control",
+    description:
+      "Run MRIQC on a BIDS dataset to generate image quality metrics and visual HTML reports.",
+    categoryKey: "quality_control",
+    estimatedRuntime: "30 min – 2 hrs",
+    defaultSourceKind: "dataset",
+    steps: [
+      {
+        pipelineId: "mriqc",
+        inputArtifactType: "bids_dataset",
+        edge: { artifactType: "bids_dataset", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "BIDS Dataset" },
+      },
+    ],
+  },
+  {
+    id: "anonymous-dataset",
+    name: "Anonymous Dataset",
+    description:
+      "De-identify NIfTI brain images with pydeface to remove facial features before sharing data.",
+    categoryKey: "deidentification",
+    estimatedRuntime: "Varies per file",
+    defaultSourceKind: "run",
+    steps: [
+      {
+        pipelineId: "pydeface",
+        inputArtifactType: "nifti_raw",
+        edge: { artifactType: "nifti_raw", acceptParam: "nifti-file", acceptDatasetSlot: false, acceptLabel: "NIfTI" },
+      },
+    ],
+  },
+];
+
 type SourceKind = "dataset" | "run";
 type WorkflowNodeStatus = "draft" | "ready" | "running" | "success" | "failed";
 
@@ -491,6 +606,87 @@ function RecommendationCard({
   );
 }
 
+// ── Template picker ───────────────────────────────────────────────────────────
+
+function TemplatePicker({
+  onBlank,
+  onTemplate,
+  loading,
+}: {
+  onBlank: () => void;
+  onTemplate: (t: WorkflowTemplate) => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="flex min-h-full flex-col px-4 sm:px-6 py-6">
+      <header className="mb-8 pb-5 border-b border-white/5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-block w-1.5 h-4 rounded-full bg-accent" />
+          <span className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-accent">
+            Workflow Studio
+          </span>
+        </div>
+        <h1 className="mt-4 text-xl sm:text-2xl font-bold tracking-tight text-white">
+          Start with a template or build from scratch.
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
+          Templates pre-fill the canvas with connected pipeline steps. You can add, remove, or reconfigure any step before running.
+        </p>
+      </header>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {/* Blank workflow */}
+        <button
+          type="button"
+          onClick={onBlank}
+          disabled={loading}
+          className="rounded-lg border border-dashed border-white/15 bg-surface p-5 text-left transition-colors hover:border-white/30 hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50"
+        >
+          <div className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-surface-overlay text-xl font-bold text-gray-400">
+            +
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-white">Blank Workflow</h3>
+          <p className="mt-1.5 text-sm leading-5 text-gray-400">
+            Start from scratch and build your own pipeline chain step by step.
+          </p>
+          <div className="mt-4 text-xs text-gray-500">0 steps · manual configuration</div>
+        </button>
+
+        {/* Template cards */}
+        {WORKFLOW_TEMPLATES.map((template) => {
+          const meta = CATEGORY_META[template.categoryKey];
+          return (
+            <button
+              key={template.id}
+              type="button"
+              onClick={() => onTemplate(template)}
+              disabled={loading}
+              className="rounded-lg border border-white/8 bg-surface-raised p-5 text-left transition-colors hover:border-white/20 hover:bg-surface-overlay focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50"
+            >
+              <div
+                className={classNames(
+                  "grid h-11 w-11 place-items-center rounded-xl border text-sm font-bold",
+                  meta.iconBg,
+                  meta.iconColor,
+                )}
+              >
+                {meta.icon}
+              </div>
+              <h3 className="mt-4 text-base font-semibold text-white">{template.name}</h3>
+              <p className="mt-1.5 text-sm leading-5 text-gray-400">{template.description}</p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
+                <span>{template.steps.length} step{template.steps.length !== 1 ? "s" : ""}</span>
+                <span>·</span>
+                <span>{template.estimatedRuntime}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilder() {
@@ -509,6 +705,8 @@ export default function WorkflowBuilder() {
   const [isRunning, setIsRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [showRules, setShowRules] = useState(false);
+  const [templateChosen, setTemplateChosen] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
 
   const completedRuns = useMemo(
     () => runs.filter((r) => r.status === "success"),
@@ -533,6 +731,41 @@ export default function WorkflowBuilder() {
     setCompatibles([]);
     setCompatError(null);
     setRunMessage(null);
+  }
+
+  function startBlank() {
+    resetWorkflow({ kind: "dataset", datasetId: "", runId: "" });
+    setTemplateChosen(true);
+  }
+
+  async function loadTemplate(template: WorkflowTemplate) {
+    setTemplateLoading(true);
+    try {
+      const newNodes: WorkflowNode[] = [];
+      for (const step of template.steps) {
+        const pipeline = await fetchPipeline(step.pipelineId);
+        newNodes.push({
+          id: `${step.pipelineId}-${Date.now()}-${newNodes.length}`,
+          pipelineId: pipeline.id,
+          displayName: pipeline.display_name,
+          category: pipeline.category ?? null,
+          computeProfile: pipeline.compute_profile ?? null,
+          inputArtifactType: step.inputArtifactType,
+          produced: pipeline.produces ?? [],
+          params: buildDefaults(pipeline.parameters),
+          datasetId: "",
+          edge: step.edge,
+          status: "draft",
+        });
+      }
+      resetWorkflow({ kind: template.defaultSourceKind, datasetId: "", runId: "" });
+      setNodes(newNodes);
+    } catch {
+      resetWorkflow({ kind: template.defaultSourceKind, datasetId: "", runId: "" });
+    } finally {
+      setTemplateLoading(false);
+      setTemplateChosen(true);
+    }
   }
 
   function currentArtifactTypes(): string[] {
@@ -763,6 +996,24 @@ export default function WorkflowBuilder() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  if (!templateChosen) {
+    return (
+      <div className="min-h-full text-gray-100">
+        {templateLoading ? (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <p className="text-sm text-gray-400">Loading template…</p>
+          </div>
+        ) : (
+          <TemplatePicker
+            onBlank={startBlank}
+            onTemplate={(t) => void loadTemplate(t)}
+            loading={templateLoading}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full text-gray-100">
       <div className="flex min-h-full flex-col px-4 sm:px-6 py-6">
@@ -776,6 +1027,13 @@ export default function WorkflowBuilder() {
                 <span className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-accent">
                   Workflow Studio
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setTemplateChosen(false)}
+                  className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:border-white/25 hover:text-gray-200 focus:outline-none"
+                >
+                  ← Templates
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowRules((value) => !value)}
