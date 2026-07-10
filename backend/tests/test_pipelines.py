@@ -15,6 +15,11 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base, get_db
 from app.execution.docker_executor import DockerExecutor
 from app.execution.executor import RunContext
+from app.tools.functional_connectivity import (
+    ATLAS_REGISTRY,
+    DEFAULT_ATLAS_ID,
+    normalize_atlas_id,
+)
 from app.main import app
 from app.services.pipeline import ManifestError, PipelineService, _load_manifest, _load_schema
 
@@ -1802,6 +1807,14 @@ def test_functional_connectivity_manifest_loads_and_validates():
     assert manifest["execution"]["type"] == "native"
     assert manifest["execution"]["command"] == "neuroforge-functional-connectivity"
     assert manifest["accepts"][0]["type"] == "fmriprep_derivatives"
+    atlas_param = next(p for p in manifest["parameters"] if p["name"] == "atlas-name")
+    assert atlas_param["default"] == "schaefer100_7"
+    assert atlas_param["options"] == [
+        "schaefer100_7",
+        "schaefer200_7",
+        "aal",
+        "harvard_oxford_cortical",
+    ]
     produced = {slot["type"] for slot in manifest["produces"]}
     assert {
         "connectivity_matrix_csv",
@@ -1810,6 +1823,28 @@ def test_functional_connectivity_manifest_loads_and_validates():
         "timeseries_tsv",
         "connectivity_report_html",
     }.issubset(produced)
+
+
+def test_functional_connectivity_atlas_registry_expected_counts():
+    assert DEFAULT_ATLAS_ID == "schaefer100_7"
+    assert set(ATLAS_REGISTRY) == {
+        "schaefer100_7",
+        "schaefer200_7",
+        "aal",
+        "harvard_oxford_cortical",
+    }
+    assert ATLAS_REGISTRY["schaefer100_7"].expected_roi_count == 100
+    assert ATLAS_REGISTRY["schaefer200_7"].expected_roi_count == 200
+    assert ATLAS_REGISTRY["aal"].expected_roi_count == 167
+    assert ATLAS_REGISTRY["harvard_oxford_cortical"].expected_roi_count == 48
+
+
+def test_functional_connectivity_atlas_alias_preserves_old_runs():
+    assert normalize_atlas_id(None) == "schaefer100_7"
+    assert normalize_atlas_id("schaefer100_7") == "schaefer100_7"
+    assert normalize_atlas_id("schaefer_100_7") == "schaefer100_7"
+    with pytest.raises(ValueError, match="Unknown atlas"):
+        normalize_atlas_id("not-an-atlas")
 
 
 def test_import_fmriprep_derivatives_manifest_loads_and_validates():

@@ -1,8 +1,8 @@
 """Functional Connectivity native pipeline.
 
 This module is intentionally narrow: it turns one fMRIPrep preprocessed BOLD
-run into Schaefer-100 atlas time series, a Pearson correlation matrix, a PNG
-heatmap, and a small HTML report. It is exposed through the
+run into atlas time series, a Pearson correlation matrix, a PNG heatmap, and a
+small HTML report. It is exposed through the
 ``neuroforge-functional-connectivity`` console script and launched by
 NativeExecutor, not by arbitrary user Python.
 """
@@ -35,12 +35,16 @@ import numpy as np
 import pandas as pd
 from nilearn import __version__ as nilearn_version
 from nilearn.connectome import ConnectivityMeasure
-from nilearn.datasets import fetch_atlas_schaefer_2018
+from nilearn.datasets import (
+    fetch_atlas_aal,
+    fetch_atlas_harvard_oxford,
+    fetch_atlas_schaefer_2018,
+)
 from nilearn.maskers import NiftiLabelsMasker
 
 
-ATLAS_ID = "schaefer_100_7"
-ATLAS_NAME = "Schaefer 2018, 100 parcels, 7 networks"
+DEFAULT_ATLAS_ID = "schaefer100_7"
+LEGACY_ATLAS_ALIASES = {"schaefer_100_7": DEFAULT_ATLAS_ID}
 CORRELATION_METHOD = "Pearson correlation"
 CONFOUND_COLUMNS = [
     "trans_x",
@@ -55,6 +59,33 @@ CONFOUND_COLUMNS = [
 ]
 
 
+@dataclass(frozen=True)
+class AtlasSpec:
+    id: str
+    display_name: str
+    expected_roi_count: int
+    fetcher_name: str
+    atlas_type: str
+    space: str
+    resolution: str
+    label_source: str
+    source: str
+    citation: str
+    network_count: int | None = None
+
+
+@dataclass
+class LoadedAtlas:
+    spec: AtlasSpec
+    labels_img: str
+    roi_labels: list[str]
+    masker_labels: list[str] | None = None
+    lut: Any | None = None
+    version: str | None = None
+    template: str | None = None
+    atlas_type: str | None = None
+
+
 @dataclass
 class BoldSelection:
     bold_path: Path
@@ -62,6 +93,69 @@ class BoldSelection:
     subject: str | None
     task: str | None
     run: str | None
+
+
+ATLAS_REGISTRY: dict[str, AtlasSpec] = {
+    "schaefer100_7": AtlasSpec(
+        id="schaefer100_7",
+        display_name="Schaefer 2018, 100 parcels, 7 networks",
+        expected_roi_count=100,
+        fetcher_name="fetch_atlas_schaefer_2018",
+        atlas_type="deterministic label atlas",
+        space="MNI152",
+        resolution="2 mm",
+        label_source="Schaefer parcel names with Yeo 7-network annotations",
+        source="https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_schaefer_2018.html",
+        citation="Schaefer et al. 2018; Yeo et al. 2011",
+        network_count=7,
+    ),
+    "schaefer200_7": AtlasSpec(
+        id="schaefer200_7",
+        display_name="Schaefer 2018, 200 parcels, 7 networks",
+        expected_roi_count=200,
+        fetcher_name="fetch_atlas_schaefer_2018",
+        atlas_type="deterministic label atlas",
+        space="MNI152",
+        resolution="2 mm",
+        label_source="Schaefer parcel names with Yeo 7-network annotations",
+        source="https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_schaefer_2018.html",
+        citation="Schaefer et al. 2018; Yeo et al. 2011",
+        network_count=7,
+    ),
+    "aal": AtlasSpec(
+        id="aal",
+        display_name="AAL 3v2",
+        expected_roi_count=167,
+        fetcher_name="fetch_atlas_aal",
+        atlas_type="deterministic label atlas",
+        space="MNI",
+        resolution="2 mm",
+        label_source="AAL 3v2 label lookup table",
+        source="https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_aal.html",
+        citation="Rolls et al. 2020; Tzourio-Mazoyer et al. 2002",
+    ),
+    "harvard_oxford_cortical": AtlasSpec(
+        id="harvard_oxford_cortical",
+        display_name="Harvard-Oxford cortical atlas",
+        expected_roi_count=48,
+        fetcher_name="fetch_atlas_harvard_oxford",
+        atlas_type="deterministic max-probability label atlas",
+        space="MNI152",
+        resolution="2 mm",
+        label_source="Harvard-Oxford cortical label list",
+        source="https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_harvard_oxford.html",
+        citation="Desikan et al. 2006; FSL Harvard-Oxford atlas",
+    ),
+}
+
+
+def normalize_atlas_id(atlas_id: str | None) -> str:
+    selected = atlas_id or DEFAULT_ATLAS_ID
+    selected = LEGACY_ATLAS_ALIASES.get(selected, selected)
+    if selected not in ATLAS_REGISTRY:
+        allowed = ", ".join(sorted(ATLAS_REGISTRY))
+        raise ValueError(f"Unknown atlas '{atlas_id}'. Allowed values: {allowed}")
+    return selected
 
 
 def _entity(path: Path, name: str) -> str | None:
@@ -140,6 +234,76 @@ def _decode_label(label: Any) -> str:
     if isinstance(label, bytes):
         return label.decode("utf-8")
     return str(label)
+
+
+def _labels_without_background(labels: list[str]) -> list[str]:
+    if labels and labels[0].strip().lower() in {"background", "bg", "0"}:
+        return labels[1:]
+    return labels
+
+
+def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
+    normalized_id = normalize_atlas_id(atlas_id)
+    spec = ATLAS_REGISTRY[normalized_id]
+
+    if normalized_id.startswith("schaefer"):
+        n_rois = spec.expected_roi_count
+        atlas = fetch_atlas_schaefer_2018(
+            n_rois=n_rois,
+            yeo_networks=7,
+            resolution_mm=2,
+            data_dir=data_dir,
+            verbose=1,
+        )
+        labels = [_decode_label(label) for label in atlas.labels]
+        return LoadedAtlas(
+            spec=spec,
+            labels_img=atlas.maps,
+            roi_labels=_labels_without_background(labels),
+            masker_labels=labels,
+            lut=None,
+            version=None,
+            template=getattr(atlas, "template", None),
+            atlas_type=getattr(atlas, "atlas_type", None),
+        )
+
+    if normalized_id == "aal":
+        atlas = fetch_atlas_aal(version="3v2", data_dir=data_dir, verbose=1)
+        labels = [_decode_label(label) for label in atlas.labels]
+        indices = [int(index) for index in atlas.indices]
+        # AAL image values are not consecutive; pass the BIDS-like LUT so
+        # Nilearn preserves label/value mapping and ordering.
+        lut = pd.DataFrame({"index": indices, "name": labels})
+        return LoadedAtlas(
+            spec=spec,
+            labels_img=atlas.maps,
+            roi_labels=labels,
+            lut=lut,
+            version="3v2",
+            template=getattr(atlas, "template", None),
+            atlas_type=getattr(atlas, "atlas_type", None),
+        )
+
+    if normalized_id == "harvard_oxford_cortical":
+        atlas = fetch_atlas_harvard_oxford(
+            "cort-maxprob-thr25-2mm",
+            data_dir=data_dir,
+            symmetric_split=False,
+            verbose=1,
+        )
+        labels = [_decode_label(label) for label in atlas.labels]
+        return LoadedAtlas(
+            spec=spec,
+            labels_img=atlas.maps,
+            roi_labels=_labels_without_background(labels),
+            masker_labels=labels,
+            lut=None,
+            version="cort-maxprob-thr25-2mm",
+            template=getattr(atlas, "template", None),
+            atlas_type=getattr(atlas, "atlas_type", None),
+        )
+
+    raise AssertionError(f"Unhandled atlas id: {normalized_id}")
 
 
 def _write_matrix_csv(path: Path, matrix: np.ndarray, labels: list[str]) -> None:
@@ -229,7 +393,11 @@ def run(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--fmriprep-dir", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--atlas-name", default=ATLAS_ID, choices=[ATLAS_ID])
+    parser.add_argument(
+        "--atlas-name",
+        default=DEFAULT_ATLAS_ID,
+        choices=[*ATLAS_REGISTRY.keys(), *LEGACY_ATLAS_ALIASES.keys()],
+    )
     parser.add_argument("--atlas-data-dir", default=None)
     parser.add_argument("--subject-label", default=None)
     parser.add_argument("--task-label", default=None)
@@ -240,8 +408,10 @@ def run(argv: list[str] | None = None) -> int:
     fmriprep_dir = Path(args.fmriprep_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    atlas_id = normalize_atlas_id(args.atlas_name)
+    loaded_atlas = _load_atlas(atlas_id, args.atlas_data_dir)
 
-    print(f"[neuroforge] Functional Connectivity using {ATLAS_NAME}")
+    print(f"[neuroforge] Functional Connectivity using {loaded_atlas.spec.display_name}")
     print(f"[neuroforge] fMRIPrep derivatives: {fmriprep_dir}")
 
     selection = _select_bold(
@@ -259,24 +429,15 @@ def run(argv: list[str] | None = None) -> int:
             "extracting raw regional time series."
         )
 
-    atlas = fetch_atlas_schaefer_2018(
-        n_rois=100,
-        yeo_networks=7,
-        resolution_mm=2,
-        data_dir=args.atlas_data_dir,
-        verbose=1,
-    )
-    labels = [_decode_label(label) for label in atlas.labels]
-    roi_labels = labels[1:] if labels and labels[0].lower() == "background" else labels
-
     confounds = _load_confounds(selection.confounds_path)
     image = nib.load(str(selection.bold_path))
     if len(image.shape) != 4:
         raise ValueError(f"Selected BOLD file is not 4D: shape={image.shape}")
 
     masker = NiftiLabelsMasker(
-        labels_img=atlas.maps,
-        labels=labels,
+        labels_img=loaded_atlas.labels_img,
+        labels=loaded_atlas.masker_labels,
+        lut=loaded_atlas.lut,
         standardize="zscore_sample",
         detrend=True,
         resampling_target="data",
@@ -285,7 +446,13 @@ def run(argv: list[str] | None = None) -> int:
     timeseries = masker.fit_transform(str(selection.bold_path), confounds=confounds)
     if timeseries.ndim != 2 or timeseries.shape[1] == 0:
         raise ValueError("Atlas extraction produced no ROI time series.")
-    roi_labels = roi_labels[: timeseries.shape[1]]
+    roi_labels = loaded_atlas.roi_labels[: timeseries.shape[1]]
+    if timeseries.shape[1] != loaded_atlas.spec.expected_roi_count:
+        raise ValueError(
+            f"Atlas extraction produced {timeseries.shape[1]} ROI time series, "
+            f"expected {loaded_atlas.spec.expected_roi_count} for "
+            f"{loaded_atlas.spec.display_name}."
+        )
 
     connectome = ConnectivityMeasure(kind="correlation", standardize=False)
     matrix = connectome.fit_transform([timeseries])[0]
@@ -306,8 +473,17 @@ def run(argv: list[str] | None = None) -> int:
 
     off_diag = matrix[~np.eye(matrix.shape[0], dtype=bool)]
     metadata: dict[str, Any] = {
-        "atlas": ATLAS_NAME,
-        "atlas_id": ATLAS_ID,
+        "atlas": loaded_atlas.spec.display_name,
+        "atlas_id": loaded_atlas.spec.id,
+        "atlas_display_name": loaded_atlas.spec.display_name,
+        "atlas_source": loaded_atlas.spec.source,
+        "atlas_version": loaded_atlas.version,
+        "atlas_fetcher": loaded_atlas.spec.fetcher_name,
+        "atlas_type": loaded_atlas.atlas_type or loaded_atlas.spec.atlas_type,
+        "atlas_space": loaded_atlas.template or loaded_atlas.spec.space,
+        "atlas_resolution": loaded_atlas.spec.resolution,
+        "atlas_citation": loaded_atlas.spec.citation,
+        "atlas_network_count": loaded_atlas.spec.network_count,
         "correlation_method": CORRELATION_METHOD,
         "nilearn_version": nilearn_version,
         "bold_file": str(selection.bold_path),
@@ -319,6 +495,7 @@ def run(argv: list[str] | None = None) -> int:
         "run": selection.run,
         "n_volumes": int(timeseries.shape[0]),
         "n_rois": int(timeseries.shape[1]),
+        "roi_count": int(timeseries.shape[1]),
         "matrix_shape": list(matrix.shape),
         "correlation_min": float(off_diag.min()) if off_diag.size else 1.0,
         "correlation_max": float(off_diag.max()) if off_diag.size else 1.0,

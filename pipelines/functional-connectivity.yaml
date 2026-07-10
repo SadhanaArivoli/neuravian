@@ -1,9 +1,9 @@
 id: functional-connectivity
 display_name: Functional Connectivity
 description: >
-  Extracts Schaefer atlas regional time series from validated fMRIPrep BOLD
-  derivatives and computes a Pearson correlation connectivity matrix with a
-  heatmap and HTML report.
+  Extracts atlas regional time series from validated fMRIPrep BOLD derivatives
+  and computes a Pearson correlation connectivity matrix with a heatmap and
+  HTML report.
 homepage: https://nilearn.github.io/stable/modules/generated/nilearn.connectome.ConnectivityMeasure.html
 category: connectivity
 input_type: bids_dataset
@@ -50,12 +50,16 @@ parameters:
   - name: atlas-name
     type: select
     required: true
-    default: schaefer_100_7
-    options: [schaefer_100_7]
-    advanced: true
+    default: schaefer100_7
+    options:
+      - schaefer100_7
+      - schaefer200_7
+      - aal
+      - harvard_oxford_cortical
+    advanced: false
     help: >
-      V1 uses the Schaefer 2018 atlas with 100 cortical parcels and 7 Yeo
-      networks. Additional atlases will be configurable in a later version.
+      Atlas used for ROI time-series extraction. The default remains Schaefer
+      2018 with 100 parcels and 7 Yeo networks for backward compatibility.
 
   - name: atlas-data-dir
     type: directory_path
