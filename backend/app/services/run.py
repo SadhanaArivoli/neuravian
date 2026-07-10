@@ -16,7 +16,6 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-from fastapi import BackgroundTasks
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -149,11 +148,14 @@ async def recover_interrupted_runs(db: Session) -> None:
     try:
         client = docker_sdk.from_env()
     except Exception as exc:
-        log.warning("Docker unavailable during recovery — marking orphaned runs failed: %s", exc)
+        log.warning("Docker unavailable during recovery — marking orphaned runs interrupted: %s", exc)
         for run in orphans:
-            run.status = "failed"
+            run.status = "interrupted"
             run.finished_at = datetime.now(UTC)
-            run.error_message = "Run monitoring was lost due to a server restart and Docker is unavailable."
+            run.error_message = (
+                "Run monitoring was lost due to a server restart and Docker is unavailable. "
+                "Use Retry to re-run with the same parameters."
+            )
         db.commit()
         return
 
@@ -182,12 +184,13 @@ async def recover_interrupted_runs(db: Session) -> None:
             db.commit()
             asyncio.create_task(_reattach_run(run.id, containers[0].id))
         else:
-            log.info("No container found for orphaned run %d — marking failed", run.id)
-            run.status = "failed"
+            log.info("No container found for orphaned run %d — marking interrupted", run.id)
+            run.status = "interrupted"
             run.finished_at = datetime.now(UTC)
             run.error_message = (
                 "Run monitoring was interrupted by a server restart. "
-                "The container is no longer running — the run may have completed or been stopped."
+                "The container is no longer running. "
+                "Use Retry to re-run with the same parameters."
             )
     db.commit()
 
@@ -502,11 +505,15 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     with SessionLocal() as db:
         run = db.get(Run, run_id)
         if run:
-            run.status = "success" if exit_code == 0 else "failed"
+            if run.cancel_requested:
+                run.status = "cancelled"
+                run.error_message = "Run was cancelled by user request."
+            else:
+                run.status = "success" if exit_code == 0 else "failed"
+                if translated_error:
+                    run.error_message = translated_error
             run.finished_at = datetime.now(UTC)
             run.container_digest = digest
-            if translated_error:
-                run.error_message = translated_error
             # Persist final progress snapshot if any was collected
             final_progress = _progress_state.get(run_id)
             if final_progress:
@@ -638,7 +645,6 @@ class RunService:
     def create_run(
         self,
         body: RunCreate,
-        background_tasks: BackgroundTasks,
     ) -> RunRead:
         # Resolve manifest
         registry = get_registry()
@@ -757,7 +763,7 @@ class RunService:
             pipeline_id=pipeline_row.id,
             pipeline_version=(manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command", "native"),
             params_json=json.dumps(effective_params),
-            status="pending",
+            status="queued",
             source_run_id=body.lineage.upstream_run_id if body.lineage else None,
             source_artifacts_json=json.dumps(body.lineage.model_dump()) if body.lineage else None,
             remote_host_id=body.remote_host_id,
@@ -829,8 +835,9 @@ class RunService:
         ))
         self.db.commit()
 
-        # Schedule the actual execution as a background task
-        background_tasks.add_task(_execute_run_background, run.id, ctx)
+        # Enqueue for sequential execution
+        from app.services.execution_queue import enqueue
+        enqueue(run.id, ctx)
 
         return self._run_to_read(run, resource_warnings)
 
@@ -857,6 +864,45 @@ class RunService:
         if not run:
             raise KeyError(run_id)
         return self._run_to_read(run)
+
+    def rerun(self, source_run_id: int) -> RunRead:
+        """Create a new run with the same pipeline, dataset, and params as source_run_id."""
+        from app.models.pipeline import Pipeline as PipelineModel
+        source = self.db.get(Run, source_run_id)
+        if not source:
+            raise KeyError(source_run_id)
+        terminal = {"success", "failed", "cancelled", "interrupted"}
+        if source.status not in terminal:
+            raise ValueError(
+                f"Can only retry/re-run a finished run (status is '{source.status}')."
+            )
+        pipeline_row = self.db.get(PipelineModel, source.pipeline_id)
+        if not pipeline_row:
+            raise ValueError("Pipeline not found for the source run.")
+        params = json.loads(source.params_json or "{}")
+        body = RunCreate(
+            pipeline_id=pipeline_row.name,
+            dataset_id=source.dataset_id,
+            params=params,
+        )
+        return self.create_run(body)
+
+    def delete_run(self, run_id: int) -> None:
+        """Delete a finished run record from the DB (does not delete output files)."""
+        run = self.db.get(Run, run_id)
+        if not run:
+            raise KeyError(run_id)
+        terminal = {"success", "failed", "cancelled", "interrupted"}
+        if run.status not in terminal:
+            raise ValueError(
+                f"Can only delete a finished run (status is '{run.status}')."
+            )
+        # Cascade: remove associated logs and provenance events
+        from app.models.run import RunLog, ProvenanceEvent
+        self.db.query(RunLog).filter_by(run_id=run_id).delete()
+        self.db.query(ProvenanceEvent).filter_by(run_id=run_id).delete()
+        self.db.delete(run)
+        self.db.commit()
 
     def get_log_text(self, run_id: int) -> str | None:
         """Return the full log text from the log file if available."""

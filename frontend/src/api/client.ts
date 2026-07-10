@@ -188,12 +188,14 @@ export interface ResourceWarning {
   message: string;
 }
 
+export type RunStatus = "queued" | "pending" | "running" | "success" | "failed" | "cancelled" | "interrupted";
+
 export interface RunSummary {
   id: number;
   pipeline_manifest_id: string;
   pipeline_version: string;
   dataset_id: number;
-  status: "pending" | "running" | "success" | "failed";
+  status: RunStatus;
   source_run_id: number | null;
   remote_host_id: number | null;
   started_at: string | null;
@@ -329,6 +331,40 @@ export interface RunResults {
 
 export function fetchRunResults(runId: number): Promise<RunResults> {
   return apiFetch<RunResults>(`/runs/${runId}/results`);
+}
+
+export interface QueueEntry {
+  run_id: number;
+  position: number;
+}
+
+export interface QueueStatus {
+  running_run_id: number | null;
+  queued: QueueEntry[];
+}
+
+export function fetchQueue(): Promise<QueueStatus> {
+  return apiFetch<QueueStatus>("/runs/queue");
+}
+
+export function cancelRun(runId: number): Promise<{ cancelled: boolean; was_queued?: boolean; cancel_requested?: boolean }> {
+  return apiFetch(`/runs/${runId}/cancel`, { method: "POST" });
+}
+
+export function retryRun(runId: number): Promise<Run> {
+  return apiFetch<Run>(`/runs/${runId}/retry`, { method: "POST" });
+}
+
+export function rerunRun(runId: number): Promise<Run> {
+  return apiFetch<Run>(`/runs/${runId}/rerun`, { method: "POST" });
+}
+
+export async function deleteRun(runId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runs/${runId}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((detail as { detail?: string }).detail ?? res.statusText);
+  }
 }
 
 export interface CompatiblePipeline {

@@ -27,6 +27,9 @@ from app.execution.executor import Executor, ResourceWarning, RunContext
 
 log = logging.getLogger(__name__)
 
+# run_id → active Popen, so the cancel endpoint can terminate it
+_active_native_procs: dict[int, "subprocess.Popen[str]"] = {}
+
 
 class NativeExecutor(Executor):
     """Runs pipelines as native subprocesses inside the backend container."""
@@ -128,11 +131,15 @@ class NativeExecutor(Executor):
                 text=True,
                 bufsize=1,
             )
+            _active_native_procs[ctx.run_id] = proc
             assert proc.stdout is not None
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                loop.call_soon_threadsafe(log_callback, line)
-            proc.wait()
+            try:
+                for line in proc.stdout:
+                    line = line.rstrip("\n")
+                    loop.call_soon_threadsafe(log_callback, line)
+                proc.wait()
+            finally:
+                _active_native_procs.pop(ctx.run_id, None)
             return proc.returncode
 
         try:

@@ -3,9 +3,10 @@ import io
 import json
 import logging
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,7 @@ from app.services.run import (
     get_log_history,
     subscribe,
     unsubscribe,
+    _broadcast_done,
 )
 
 log = logging.getLogger(__name__)
@@ -35,11 +37,10 @@ def _svc(db: Session = Depends(get_db)) -> RunService:
 @router.post("/runs", status_code=201)
 def create_run(
     body: RunCreate,
-    background_tasks: BackgroundTasks,
     svc: RunService = Depends(_svc),
 ) -> RunRead:
     try:
-        return svc.create_run(body, background_tasks)
+        return svc.create_run(body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -49,12 +50,104 @@ def list_runs(svc: RunService = Depends(_svc)) -> list[RunSummary]:
     return svc.list_all()
 
 
+@router.get("/runs/queue")
+def get_queue() -> dict:
+    """Return the current execution queue state."""
+    from app.services.execution_queue import get_queue_status
+    return get_queue_status()
+
+
 @router.get("/runs/{run_id}")
 def get_run(run_id: int, svc: RunService = Depends(_svc)) -> RunRead:
     try:
         return svc.get_by_id(run_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: int, db: Session = Depends(get_db)) -> dict:
+    """Request cancellation of a queued or running run."""
+    run = db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.status not in ("queued", "pending", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Run {run_id} cannot be cancelled (status: '{run.status}').",
+        )
+
+    run.cancel_requested = True
+    db.commit()
+
+    # Remove from queue immediately if still waiting
+    from app.services.execution_queue import remove_from_queue
+    was_queued = remove_from_queue(run_id)
+    if was_queued:
+        run.status = "cancelled"
+        run.finished_at = datetime.now(UTC)
+        run.error_message = "Run was cancelled by user request."
+        db.add(ProvenanceEvent(
+            run_id=run_id,
+            event_type="run_cancelled",
+            payload_json='{"reason": "cancelled while queued"}',
+        ))
+        db.commit()
+        _broadcast_done(run_id)
+        return {"cancelled": True, "was_queued": True}
+
+    # Signal the running container/process to stop
+    from app.execution.docker_executor import _active_containers
+    cid = _active_containers.get(run_id)
+    if cid:
+        try:
+            import docker
+            docker.from_env().containers.get(cid).stop(timeout=30)
+        except Exception as exc:
+            log.warning("Could not stop container for run %d: %s", run_id, exc)
+
+    from app.execution.native_executor import _active_native_procs
+    proc = _active_native_procs.get(run_id)
+    if proc:
+        try:
+            proc.terminate()
+        except Exception as exc:
+            log.warning("Could not terminate native process for run %d: %s", run_id, exc)
+
+    return {"cancelled": False, "cancel_requested": True}
+
+
+@router.post("/runs/{run_id}/retry")
+def retry_run(run_id: int, svc: RunService = Depends(_svc)) -> RunRead:
+    """Create a new run with the same params as a failed/cancelled/interrupted run."""
+    try:
+        return svc.rerun(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/runs/{run_id}/rerun")
+def rerun_run(run_id: int, svc: RunService = Depends(_svc)) -> RunRead:
+    """Create a new run with the same params (available for any finished run)."""
+    try:
+        return svc.rerun(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/runs/{run_id}", status_code=204)
+def delete_run(run_id: int, svc: RunService = Depends(_svc)) -> None:
+    """Delete a finished run record from the database (output files are preserved)."""
+    try:
+        svc.delete_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/runs/{run_id}/logs")
