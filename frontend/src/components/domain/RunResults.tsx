@@ -564,6 +564,21 @@ export default function RunResults({ runId }: Props) {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-base font-semibold text-gray-100">Results</h2>
         <div className="flex items-center gap-2">
+          {results.metadata?.dataset_id && (
+            <a
+              href={`/datasets/${results.metadata.dataset_id}/graph?highlight=${runId}`}
+              className="flex items-center gap-1.5 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:text-accent transition-colors"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="3" cy="13" r="1.5" />
+                <circle cx="13" cy="13" r="1.5" />
+                <line x1="8" y1="4.5" x2="4.5" y2="11.5" />
+                <line x1="8" y1="4.5" x2="11.5" y2="11.5" />
+              </svg>
+              Workflow Graph
+            </a>
+          )}
           {/* Compare button — shown for volumetric outputs (anatomical) or connectivity matrices. */}
           {(niftis.length > 0 || connectivityMatrices.length > 0) && (() => {
             const isConn = connectivityMatrices.length > 0 && niftis.length === 0;
