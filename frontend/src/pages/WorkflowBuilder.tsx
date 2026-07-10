@@ -19,121 +19,13 @@ import {
 } from "../api/client";
 import { useDatasets } from "../hooks/useDatasets";
 import { useRunResults, useRuns } from "../hooks/useRuns";
-
-// ── Workflow templates ────────────────────────────────────────────────────────
-
-interface TemplateStepDef {
-  pipelineId: string;
-  inputArtifactType: string;
-  edge: {
-    artifactType: string;
-    acceptParam: string | null;
-    acceptDatasetSlot: boolean;
-    acceptLabel: string | null;
-  };
-}
-
-interface WorkflowTemplate {
-  id: string;
-  name: string;
-  description: string;
-  categoryKey: PipelineCategory | "unknown";
-  estimatedRuntime: string;
-  steps: TemplateStepDef[];
-  defaultSourceKind: "dataset" | "run";
-}
-
-const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
-  {
-    id: "structural-mri",
-    name: "Structural MRI",
-    description:
-      "DICOM conversion, BIDS validation, quality control, and cortical segmentation with FastSurfer.",
-    categoryKey: "segmentation",
-    estimatedRuntime: "8 – 48 hrs",
-    defaultSourceKind: "dataset",
-    steps: [
-      {
-        pipelineId: "dcm2bids",
-        inputArtifactType: "dicom",
-        edge: { artifactType: "dicom", acceptParam: null, acceptDatasetSlot: false, acceptLabel: "DICOM folder" },
-      },
-      {
-        pipelineId: "bids-validator",
-        inputArtifactType: "bids_dataset",
-        edge: { artifactType: "bids_dataset", acceptParam: "bids-dir", acceptDatasetSlot: false, acceptLabel: "BIDS Dataset" },
-      },
-      {
-        pipelineId: "mriqc",
-        inputArtifactType: "bids_dataset_validated",
-        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
-      },
-      {
-        pipelineId: "fastsurfer",
-        inputArtifactType: "nifti_raw",
-        edge: { artifactType: "nifti_raw", acceptParam: "t1", acceptDatasetSlot: false, acceptLabel: "T1 NIfTI" },
-      },
-    ],
-  },
-  {
-    id: "fmri-preprocessing",
-    name: "fMRI Preprocessing",
-    description:
-      "Validate a BIDS dataset, run quality control with MRIQC, then preprocess with fMRIPrep.",
-    categoryKey: "preprocessing",
-    estimatedRuntime: "6 – 24 hrs",
-    defaultSourceKind: "dataset",
-    steps: [
-      {
-        pipelineId: "bids-validator",
-        inputArtifactType: "bids_dataset",
-        edge: { artifactType: "bids_dataset", acceptParam: "bids-dir", acceptDatasetSlot: false, acceptLabel: "BIDS Dataset" },
-      },
-      {
-        pipelineId: "mriqc",
-        inputArtifactType: "bids_dataset_validated",
-        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
-      },
-      {
-        pipelineId: "fmriprep",
-        inputArtifactType: "bids_dataset_validated",
-        edge: { artifactType: "bids_dataset_validated", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Validated BIDS" },
-      },
-    ],
-  },
-  {
-    id: "quality-control",
-    name: "Quality Control",
-    description:
-      "Run MRIQC on a BIDS dataset to generate image quality metrics and visual HTML reports.",
-    categoryKey: "quality_control",
-    estimatedRuntime: "30 min – 2 hrs",
-    defaultSourceKind: "dataset",
-    steps: [
-      {
-        pipelineId: "mriqc",
-        inputArtifactType: "bids_dataset",
-        edge: { artifactType: "bids_dataset", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "BIDS Dataset" },
-      },
-    ],
-  },
-  {
-    id: "anonymous-dataset",
-    name: "Anonymous Dataset",
-    description:
-      "De-identify NIfTI brain images with pydeface to remove facial features before sharing data.",
-    categoryKey: "deidentification",
-    estimatedRuntime: "Varies per file",
-    defaultSourceKind: "run",
-    steps: [
-      {
-        pipelineId: "pydeface",
-        inputArtifactType: "nifti_raw",
-        edge: { artifactType: "nifti_raw", acceptParam: "nifti-file", acceptDatasetSlot: false, acceptLabel: "NIfTI" },
-      },
-    ],
-  },
-];
+import {
+  WORKFLOW_TEMPLATES,
+  isNiftiRawRun,
+  validateTemplateEdges,
+  type ManifestSlim,
+  type WorkflowTemplate,
+} from "../lib/workflowTemplates";
 
 type SourceKind = "dataset" | "run";
 type WorkflowNodeStatus = "draft" | "ready" | "running" | "success" | "failed";
@@ -612,11 +504,35 @@ function TemplatePicker({
   onBlank,
   onTemplate,
   loading,
+  loadError,
+  datasets,
+  niftiRuns,
+  completedRuns,
 }: {
   onBlank: () => void;
   onTemplate: (t: WorkflowTemplate) => void;
   loading: boolean;
+  loadError: string | null;
+  datasets: DatasetSummary[];
+  niftiRuns: RunSummary[];
+  completedRuns: RunSummary[];
 }) {
+  function templateAvailable(template: WorkflowTemplate): boolean {
+    if (template.disabled) return false;
+    if (template.requiredSourceKind === "dataset") return datasets.length > 0;
+    if (template.requiredSourceArtifact === "nifti_raw") return niftiRuns.length > 0;
+    return completedRuns.length > 0;
+  }
+
+  function unavailableReason(template: WorkflowTemplate): string {
+    if (template.disabled) return template.disabledReason ?? "Not available yet.";
+    if (template.requiredSourceKind === "dataset" && datasets.length === 0)
+      return "Register a BIDS dataset in the Datasets tab first.";
+    if (template.requiredSourceArtifact === "nifti_raw" && niftiRuns.length === 0)
+      return "Run dcm2niix to produce a nifti_raw artifact first.";
+    return "No compatible source available.";
+  }
+
   return (
     <div className="flex min-h-full flex-col px-4 sm:px-6 py-6">
       <header className="mb-8 pb-5 border-b border-white/5">
@@ -630,8 +546,13 @@ function TemplatePicker({
           Start with a template or build from scratch.
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
-          Templates pre-fill the canvas with connected pipeline steps. You can add, remove, or reconfigure any step before running.
+          Templates pre-fill the canvas with connected, manifest-validated pipeline steps. You can add, remove, or reconfigure any step before running.
         </p>
+        {loadError && (
+          <p className="mt-4 rounded-md border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
+            {loadError}
+          </p>
+        )}
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -649,37 +570,86 @@ function TemplatePicker({
           <p className="mt-1.5 text-sm leading-5 text-gray-400">
             Start from scratch and build your own pipeline chain step by step.
           </p>
-          <div className="mt-4 text-xs text-gray-500">0 steps · manual configuration</div>
+          <div className="mt-4 text-xs text-gray-500">0 steps · manual configuration · any source</div>
         </button>
 
         {/* Template cards */}
         {WORKFLOW_TEMPLATES.map((template) => {
           const meta = CATEGORY_META[template.categoryKey];
+          const available = templateAvailable(template);
+          const computeBadge = COMPUTE_PROFILE_BADGE[template.worstComputeProfile];
+          const isDisabled = template.disabled;
+
           return (
-            <button
+            <div
               key={template.id}
-              type="button"
-              onClick={() => onTemplate(template)}
-              disabled={loading}
-              className="rounded-lg border border-white/8 bg-surface-raised p-5 text-left transition-colors hover:border-white/20 hover:bg-surface-overlay focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50"
+              className={classNames(
+                "flex flex-col rounded-lg border p-5 transition-colors",
+                isDisabled
+                  ? "border-white/5 bg-surface opacity-50"
+                  : available
+                    ? "border-white/8 bg-surface-raised hover:border-white/20 hover:bg-surface-overlay"
+                    : "border-white/5 bg-surface",
+              )}
             >
-              <div
-                className={classNames(
-                  "grid h-11 w-11 place-items-center rounded-xl border text-sm font-bold",
-                  meta.iconBg,
-                  meta.iconColor,
-                )}
-              >
-                {meta.icon}
+              {/* Icon + name */}
+              <div className="flex items-start gap-3">
+                <div
+                  className={classNames(
+                    "grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-sm font-bold",
+                    meta.iconBg,
+                    meta.iconColor,
+                    (isDisabled || !available) && "opacity-60",
+                  )}
+                >
+                  {meta.icon}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-white leading-tight">{template.name}</h3>
+                  <span className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium ${computeBadge.className}`}>
+                    {computeBadge.label}
+                  </span>
+                </div>
               </div>
-              <h3 className="mt-4 text-base font-semibold text-white">{template.name}</h3>
-              <p className="mt-1.5 text-sm leading-5 text-gray-400">{template.description}</p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
-                <span>{template.steps.length} step{template.steps.length !== 1 ? "s" : ""}</span>
-                <span>·</span>
-                <span>{template.estimatedRuntime}</span>
+
+              {/* Description */}
+              <p className="mt-3 text-sm leading-5 text-gray-400">{template.description}</p>
+
+              {/* Required source */}
+              <div className="mt-3 rounded-md border border-white/5 bg-surface px-3 py-2 text-xs text-gray-500">
+                <span className="font-semibold text-gray-400">Needs: </span>
+                {template.requiredSourceLabel}
               </div>
-            </button>
+
+              {/* Compute warning */}
+              {template.computeWarning && (
+                <p className="mt-2 text-[11px] leading-4 text-amber-400">{template.computeWarning}</p>
+              )}
+
+              {/* Footer: steps + runtime + action */}
+              <div className="mt-4 flex items-center justify-between gap-2 text-xs text-gray-500">
+                <span>
+                  {template.steps.length} step{template.steps.length !== 1 ? "s" : ""} · {template.estimatedRuntime}
+                </span>
+              </div>
+
+              {isDisabled ? (
+                <p className="mt-3 text-xs text-gray-600">{template.disabledReason}</p>
+              ) : available ? (
+                <button
+                  type="button"
+                  onClick={() => onTemplate(template)}
+                  disabled={loading}
+                  className="mt-4 w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50"
+                >
+                  {loading ? "Loading…" : "Use template"}
+                </button>
+              ) : (
+                <div className="mt-4 rounded-md border border-white/8 px-3 py-2 text-xs text-gray-500">
+                  {unavailableReason(template)}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -707,11 +677,14 @@ export default function WorkflowBuilder() {
   const [showRules, setShowRules] = useState(false);
   const [templateChosen, setTemplateChosen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<WorkflowTemplate | null>(null);
 
   const completedRuns = useMemo(
     () => runs.filter((r) => r.status === "success"),
     [runs],
   );
+  const niftiRuns = useMemo(() => completedRuns.filter(isNiftiRawRun), [completedRuns]);
   const selectedDataset = datasets.find((d) => d.id === source.datasetId);
   const selectedRunId = typeof source.runId === "number" ? source.runId : 0;
   const selectedRun = completedRuns.find((r) => r.id === source.runId);
@@ -735,36 +708,62 @@ export default function WorkflowBuilder() {
 
   function startBlank() {
     resetWorkflow({ kind: "dataset", datasetId: "", runId: "" });
+    setActiveTemplate(null);
+    setTemplateLoadError(null);
     setTemplateChosen(true);
   }
 
   async function loadTemplate(template: WorkflowTemplate) {
     setTemplateLoading(true);
+    setTemplateLoadError(null);
     try {
-      const newNodes: WorkflowNode[] = [];
-      for (const step of template.steps) {
-        const pipeline = await fetchPipeline(step.pipelineId);
-        newNodes.push({
-          id: `${step.pipelineId}-${Date.now()}-${newNodes.length}`,
-          pipelineId: pipeline.id,
-          displayName: pipeline.display_name,
-          category: pipeline.category ?? null,
-          computeProfile: pipeline.compute_profile ?? null,
-          inputArtifactType: step.inputArtifactType,
-          produced: pipeline.produces ?? [],
-          params: buildDefaults(pipeline.parameters),
-          datasetId: "",
-          edge: step.edge,
-          status: "draft",
-        });
+      // Fetch all pipeline manifests in parallel
+      const pipelines = await Promise.all(
+        template.steps.map((step) => fetchPipeline(step.pipelineId)),
+      );
+
+      // Build slim manifest map for edge validation
+      const manifestMap: Record<string, ManifestSlim> = {};
+      for (const p of pipelines) {
+        manifestMap[p.id] = {
+          id: p.id,
+          accepts: (p.accepts ?? []) as ManifestSlim["accepts"],
+          produces: (p.produces ?? []) as ManifestSlim["produces"],
+        };
       }
-      resetWorkflow({ kind: template.defaultSourceKind, datasetId: "", runId: "" });
+
+      // Validate every edge against the live manifests — fail loudly
+      const validation = validateTemplateEdges(template, manifestMap);
+      if (!validation.valid) {
+        const detail = validation.errors.map((e) => e.message).join(" | ");
+        console.error("Template validation failed:", template.id, validation.errors);
+        throw new Error(`Template "${template.name}" has invalid edges: ${detail}`);
+      }
+
+      const newNodes: WorkflowNode[] = template.steps.map((step, i) => ({
+        id: `${step.pipelineId}-${Date.now()}-${i}`,
+        pipelineId: pipelines[i].id,
+        displayName: pipelines[i].display_name,
+        category: pipelines[i].category ?? null,
+        computeProfile: pipelines[i].compute_profile ?? null,
+        inputArtifactType: step.inputArtifactType,
+        produced: pipelines[i].produces ?? [],
+        params: buildDefaults(pipelines[i].parameters),
+        datasetId: "",
+        edge: step.edge,
+        status: "draft",
+      }));
+
+      resetWorkflow({ kind: template.requiredSourceKind, datasetId: "", runId: "" });
       setNodes(newNodes);
-    } catch {
-      resetWorkflow({ kind: template.defaultSourceKind, datasetId: "", runId: "" });
+      setActiveTemplate(template);
+      setTemplateChosen(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load template.";
+      setTemplateLoadError(message);
+      // Stay on picker — do not transition to the builder with a broken chain
     } finally {
       setTemplateLoading(false);
-      setTemplateChosen(true);
     }
   }
 
@@ -1008,6 +1007,10 @@ export default function WorkflowBuilder() {
             onBlank={startBlank}
             onTemplate={(t) => void loadTemplate(t)}
             loading={templateLoading}
+            loadError={templateLoadError}
+            datasets={datasets}
+            niftiRuns={niftiRuns}
+            completedRuns={completedRuns}
           />
         )}
       </div>
@@ -1034,6 +1037,11 @@ export default function WorkflowBuilder() {
                 >
                   ← Templates
                 </button>
+                {activeTemplate && (
+                  <span className="rounded-full border border-white/8 bg-surface-raised px-3 py-1 text-xs text-gray-400">
+                    {activeTemplate.name} · needs {activeTemplate.requiredSourceLabel}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowRules((value) => !value)}
@@ -1087,19 +1095,32 @@ export default function WorkflowBuilder() {
                 </label>
               ) : (
                 <label className="min-w-0 flex-1 sm:w-[26rem]">
-                  <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">Completed run</span>
+                  <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">
+                    Completed run
+                    {activeTemplate?.requiredSourceArtifact === "nifti_raw" && (
+                      <span className="ml-2 font-normal normal-case tracking-normal text-gray-600">
+                        (filtered to nifti_raw producers)
+                      </span>
+                    )}
+                  </span>
                   <select
                     value={source.runId}
                     onChange={(e) => resetWorkflow({ runId: e.target.value ? Number(e.target.value) : "" })}
                     className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                   >
                     <option value="">Choose a successful run</option>
-                    {completedRuns.map((run) => (
+                    {(activeTemplate?.requiredSourceArtifact === "nifti_raw"
+                      ? niftiRuns
+                      : completedRuns
+                    ).map((run) => (
                       <option key={run.id} value={run.id}>
-                        Run #{run.id} - {run.pipeline_manifest_id}
+                        Run #{run.id} – {run.pipeline_manifest_id}
                       </option>
                     ))}
                   </select>
+                  {activeTemplate?.requiredSourceArtifact === "nifti_raw" && niftiRuns.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-400">No dcm2niix runs found. Run dcm2niix first.</p>
+                  )}
                 </label>
               )}
 
