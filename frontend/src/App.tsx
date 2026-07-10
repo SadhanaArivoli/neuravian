@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 import { Sidebar } from "./components/primitives/Sidebar";
+import ComparisonStudio from "./pages/ComparisonStudio";
 import DatasetDetail from "./pages/DatasetDetail";
 import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/runs/:id" element={<RunDetail />} />
           <Route path="/workflows/new" element={<WorkflowBuilder />} />
           <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
+          <Route path="/compare" element={<ComparisonStudio />} />
         </Routes>
       </main>
     </div>

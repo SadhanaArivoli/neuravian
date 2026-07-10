@@ -201,22 +201,36 @@ export default function RunResults({ runId }: Props) {
 
   return (
     <div className="mt-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-base font-semibold text-gray-100">Results</h2>
-        {hasDownloadable && (
-          <a
-            href={`/api/runs/${runId}/download`}
-            download
-            className="flex items-center gap-1.5 rounded border border-gray-600 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-400 hover:text-gray-100 transition-colors"
-          >
-            {/* Download icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z" />
-              <path d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z" />
-            </svg>
-            Download All (.zip)
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Compare button — shown when this run produced volumetric outputs */}
+          {niftis.length > 0 && (
+            <a
+              href={`/compare?a=${runId}`}
+              className="flex items-center gap-1.5 rounded border border-violet-600/50 bg-violet-600/10 px-3 py-1.5 text-xs font-medium text-violet-300 hover:border-violet-500 hover:text-violet-200 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M6.5 2.75a.75.75 0 0 0-1.5 0v10.5a.75.75 0 0 0 1.5 0V2.75ZM11 5.5a.75.75 0 0 0-1.5 0v7.75a.75.75 0 0 0 1.5 0V5.5ZM2 8.25a.75.75 0 0 0 0 1.5h12a.75.75 0 0 0 0-1.5H2Z" />
+              </svg>
+              Compare
+            </a>
+          )}
+          {hasDownloadable && (
+            <a
+              href={`/api/runs/${runId}/download`}
+              download
+              className="flex items-center gap-1.5 rounded border border-gray-600 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-400 hover:text-gray-100 transition-colors"
+            >
+              {/* Download icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z" />
+                <path d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z" />
+              </svg>
+              Download All (.zip)
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Workflow chaining: recommend compatible next pipelines.
