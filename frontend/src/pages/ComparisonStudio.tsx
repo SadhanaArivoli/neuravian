@@ -4,12 +4,14 @@
  * Compares outputs from two different pipelines run on the same source data.
  * Route: /compare?a=<runId>&b=<runId>
  *
- * Discovery: runs are "comparable" when they share the same dataset_id and
- * both produce at least one common artifact type. The page auto-suggests
- * candidates when only one run is selected.
+ * Candidate discovery uses three-tier lineage-safe eligibility:
+ *   verified   – shared source_run_id (confirmed same ancestor)
+ *   unverified – same dataset_id only (fallback with warning)
+ *   ineligible – different datasets (excluded)
  *
- * Three viewer modes (Side-by-Side, Linked, Difference) reuse NiivuePanel.
- * No backend changes required.
+ * Four viewer modes: Side-by-Side, Linked, Mask Overlay, Difference.
+ * "Difference" requires geometry-compatible masks and computes voxel-wise
+ * binary disagreement via a Web Worker.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -20,14 +22,28 @@ import { fetchPipeline } from "../api/client";
 import type { RunMetadata, RunResults, RunSummary } from "../api/client";
 import NiivuePanel from "../components/domain/NiivuePanel";
 import type { NiivueLayer } from "../components/domain/NiivuePanel";
+import {
+  classifyEligibility,
+  sortByEligibility,
+  geometriesCompatible,
+  type DiceStats,
+  type NiftiGeometry,
+} from "../lib/comparisonEligibility";
+import { parseNiftiHeader, DATATYPE_LABELS } from "../lib/niftiHeader";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ViewMode = "sidebyside" | "linked" | "difference";
+type ViewMode = "sidebyside" | "linked" | "maskoverlay" | "difference";
 
 interface RunOption {
   run: RunSummary;
   producedTypes: string[];
+}
+
+interface DiceState {
+  status: "idle" | "loading" | "done" | "incompatible" | "error";
+  stats?: DiceStats;
+  message?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -52,9 +68,7 @@ const PROFILE_LABEL: Record<string, { label: string; cls: string }> = {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-sm font-semibold text-gray-100 mb-3">{children}</h2>
-  );
+  return <h2 className="text-sm font-semibold text-gray-100 mb-3">{children}</h2>;
 }
 
 function DiffCell({ a, b, render }: { a: unknown; b: unknown; render: (v: unknown) => React.ReactNode }) {
@@ -138,7 +152,6 @@ function MetadataComparison({ metaA, metaB, labelA, labelB }: {
           </tbody>
         </table>
       </div>
-      {/* Runtime bar chart */}
       {metaA.runtime_seconds !== null && metaB.runtime_seconds !== null && (
         <RuntimeBar
           labelA={labelA}
@@ -188,6 +201,172 @@ function RuntimeBar({ labelA, labelB, runtimeA, runtimeB }: {
   );
 }
 
+// ── GeometryTable ─────────────────────────────────────────────────────────────
+
+interface GeomState {
+  status: "idle" | "loading" | "done" | "error";
+  geomA?: NiftiGeometry;
+  geomB?: NiftiGeometry;
+  error?: string;
+}
+
+function GeometryTable({ geomState, labelA, labelB }: {
+  geomState: GeomState;
+  labelA: string;
+  labelB: string;
+}) {
+  if (geomState.status === "idle") return null;
+  if (geomState.status === "loading") {
+    return (
+      <div className="text-xs text-gray-500 flex items-center gap-2">
+        <div className="h-3 w-3 rounded-full border border-blue-500 border-t-transparent animate-spin" />
+        Parsing NIfTI headers…
+      </div>
+    );
+  }
+  if (geomState.status === "error") {
+    return (
+      <div className="text-xs text-red-400">Could not parse geometry: {geomState.error}</div>
+    );
+  }
+  if (!geomState.geomA || !geomState.geomB) return null;
+
+  const gA = geomState.geomA;
+  const gB = geomState.geomB;
+  const compatible = geometriesCompatible(gA, gB);
+
+  const rows: Array<{ label: string; vA: string; vB: string }> = [
+    {
+      label: "Dimensions",
+      vA: gA.dims.join(" × "),
+      vB: gB.dims.join(" × "),
+    },
+    {
+      label: "Voxel spacing (mm)",
+      vA: gA.pixdim.map((v) => v.toFixed(4)).join(" × "),
+      vB: gB.pixdim.map((v) => v.toFixed(4)).join(" × "),
+    },
+    {
+      label: "Datatype",
+      vA: DATATYPE_LABELS[gA.datatype] ?? `code ${gA.datatype}`,
+      vB: DATATYPE_LABELS[gB.datatype] ?? `code ${gB.datatype}`,
+    },
+    {
+      label: "qform / sform",
+      vA: `${gA.qformCode} / ${gA.sformCode}`,
+      vB: `${gB.qformCode} / ${gB.sformCode}`,
+    },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <SectionHeading>Artifact geometry</SectionHeading>
+        <span className={`mb-3 text-xs px-2 py-0.5 rounded-full font-medium ${
+          compatible
+            ? "bg-green-500/10 text-green-400 border border-green-500/20"
+            : "bg-red-500/10 text-red-400 border border-red-500/20"
+        }`}>
+          {compatible ? "Compatible" : "Geometry mismatch"}
+        </span>
+      </div>
+      <div className="rounded-lg border border-white/10 overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="bg-white/5 border-b border-white/10">
+              <th className="px-3 py-2 text-xs font-medium text-gray-400 w-36">Field</th>
+              <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelA}</th>
+              <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelB}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {rows.map(({ label, vA, vB }) => {
+              const differs = vA !== vB;
+              return (
+                <tr key={label} className={differs ? "bg-amber-500/5" : ""}>
+                  <td className="px-3 py-2 text-xs text-gray-400">{label}</td>
+                  <td className={`px-3 py-2 text-xs font-mono ${differs ? "text-amber-300 font-semibold" : "text-gray-200"}`}>{vA}</td>
+                  <td className={`px-3 py-2 text-xs font-mono ${differs ? "text-amber-300 font-semibold" : "text-gray-200"}`}>{vB}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!compatible && (
+        <p className="mt-2 text-xs text-amber-400">
+          ⚠ Voxel-wise Difference and Dice are disabled — masks must share the same dimensions and voxel spacing.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── DicePanel ─────────────────────────────────────────────────────────────────
+
+function DicePanel({ diceState }: { diceState: DiceState }) {
+  if (diceState.status === "idle") return null;
+
+  if (diceState.status === "loading") {
+    return (
+      <div className="rounded-lg border border-white/10 bg-surface-raised px-4 py-3">
+        <p className="text-xs text-gray-400 mb-2">Dice coefficient</p>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="h-3 w-3 rounded-full border border-blue-500 border-t-transparent animate-spin shrink-0" />
+          {diceState.message ?? "Computing…"}
+        </div>
+      </div>
+    );
+  }
+
+  if (diceState.status === "incompatible") {
+    return (
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-300">
+        Dice unavailable: {diceState.message}
+      </div>
+    );
+  }
+
+  if (diceState.status === "error") {
+    return (
+      <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
+        Dice error: {diceState.message}
+      </div>
+    );
+  }
+
+  const s = diceState.stats!;
+  const dicePct = (s.dice * 100).toFixed(1);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-surface-raised px-4 py-3">
+      <p className="text-xs text-gray-400 mb-3">Dice coefficient (mask overlap)</p>
+      <div className="flex items-center gap-4 mb-3">
+        <span className="text-3xl font-bold font-mono text-gray-100">{dicePct}%</span>
+        <div className="flex-1 bg-white/10 rounded-full h-2.5 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
+            style={{ width: `${dicePct}%` }}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: "Intersection", value: s.intersection.toLocaleString(), color: "text-green-400" },
+          { label: "A only", value: s.aOnly.toLocaleString(), color: "text-blue-400" },
+          { label: "B only", value: s.bOnly.toLocaleString(), color: "text-violet-400" },
+          { label: "Total foreground", value: s.totalForeground.toLocaleString(), color: "text-gray-300" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded bg-white/5 px-3 py-2">
+            <div className="text-[10px] text-gray-500 mb-0.5">{label}</div>
+            <div className={`text-xs font-mono font-semibold ${color}`}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -200,8 +379,6 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
 }) {
   const niftisA = resultsA.niftis ?? [];
   const niftisB = resultsB.niftis ?? [];
-
-  // Pair files by name
   const allNames = [...new Set([...niftisA.map((f) => f.name), ...niftisB.map((f) => f.name)])].sort();
 
   return (
@@ -225,31 +402,17 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
                   <td className="px-3 py-2 text-xs text-gray-300 font-mono">{name}</td>
                   <td className="px-3 py-2 text-xs text-gray-400">
                     {fA ? (
-                      <a
-                        href={`/api/runs/${runIdA}/files/${fA.path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:underline"
-                      >
+                      <a href={`/api/runs/${runIdA}/files/${fA.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
                         ↗ view
                       </a>
-                    ) : (
-                      <span className="text-red-400">missing</span>
-                    )}
+                    ) : <span className="text-red-400">missing</span>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-400">
                     {fB ? (
-                      <a
-                        href={`/api/runs/${runIdB}/files/${fB.path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:underline"
-                      >
+                      <a href={`/api/runs/${runIdB}/files/${fB.path}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
                         ↗ view
                       </a>
-                    ) : (
-                      <span className="text-red-400">missing</span>
-                    )}
+                    ) : <span className="text-red-400">missing</span>}
                   </td>
                 </tr>
               );
@@ -258,7 +421,6 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
         </table>
       </div>
 
-      {/* Produced artifact types */}
       <div className="mt-3 rounded-lg border border-white/10 overflow-hidden">
         <table className="w-full text-left">
           <thead>
@@ -283,18 +445,14 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
                       <span className={aArt.resolved ? "text-green-400" : "text-gray-500"}>
                         {aArt.resolved ? "✓ resolved" : "not resolved"}
                       </span>
-                    ) : (
-                      <span className="text-gray-600">—</span>
-                    )}
+                    ) : <span className="text-gray-600">—</span>}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {bArt ? (
                       <span className={bArt.resolved ? "text-green-400" : "text-gray-500"}>
                         {bArt.resolved ? "✓ resolved" : "not resolved"}
                       </span>
-                    ) : (
-                      <span className="text-gray-600">—</span>
-                    )}
+                    ) : <span className="text-gray-600">—</span>}
                   </td>
                 </tr>
               );
@@ -306,14 +464,13 @@ function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB
   );
 }
 
-// ── ViewerPanel ───────────────────────────────────────────────────────────────
+// ── Viewer layer builders ─────────────────────────────────────────────────────
 
 function buildLayers(results: RunResults, runId: number): NiivueLayer[] {
   const niftis = results.niftis ?? [];
   const base = niftis.find((f) => f.name === "stripped.nii.gz") ?? niftis[0];
   const mask = niftis.find((f) => f.name === "brain_mask.nii.gz");
   const url = (f: { path: string }) => `/api/runs/${runId}/files/${f.path}`;
-
   if (!base) return [];
   const layers: NiivueLayer[] = [{ url: url(base), name: base.name }];
   if (mask) layers.push({ url: url(mask), name: mask.name, colormap: "hot", opacity: 0.4 });
@@ -328,19 +485,43 @@ function buildMaskLayers(results: RunResults, runId: number, colormap: string): 
   return [{ url: url(mask), name: mask.name, colormap, opacity: 1.0 }];
 }
 
-// ── Run selector ──────────────────────────────────────────────────────────────
+function getMaskUrl(results: RunResults, runId: number): string | null {
+  const mask = (results.niftis ?? []).find((f) => f.name === "brain_mask.nii.gz");
+  return mask ? `/api/runs/${runId}/files/${mask.path}` : null;
+}
+
+// ── Run selector with eligibility grouping ────────────────────────────────────
 
 function RunSelector({
   label,
   value,
   options,
+  ref: refRun,
   onChange,
 }: {
   label: string;
   value: number | null;
   options: RunOption[];
+  ref?: RunSummary | null;
   onChange: (id: number | null) => void;
 }) {
+  // When a reference run is known, group options by eligibility tier
+  const grouped = refRun
+    ? sortByEligibility(refRun, options.map((o) => ({ run: o.run, producedTypes: o.producedTypes })))
+    : null;
+
+  const verifiedGroup = grouped?.filter((o) => o.eligibility.tier === "verified") ?? [];
+  const unverifiedGroup = grouped?.filter((o) => o.eligibility.tier === "unverified") ?? [];
+
+  const renderOption = (run: RunSummary, tier?: "verified" | "unverified") => {
+    const prefix = tier === "verified" ? "✓ " : tier === "unverified" ? "~ " : "";
+    return (
+      <option key={run.id} value={run.id}>
+        {prefix}Run #{run.id} — {run.pipeline_manifest_id} v{run.pipeline_version}
+      </option>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs text-gray-400 font-medium">{label}</label>
@@ -350,11 +531,22 @@ function RunSelector({
         onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
       >
         <option value="">— select a run —</option>
-        {options.map(({ run }) => (
-          <option key={run.id} value={run.id}>
-            Run #{run.id} — {run.pipeline_manifest_id} v{run.pipeline_version}
-          </option>
-        ))}
+        {grouped ? (
+          <>
+            {verifiedGroup.length > 0 && (
+              <optgroup label="✓ Verified comparable (same source)">
+                {verifiedGroup.map((o) => renderOption(o.run, "verified"))}
+              </optgroup>
+            )}
+            {unverifiedGroup.length > 0 && (
+              <optgroup label="~ Same dataset (unverified)">
+                {unverifiedGroup.map((o) => renderOption(o.run, "unverified"))}
+              </optgroup>
+            )}
+          </>
+        ) : (
+          options.map(({ run }) => renderOption(run))
+        )}
       </select>
     </div>
   );
@@ -374,9 +566,12 @@ export default function ComparisonStudio() {
   // Pipeline produces cache: id → produced artifact types
   const [producesCache, setProducesCache] = useState<Record<string, string[]>>({});
 
-  const { data: allRuns, isLoading: runsLoading } = useRuns();
+  // Geometry + Dice state
+  const [geomState, setGeomState] = useState<GeomState>({ status: "idle" });
+  const [diceState, setDiceState] = useState<DiceState>({ status: "idle" });
+  const workerRef = useRef<Worker | null>(null);
 
-  // Results for selected runs
+  const { data: allRuns, isLoading: runsLoading } = useRuns();
   const { data: resultsA } = useRunResults(runAId ?? 0, runAId !== null);
   const { data: resultsB } = useRunResults(runBId ?? 0, runBId !== null);
 
@@ -387,25 +582,26 @@ export default function ComparisonStudio() {
     const ids = [...new Set(successRuns.map((r) => r.pipeline_manifest_id))];
     const uncached = ids.filter((id) => !(id in producesCache));
     if (uncached.length === 0) return;
-    Promise.all(uncached.map((id) => fetchPipeline(id).catch(() => null)))
-      .then((pipelines) => {
-        const updates: Record<string, string[]> = {};
-        for (const p of pipelines) {
-          if (p) updates[p.id] = (p.produces ?? []).map((s) => s.type);
-        }
-        setProducesCache((prev) => ({ ...prev, ...updates }));
-      });
+    Promise.all(uncached.map((id) => fetchPipeline(id).catch(() => null))).then((pipelines) => {
+      const updates: Record<string, string[]> = {};
+      for (const p of pipelines) {
+        if (p) updates[p.id] = (p.produces ?? []).map((s) => s.type);
+      }
+      setProducesCache((prev) => ({ ...prev, ...updates }));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRuns]);
 
-  // Build run options: only successful runs with nifti outputs
+  // Build run options: only successful runs with nifti/brain/mask outputs
   const runOptions: RunOption[] = (allRuns ?? [])
     .filter((r) => r.status === "success")
     .map((r) => ({ run: r, producedTypes: producesCache[r.pipeline_manifest_id] ?? [] }))
     .filter((o) => o.producedTypes.some((t) => t.includes("nifti") || t.includes("brain") || t.includes("mask")));
 
-  // When A is selected, B options = runs sharing at least one artifact type with A (different pipeline)
   const runAOption = runOptions.find((o) => o.run.id === runAId);
+  const runBOption = runOptions.find((o) => o.run.id === runBId);
+
+  // B candidates: different pipeline, shares at least one artifact type with A
   const bOptions = runAOption
     ? runOptions.filter(
         (o) =>
@@ -415,34 +611,39 @@ export default function ComparisonStudio() {
       )
     : runOptions.filter((o) => o.run.id !== runBId);
 
-  const aOptions = runBId
+  // A candidates: symmetric filter against B
+  const aOptions = runBOption
     ? runOptions.filter(
-        (o) => {
-          const bOpt = runOptions.find((x) => x.run.id === runBId);
-          return (
-            o.run.id !== runBId &&
-            (!bOpt || (
-              o.run.pipeline_manifest_id !== bOpt.run.pipeline_manifest_id &&
-              o.producedTypes.some((t) => bOpt.producedTypes.includes(t))
-            ))
-          );
-        }
+        (o) =>
+          o.run.id !== runBId &&
+          o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id &&
+          o.producedTypes.some((t) => runBOption.producedTypes.includes(t))
       )
     : runOptions;
+
+  // Eligibility between the two selected runs
+  const runASummary = runAOption?.run ?? null;
+  const runBSummary = runBOption?.run ?? null;
+  const eligibility =
+    runASummary && runBSummary ? classifyEligibility(runASummary, runBSummary) : null;
 
   function setRunA(id: number | null) {
     const p = new URLSearchParams(searchParams);
     if (id) p.set("a", String(id)); else p.delete("a");
     setSearchParams(p);
+    setGeomState({ status: "idle" });
+    setDiceState({ status: "idle" });
   }
 
   function setRunB(id: number | null) {
     const p = new URLSearchParams(searchParams);
     if (id) p.set("b", String(id)); else p.delete("b");
     setSearchParams(p);
+    setGeomState({ status: "idle" });
+    setDiceState({ status: "idle" });
   }
 
-  // Auto-suggest: when A is selected and B is empty, pick the first compatible B
+  // Auto-suggest: when A is selected and B is empty, pick first verified-or-only compatible B
   useEffect(() => {
     if (runAId && !runBId && bOptions.length === 1) {
       setRunB(bOptions[0].run.id);
@@ -450,13 +651,124 @@ export default function ComparisonStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runAId, runBId, bOptions.length]);
 
+  // Parse NIfTI headers when both runs are loaded and have masks
+  useEffect(() => {
+    if (!resultsA || !resultsB || !runAId || !runBId) {
+      setGeomState({ status: "idle" });
+      return;
+    }
+    const urlA = getMaskUrl(resultsA, runAId);
+    const urlB = getMaskUrl(resultsB, runBId);
+    if (!urlA || !urlB) return;
+
+    setGeomState({ status: "loading" });
+
+    Promise.all([parseNiftiHeader(urlA), parseNiftiHeader(urlB)])
+      .then(([hA, hB]) => {
+        const geomA: NiftiGeometry = {
+          dims: hA.dims,
+          pixdim: hA.pixdim,
+          datatype: hA.datatype,
+          qformCode: hA.qformCode,
+          sformCode: hA.sformCode,
+        };
+        const geomB: NiftiGeometry = {
+          dims: hB.dims,
+          pixdim: hB.pixdim,
+          datatype: hB.datatype,
+          qformCode: hB.qformCode,
+          sformCode: hB.sformCode,
+        };
+        setGeomState({ status: "done", geomA, geomB });
+      })
+      .catch((err: unknown) => {
+        setGeomState({ status: "error", error: err instanceof Error ? err.message : String(err) });
+      });
+  }, [resultsA, resultsB, runAId, runBId]);
+
+  // Compute Dice via Web Worker when geometry is compatible
+  useEffect(() => {
+    if (geomState.status !== "done" || !resultsA || !resultsB || !runAId || !runBId) return;
+    if (!geomState.geomA || !geomState.geomB) return;
+    if (!geometriesCompatible(geomState.geomA, geomState.geomB)) return;
+
+    const urlA = getMaskUrl(resultsA, runAId);
+    const urlB = getMaskUrl(resultsB, runBId);
+    if (!urlA || !urlB) return;
+
+    // Terminate any previous worker
+    workerRef.current?.terminate();
+
+    setDiceState({ status: "loading", message: "Starting…" });
+
+    const worker = new Worker(
+      new URL("../workers/maskDiff.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+    workerRef.current = worker;
+
+    worker.onmessage = (evt: MessageEvent) => {
+      const msg = evt.data as {
+        type: string;
+        message?: string;
+        dice?: number;
+        intersection?: number;
+        aOnly?: number;
+        bOnly?: number;
+        totalForeground?: number;
+        reason?: string;
+      };
+      if (msg.type === "progress") {
+        setDiceState({ status: "loading", message: msg.message });
+      } else if (msg.type === "result") {
+        const stats: DiceStats = {
+          dice: msg.dice!,
+          intersection: msg.intersection!,
+          aOnly: msg.aOnly!,
+          bOnly: msg.bOnly!,
+          totalForeground: msg.totalForeground!,
+        };
+        // Validate with our pure function for consistency
+        setDiceState({ status: "done", stats });
+        worker.terminate();
+        workerRef.current = null;
+      } else if (msg.type === "incompatible") {
+        setDiceState({ status: "incompatible", message: msg.reason });
+        worker.terminate();
+        workerRef.current = null;
+      } else if (msg.type === "error") {
+        setDiceState({ status: "error", message: msg.message });
+        worker.terminate();
+        workerRef.current = null;
+      }
+    };
+
+    worker.onerror = (err) => {
+      setDiceState({ status: "error", message: err.message });
+      workerRef.current = null;
+    };
+
+    worker.postMessage({ type: "compute", urlA, urlB });
+
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geomState.status, geomState.geomA, geomState.geomB]);
+
+  // Validate: if geometry is incompatible, disable "Difference" mode
+  const geomCompatible =
+    geomState.status === "done" &&
+    geomState.geomA &&
+    geomState.geomB &&
+    geometriesCompatible(geomState.geomA, geomState.geomB);
+
   // Linked mode: once both panels ready, call broadcastTo
   const handleNvAReady = useCallback(
     (nv: Niivue) => {
       nvARef.current = nv;
-      if (viewMode === "linked" && nvBRef.current) {
-        nv.broadcastTo(nvBRef.current);
-      }
+      if (viewMode === "linked" && nvBRef.current) nv.broadcastTo(nvBRef.current);
     },
     [viewMode]
   );
@@ -464,14 +776,11 @@ export default function ComparisonStudio() {
   const handleNvBReady = useCallback(
     (nv: Niivue) => {
       nvBRef.current = nv;
-      if (viewMode === "linked" && nvARef.current) {
-        nvARef.current.broadcastTo(nv);
-      }
+      if (viewMode === "linked" && nvARef.current) nvARef.current.broadcastTo(nv);
     },
     [viewMode]
   );
 
-  // When mode switches to linked, set up broadcast if both are already loaded
   useEffect(() => {
     if (viewMode === "linked" && nvARef.current && nvBRef.current) {
       nvARef.current.broadcastTo(nvBRef.current);
@@ -494,21 +803,37 @@ export default function ComparisonStudio() {
   // Build viewer layers based on mode
   const layersA: NiivueLayer[] =
     resultsA && runAId
-      ? viewMode === "difference"
+      ? viewMode === "maskoverlay" || viewMode === "difference"
         ? buildMaskLayers(resultsA, runAId, "blue")
         : buildLayers(resultsA, runAId)
       : [];
 
   const layersB: NiivueLayer[] =
     resultsB && runBId
-      ? viewMode === "difference"
+      ? viewMode === "maskoverlay" || viewMode === "difference"
         ? buildMaskLayers(resultsB, runBId, "red")
         : buildLayers(resultsB, runBId)
       : [];
 
-  const diffNote =
-    viewMode === "difference"
-      ? "Difference mode: each panel shows one pipeline's brain mask. Blue = Run A only, Red = Run B only, overlap = agreement."
+  const VIEW_MODES: Array<{ mode: ViewMode; label: string; disabled?: boolean; title?: string }> = [
+    { mode: "sidebyside", label: "Side by side" },
+    { mode: "linked", label: "Linked" },
+    { mode: "maskoverlay", label: "Mask Overlay" },
+    {
+      mode: "difference",
+      label: "Difference",
+      disabled: geomState.status === "done" && !geomCompatible,
+      title: geomState.status === "done" && !geomCompatible
+        ? "Disabled: geometry mismatch between masks"
+        : undefined,
+    },
+  ];
+
+  const viewerNote =
+    viewMode === "maskoverlay"
+      ? "Mask Overlay: each panel shows one pipeline's brain mask. Blue = Run A, Red = Run B."
+      : viewMode === "difference"
+      ? "Difference: each panel shows one pipeline's binary mask. Areas of agreement are in both panels; areas of disagreement appear in only one."
       : null;
 
   return (
@@ -531,19 +856,17 @@ export default function ComparisonStudio() {
           {/* Mode switcher */}
           {bothSelected && bothLoaded && (
             <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-surface-raised p-1">
-              {(
-                [
-                  { mode: "sidebyside" as const, label: "Side by side" },
-                  { mode: "linked" as const, label: "Linked" },
-                  { mode: "difference" as const, label: "Difference" },
-                ] as const
-              ).map(({ mode, label }) => (
+              {VIEW_MODES.map(({ mode, label, disabled, title }) => (
                 <button
                   key={mode}
-                  onClick={() => setViewMode(mode)}
+                  onClick={() => !disabled && setViewMode(mode)}
+                  title={title}
+                  disabled={disabled}
                   className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
                     viewMode === mode
                       ? "bg-blue-600 text-white shadow-sm"
+                      : disabled
+                      ? "text-gray-600 cursor-not-allowed"
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
@@ -562,20 +885,36 @@ export default function ComparisonStudio() {
             label="Run A"
             value={runAId}
             options={aOptions.length > 0 ? aOptions : runOptions}
+            ref={runBSummary}
             onChange={setRunA}
           />
           <RunSelector
             label="Run B"
             value={runBId}
             options={bOptions.length > 0 ? bOptions : runOptions.filter((o) => o.run.id !== runAId)}
+            ref={runASummary}
             onChange={setRunB}
           />
         </div>
 
-        {/* Loading state */}
-        {runsLoading && (
-          <div className="text-sm text-gray-500">Loading runs…</div>
+        {/* Eligibility badge — shown when both runs are selected */}
+        {eligibility && bothSelected && (
+          <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 max-w-2xl ${
+            eligibility.tier === "verified"
+              ? "bg-green-500/10 border border-green-500/20 text-green-300"
+              : eligibility.tier === "unverified"
+              ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+              : "bg-red-500/10 border border-red-500/20 text-red-300"
+          }`}>
+            <span className="shrink-0 mt-0.5">
+              {eligibility.tier === "verified" ? "✓" : eligibility.tier === "unverified" ? "⚠" : "✗"}
+            </span>
+            <span>{eligibility.reason}</span>
+          </div>
         )}
+
+        {/* Loading state */}
+        {runsLoading && <div className="text-sm text-gray-500">Loading runs…</div>}
 
         {/* No runs with nifti outputs yet */}
         {!runsLoading && runOptions.length === 0 && (
@@ -621,11 +960,10 @@ export default function ComparisonStudio() {
                 <SectionHeading>
                   {viewMode === "sidebyside" && "Side-by-side view"}
                   {viewMode === "linked" && "Linked view — scroll one panel to move both"}
-                  {viewMode === "difference" && "Difference view — brain masks overlaid"}
+                  {viewMode === "maskoverlay" && "Mask Overlay — brain mask per pipeline"}
+                  {viewMode === "difference" && "Difference — binary masks side by side"}
                 </SectionHeading>
-                {diffNote && (
-                  <p className="text-xs text-gray-500 mb-3">{diffNote}</p>
-                )}
+                {viewerNote && <p className="text-xs text-gray-500 mb-3">{viewerNote}</p>}
                 <div
                   className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden border border-white/10"
                   style={{ height: "55vh" }}
@@ -660,14 +998,15 @@ export default function ComparisonStudio() {
               </div>
             )}
 
+            {/* Geometry table (Item 4) */}
+            <GeometryTable geomState={geomState} labelA={labelA} labelB={labelB} />
+
+            {/* Dice coefficient (Item 3) */}
+            <DicePanel diceState={diceState} />
+
             {/* Metadata comparison */}
             {metaA && metaB && (
-              <MetadataComparison
-                metaA={metaA}
-                metaB={metaB}
-                labelA={labelA}
-                labelB={labelB}
-              />
+              <MetadataComparison metaA={metaA} metaB={metaB} labelA={labelA} labelB={labelB} />
             )}
 
             {/* Artifact / file comparison */}
@@ -687,14 +1026,10 @@ export default function ComparisonStudio() {
               <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 px-4 py-3 text-xs text-gray-400 max-w-2xl">
                 <span className="text-purple-300 font-medium">Lineage: </span>
                 {metaA?.lineage && (
-                  <span>
-                    Run A traces to run #{metaA.lineage.upstream_run_id} ({metaA.lineage.upstream_pipeline_id}).{" "}
-                  </span>
+                  <span>Run A traces to run #{metaA.lineage.upstream_run_id} ({metaA.lineage.upstream_pipeline_id}).{" "}</span>
                 )}
                 {metaB?.lineage && (
-                  <span>
-                    Run B traces to run #{metaB.lineage.upstream_run_id} ({metaB.lineage.upstream_pipeline_id}).
-                  </span>
+                  <span>Run B traces to run #{metaB.lineage.upstream_run_id} ({metaB.lineage.upstream_pipeline_id}).</span>
                 )}
               </div>
             )}

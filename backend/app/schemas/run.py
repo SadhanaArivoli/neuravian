@@ -53,6 +53,7 @@ class RunSummary(BaseModel):
     pipeline_version: str
     dataset_id: int
     status: str
+    source_run_id: int | None = None
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime

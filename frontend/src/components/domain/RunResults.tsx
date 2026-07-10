@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useRunFile, useRunResults } from "../../hooks/useRuns";
+import { useRunFile, useRunResults, useRuns } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
+import { findVerifiedSibling } from "../../lib/comparisonEligibility";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -165,8 +166,14 @@ interface Props {
 
 export default function RunResults({ runId }: Props) {
   const { data: results, isLoading, error } = useRunResults(runId, true);
+  const { data: allRuns } = useRuns();
   const [activeReport, setActiveReport] = useState(0);
   const [viewerLayers, setViewerLayers] = useState<NiivueLayer[] | null>(null);
+
+  // Smart Compare button: detect single verified sibling for this run
+  const thisRun = allRuns?.find((r) => r.id === runId) ?? null;
+  const otherSuccessRuns = (allRuns ?? []).filter((r) => r.id !== runId && r.status === "success");
+  const verifiedSibling = thisRun ? findVerifiedSibling(thisRun, otherSuccessRuns) : null;
 
   const firstMetricPath = results?.metrics[0]?.path ?? null;
   const { data: iqmData } = useRunFile<IqmData>(runId, firstMetricPath);
@@ -204,16 +211,24 @@ export default function RunResults({ runId }: Props) {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-base font-semibold text-gray-100">Results</h2>
         <div className="flex items-center gap-2">
-          {/* Compare button — shown when this run produced volumetric outputs */}
+          {/* Compare button — shown when this run produced volumetric outputs.
+              When exactly one verified sibling exists, pre-fills Run B in the URL. */}
           {niftis.length > 0 && (
             <a
-              href={`/compare?a=${runId}`}
+              href={
+                verifiedSibling
+                  ? `/compare?a=${runId}&b=${verifiedSibling.id}`
+                  : `/compare?a=${runId}`
+              }
+              title={verifiedSibling ? `Comparable: verified same-source run found (run #${verifiedSibling.id})` : undefined}
               className="flex items-center gap-1.5 rounded border border-violet-600/50 bg-violet-600/10 px-3 py-1.5 text-xs font-medium text-violet-300 hover:border-violet-500 hover:text-violet-200 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                 <path d="M6.5 2.75a.75.75 0 0 0-1.5 0v10.5a.75.75 0 0 0 1.5 0V2.75ZM11 5.5a.75.75 0 0 0-1.5 0v7.75a.75.75 0 0 0 1.5 0V5.5ZM2 8.25a.75.75 0 0 0 0 1.5h12a.75.75 0 0 0 0-1.5H2Z" />
               </svg>
-              Compare
+              {verifiedSibling
+                ? `Compare with ${verifiedSibling.pipeline_manifest_id}`
+                : "Compare"}
             </a>
           )}
           {hasDownloadable && (

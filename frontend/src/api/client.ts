@@ -193,6 +193,7 @@ export interface RunSummary {
   pipeline_version: string;
   dataset_id: number;
   status: "pending" | "running" | "success" | "failed";
+  source_run_id: number | null;
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
