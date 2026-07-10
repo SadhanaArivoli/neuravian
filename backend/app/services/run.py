@@ -16,6 +16,7 @@ from time import monotonic
 from typing import Any
 
 from fastapi import BackgroundTasks
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -135,7 +136,12 @@ async def recover_interrupted_runs(db: Session) -> None:
     """
     import docker as docker_sdk
 
-    orphans = db.query(Run).filter_by(status="running").all()
+    try:
+        orphans = db.query(Run).filter_by(status="running").all()
+    except OperationalError as exc:
+        db.rollback()
+        log.warning("Skipping interrupted run recovery because the runs table is unavailable: %s", exc)
+        return
     if not orphans:
         return
 
