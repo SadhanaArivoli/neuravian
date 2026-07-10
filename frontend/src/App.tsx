@@ -6,6 +6,8 @@ import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
 import RemoteHosts from "./pages/RemoteHosts";
 import RunDetail from "./pages/RunDetail";
+import ArtifactExplorer from "./pages/ArtifactExplorer";
+import DatasetDashboard from "./pages/DatasetDashboard";
 import WorkflowGraph from "./pages/WorkflowGraph";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
@@ -29,6 +31,8 @@ export default function App() {
           <Route path="/compare" element={<ComparisonStudio />} />
           <Route path="/settings/remote-hosts" element={<RemoteHosts />} />
           <Route path="/datasets/:id/graph" element={<WorkflowGraph />} />
+          <Route path="/datasets/:id/dashboard" element={<DatasetDashboard />} />
+          <Route path="/datasets/:id/artifacts" element={<ArtifactExplorer />} />
         </Routes>
       </main>
     </div>

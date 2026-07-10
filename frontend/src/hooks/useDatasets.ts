@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchDataset,
+  fetchDatasetArtifacts,
+  fetchDatasetDashboard,
   fetchDatasetScans,
   fetchDatasets,
   registerDataset,
@@ -32,5 +34,21 @@ export function useRegisterDataset() {
   return useMutation({
     mutationFn: (path: string) => registerDataset(path),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }),
+  });
+}
+
+export function useDatasetDashboard(id: number) {
+  return useQuery({
+    queryKey: ["datasets", id, "dashboard"],
+    queryFn: () => fetchDatasetDashboard(id),
+    staleTime: 30_000,
+  });
+}
+
+export function useDatasetArtifacts(id: number) {
+  return useQuery({
+    queryKey: ["datasets", id, "artifacts"],
+    queryFn: () => fetchDatasetArtifacts(id),
+    staleTime: 30_000,
   });
 }

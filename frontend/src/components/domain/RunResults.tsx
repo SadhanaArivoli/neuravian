@@ -565,19 +565,40 @@ export default function RunResults({ runId }: Props) {
         <h2 className="text-base font-semibold text-gray-100">Results</h2>
         <div className="flex items-center gap-2">
           {results.metadata?.dataset_id && (
-            <a
-              href={`/datasets/${results.metadata.dataset_id}/graph?highlight=${runId}`}
-              className="flex items-center gap-1.5 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:text-accent transition-colors"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
-                <circle cx="8" cy="3" r="1.5" />
-                <circle cx="3" cy="13" r="1.5" />
-                <circle cx="13" cy="13" r="1.5" />
-                <line x1="8" y1="4.5" x2="4.5" y2="11.5" />
-                <line x1="8" y1="4.5" x2="11.5" y2="11.5" />
-              </svg>
-              Workflow Graph
-            </a>
+            <>
+              <a
+                href={`/datasets/${results.metadata.dataset_id}/dashboard`}
+                className="flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                  <rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" />
+                  <rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" />
+                </svg>
+                Dashboard
+              </a>
+              <a
+                href={`/datasets/${results.metadata.dataset_id}/artifacts?run=${runId}`}
+                className="flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                  <path d="M2 3h12M2 8h8M2 13h5" strokeLinecap="round" />
+                </svg>
+                Artifacts
+              </a>
+              <a
+                href={`/datasets/${results.metadata.dataset_id}/graph?highlight=${runId}`}
+                className="flex items-center gap-1.5 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:text-accent transition-colors"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                  <circle cx="8" cy="3" r="1.5" />
+                  <circle cx="3" cy="13" r="1.5" />
+                  <circle cx="13" cy="13" r="1.5" />
+                  <line x1="8" y1="4.5" x2="4.5" y2="11.5" />
+                  <line x1="8" y1="4.5" x2="11.5" y2="11.5" />
+                </svg>
+                Graph
+              </a>
+            </>
           )}
           {/* Compare button — shown for volumetric outputs (anatomical) or connectivity matrices. */}
           {(niftis.length > 0 || connectivityMatrices.length > 0) && (() => {

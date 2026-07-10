@@ -539,3 +539,92 @@ export function launchDcm2bids(
     }),
   });
 }
+
+
+// ── Dashboard types ───────────────────────────────────────────────────────────
+
+export interface DashboardRunCounts {
+  total: number;
+  success: number;
+  failed: number;
+  running: number;
+  pending: number;
+  success_rate: number;
+}
+
+export interface DashboardRunStats {
+  most_recent_run_id: number | null;
+  most_recent_run_status: string | null;
+  most_recent_pipeline: string | null;
+  most_recent_finished_at: string | null;
+  most_common_pipeline: string | null;
+  pipeline_run_counts: Record<string, number>;
+}
+
+export interface DashboardRuntimeStats {
+  total_seconds: number;
+  median_seconds: number | null;
+  slowest_run_id: number | null;
+  slowest_run_seconds: number | null;
+  fastest_run_id: number | null;
+  fastest_run_seconds: number | null;
+  by_pipeline: Record<string, number>;
+}
+
+export interface DashboardStorage {
+  total_bytes: number;
+  by_pipeline: Record<string, number>;
+  artifact_count: number;
+  largest_run_id: number | null;
+  largest_run_bytes: number;
+}
+
+export interface DashboardRecentRun {
+  id: number;
+  pipeline_manifest_id: string;
+  pipeline_version: string;
+  dataset_id: number;
+  status: string;
+  source_run_id: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface DatasetDashboard {
+  dataset: Dataset;
+  run_counts: DashboardRunCounts;
+  run_stats: DashboardRunStats;
+  runtime_stats: DashboardRuntimeStats;
+  storage: DashboardStorage;
+  recent_runs: DashboardRecentRun[];
+}
+
+export function fetchDatasetDashboard(datasetId: number): Promise<DatasetDashboard> {
+  return apiFetch<DatasetDashboard>(`/datasets/${datasetId}/dashboard`);
+}
+
+// ── Artifact types ────────────────────────────────────────────────────────────
+
+export interface DatasetArtifact {
+  run_id: number;
+  pipeline_id: string;
+  pipeline_version: string;
+  run_status: string;
+  run_started_at: string | null;
+  run_finished_at: string | null;
+  source_run_id: number | null;
+  type: string;
+  label: string;
+  description: string;
+  resolution_source: string;
+  multiple: boolean;
+  path: string;
+  is_directory: boolean;
+  size_bytes: number;
+  output_dir: string;
+}
+
+export function fetchDatasetArtifacts(datasetId: number): Promise<DatasetArtifact[]> {
+  return apiFetch<DatasetArtifact[]>(`/datasets/${datasetId}/artifacts`);
+}
