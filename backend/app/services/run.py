@@ -619,6 +619,7 @@ class RunService:
             pipeline_version=run.pipeline_version,
             dataset_id=run.dataset_id,
             status=run.status,
+            source_run_id=run.source_run_id,
             params=params,
             command_preview=run.command_preview,
             output_dir=run.output_dir,

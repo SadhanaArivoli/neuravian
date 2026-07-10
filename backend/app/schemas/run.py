@@ -34,6 +34,7 @@ class RunRead(BaseModel):
     pipeline_version: str
     dataset_id: int
     status: str
+    source_run_id: int | None = None
     params: dict[str, Any]
     command_preview: str | None
     output_dir: str | None
