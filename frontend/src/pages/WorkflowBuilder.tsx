@@ -59,96 +59,46 @@ interface SourceArtifacts {
   sourceRun?: Run | RunSummary;
 }
 
+// ── Badge configs — match Welcome.tsx dark-theme palette ─────────────────────
+
 const COMPUTE_PROFILE_BADGE: Record<ComputeProfile, { label: string; className: string }> = {
   "local-ok": {
     label: "Local OK",
-    className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+    className: "bg-green-900/50 text-green-300 border border-green-800",
   },
   "local-slow": {
     label: "Slow locally",
-    className: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+    className: "bg-amber-900/50 text-amber-300 border border-amber-800",
   },
   "local-unsafe": {
     label: "Cloud recommended",
-    className: "border-rose-400/30 bg-rose-400/10 text-rose-200",
+    className: "bg-red-900/50 text-red-300 border border-red-800",
   },
 };
 
 const STATUS_BADGE: Record<WorkflowNodeStatus, { label: string; className: string; icon: string }> = {
-  draft: { label: "Draft", className: "border-slate-400/30 bg-slate-400/10 text-slate-200", icon: "D" },
-  ready: { label: "Ready", className: "border-sky-400/30 bg-sky-400/10 text-sky-200", icon: "R" },
-  running: { label: "Running", className: "border-amber-400/30 bg-amber-400/10 text-amber-200", icon: "..." },
-  success: { label: "Complete", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200", icon: "OK" },
-  failed: { label: "Failed", className: "border-rose-400/30 bg-rose-400/10 text-rose-200", icon: "!" },
+  draft:   { label: "Draft",    className: "border-white/15 bg-white/5 text-gray-400",        icon: "D"  },
+  ready:   { label: "Ready",    className: "border-accent/30 bg-accent/10 text-accent",        icon: "R"  },
+  running: { label: "Running",  className: "border-amber-800 bg-amber-900/50 text-amber-300",  icon: "…"  },
+  success: { label: "Complete", className: "border-green-800 bg-green-900/50 text-green-300",  icon: "OK" },
+  failed:  { label: "Failed",   className: "border-red-800 bg-red-900/50 text-red-300",        icon: "!"  },
 };
 
+// Category metadata — single icon per category, subdued per-category text tint,
+// app-standard surface backgrounds. No gradient tints or per-category colored glows.
 const CATEGORY_META: Record<
   PipelineCategory | "dataset" | "run" | "unknown",
-  { label: string; icon: string; ring: string; tint: string; line: string }
+  { label: string; icon: string; iconColor: string; iconBg: string }
 > = {
-  dataset: {
-    label: "Dataset",
-    icon: "DS",
-    ring: "border-sky-300/40 text-sky-100",
-    tint: "from-sky-500/20 to-cyan-400/10",
-    line: "from-sky-400/80 to-cyan-300/80",
-  },
-  run: {
-    label: "Run",
-    icon: "RN",
-    ring: "border-indigo-300/40 text-indigo-100",
-    tint: "from-indigo-500/20 to-sky-400/10",
-    line: "from-indigo-400/80 to-sky-300/80",
-  },
-  conversion: {
-    label: "Conversion",
-    icon: "CV",
-    ring: "border-cyan-300/40 text-cyan-100",
-    tint: "from-cyan-500/20 to-sky-400/10",
-    line: "from-cyan-400/80 to-sky-300/80",
-  },
-  validation: {
-    label: "Validation",
-    icon: "VA",
-    ring: "border-emerald-300/40 text-emerald-100",
-    tint: "from-emerald-500/20 to-teal-400/10",
-    line: "from-emerald-400/80 to-teal-300/80",
-  },
-  quality_control: {
-    label: "Quality control",
-    icon: "QC",
-    ring: "border-yellow-300/40 text-yellow-100",
-    tint: "from-yellow-500/20 to-amber-400/10",
-    line: "from-yellow-400/80 to-amber-300/80",
-  },
-  segmentation: {
-    label: "Segmentation",
-    icon: "SG",
-    ring: "border-violet-300/40 text-violet-100",
-    tint: "from-violet-500/20 to-fuchsia-400/10",
-    line: "from-violet-400/80 to-fuchsia-300/80",
-  },
-  preprocessing: {
-    label: "Preprocessing",
-    icon: "PR",
-    ring: "border-orange-300/40 text-orange-100",
-    tint: "from-orange-500/20 to-amber-400/10",
-    line: "from-orange-400/80 to-amber-300/80",
-  },
-  deidentification: {
-    label: "De-identification",
-    icon: "DI",
-    ring: "border-red-300/40 text-red-100",
-    tint: "from-red-500/20 to-rose-400/10",
-    line: "from-red-400/80 to-rose-300/80",
-  },
-  unknown: {
-    label: "Pipeline",
-    icon: "PL",
-    ring: "border-slate-300/40 text-slate-100",
-    tint: "from-slate-500/20 to-zinc-400/10",
-    line: "from-slate-400/80 to-zinc-300/80",
-  },
+  dataset:          { label: "Dataset",           icon: "DS", iconColor: "text-accent",     iconBg: "bg-accent/10 border-accent/20"  },
+  run:              { label: "Run",               icon: "RN", iconColor: "text-accent",     iconBg: "bg-accent/10 border-accent/20"  },
+  conversion:       { label: "Conversion",        icon: "CV", iconColor: "text-cyan-300",   iconBg: "bg-surface-overlay border-white/8" },
+  validation:       { label: "Validation",        icon: "VA", iconColor: "text-green-300",  iconBg: "bg-surface-overlay border-white/8" },
+  quality_control:  { label: "Quality control",   icon: "QC", iconColor: "text-amber-300",  iconBg: "bg-surface-overlay border-white/8" },
+  segmentation:     { label: "Segmentation",      icon: "SG", iconColor: "text-accent",     iconBg: "bg-surface-overlay border-white/8" },
+  preprocessing:    { label: "Preprocessing",     icon: "PR", iconColor: "text-orange-300", iconBg: "bg-surface-overlay border-white/8" },
+  deidentification: { label: "De-identification", icon: "DI", iconColor: "text-red-300",    iconBg: "bg-surface-overlay border-white/8" },
+  unknown:          { label: "Pipeline",          icon: "PL", iconColor: "text-gray-400",   iconBg: "bg-surface-raised border-white/8"  },
 };
 
 const RUNTIME_HINT_BY_CATEGORY: Partial<Record<PipelineCategory, string>> = {
@@ -219,11 +169,13 @@ function compactPath(value: string) {
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
 }
 
+// ── Shared primitives ─────────────────────────────────────────────────────────
+
 function ProfileBadge({ profile }: { profile: ComputeProfile | null }) {
   if (!profile) return null;
   const badge = COMPUTE_PROFILE_BADGE[profile];
   return (
-    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
+    <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
       {badge.label}
     </span>
   );
@@ -232,9 +184,9 @@ function ProfileBadge({ profile }: { profile: ComputeProfile | null }) {
 function StatusPill({ status }: { status: WorkflowNodeStatus }) {
   const badge = STATUS_BADGE[status];
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
       {status === "running" ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.85)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
       ) : (
         <span>{badge.icon}</span>
       )}
@@ -243,17 +195,24 @@ function StatusPill({ status }: { status: WorkflowNodeStatus }) {
   );
 }
 
-function CategoryIcon({ category, size = "md" }: { category: PipelineCategory | "dataset" | "run" | null; size?: "sm" | "md" | "lg" }) {
+// Category icon — app-standard surface with per-category text tint, no gradients.
+function CategoryIcon({
+  category,
+  size = "md",
+}: {
+  category: PipelineCategory | "dataset" | "run" | null;
+  size?: "sm" | "md" | "lg";
+}) {
   const meta = CATEGORY_META[category ?? "unknown"];
   return (
     <span
       className={classNames(
-        "grid shrink-0 place-items-center rounded-2xl border bg-gradient-to-br font-bold shadow-inner",
-        meta.ring,
-        meta.tint,
+        "grid shrink-0 place-items-center rounded-xl border font-bold",
+        meta.iconBg,
+        meta.iconColor,
         size === "sm" && "h-9 w-9 text-[11px]",
-        size === "md" && "h-12 w-12 text-sm",
-        size === "lg" && "h-14 w-14 text-base",
+        size === "md" && "h-11 w-11 text-sm",
+        size === "lg" && "h-12 w-12 text-sm",
       )}
     >
       {meta.icon}
@@ -265,16 +224,18 @@ function ArtifactChip({ type, muted = false }: { type: string; muted?: boolean }
   return (
     <span
       className={classNames(
-        "max-w-full break-all rounded-full border px-2.5 py-1 font-mono text-[11px]",
+        "max-w-full break-all rounded-full border px-2 py-0.5 font-mono text-[11px]",
         muted
-          ? "border-white/10 bg-white/[0.04] text-slate-400"
-          : "border-white/10 bg-white/[0.07] text-slate-200",
+          ? "border-white/8 bg-surface text-gray-500"
+          : "border-white/10 bg-surface-raised text-gray-300",
       )}
     >
       {type}
     </span>
   );
 }
+
+// ── Canvas nodes ──────────────────────────────────────────────────────────────
 
 function SourceNode({
   source,
@@ -310,24 +271,23 @@ function SourceNode({
         : "Start from a successful run with resolved artifacts.";
 
   return (
-    <article className="group relative w-[19rem] shrink-0 rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-2xl shadow-black/20 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/35 hover:bg-white/[0.075]">
-      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/50 to-transparent" />
+    <article className="relative w-[19rem] shrink-0 rounded-xl border border-white/8 bg-surface-raised p-5 transition-colors duration-200 hover:border-white/15">
       <div className="flex items-start gap-4">
         <CategoryIcon category={sourceCategory} size="lg" />
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-200/70">Start</p>
-          <h2 className="mt-2 truncate text-xl font-semibold text-white">{title}</h2>
-          <p className="mt-1 line-clamp-2 break-all text-xs leading-5 text-slate-400">{subtitle}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">Start</p>
+          <h2 className="mt-2 truncate text-lg font-semibold text-white">{title}</h2>
+          <p className="mt-1 line-clamp-2 break-all text-xs leading-5 text-gray-400">{subtitle}</p>
         </div>
       </div>
 
       <div className="mt-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Available artifacts</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">Available artifacts</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {artifacts.length > 0 ? (
             artifacts.map((type) => <ArtifactChip key={type} type={type} />)
           ) : (
-            <span className="text-sm text-slate-500">
+            <span className="text-xs text-gray-500">
               {source.kind === "dataset" ? "Select a dataset to expose BIDS artifacts." : "Select a successful run."}
             </span>
           )}
@@ -341,17 +301,17 @@ function ConnectionEdge({ label, active }: { label: string; active: boolean }) {
   return (
     <div className="flex w-28 shrink-0 flex-col items-center justify-center px-2 sm:w-36">
       <div className="relative h-10 w-full">
-        <div className="absolute left-0 right-3 top-1/2 h-px -translate-y-1/2 overflow-hidden rounded-full bg-white/15">
+        <div className="absolute left-0 right-3 top-1/2 h-px -translate-y-1/2 overflow-hidden bg-white/10">
           <div
             className={classNames(
-              "h-full w-full bg-gradient-to-r from-sky-300 via-cyan-200 to-emerald-300",
+              "h-full w-full bg-gradient-to-r from-accent/40 via-accent/60 to-accent/40",
               active && "workflow-edge-flow",
             )}
           />
         </div>
-        <div className="absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 border-r border-t border-cyan-200/80" />
+        <div className="absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 border-r border-t border-white/20" />
       </div>
-      <span className="max-w-full break-all rounded-full border border-white/10 bg-surface/80 px-2 py-1 font-mono text-[10px] text-slate-300 shadow-lg">
+      <span className="max-w-full break-all rounded-full border border-white/8 bg-surface-raised px-2 py-0.5 font-mono text-[10px] text-gray-500">
         {label}
       </span>
     </div>
@@ -379,69 +339,70 @@ function PipelineNode({
       type="button"
       onClick={onSelect}
       className={classNames(
-        "group relative w-[20rem] shrink-0 rounded-3xl border p-5 text-left shadow-2xl shadow-black/25 backdrop-blur transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/70",
-        selected ? "border-cyan-300/60 bg-cyan-400/[0.10]" : "border-white/10 bg-white/[0.06] hover:-translate-y-1 hover:border-white/25 hover:bg-white/[0.085]",
+        "relative w-[20rem] shrink-0 rounded-xl border p-5 text-left transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:ring-offset-1 focus:ring-offset-surface",
+        selected
+          ? "border-accent/40 bg-accent/[0.07]"
+          : "border-white/8 bg-surface-raised hover:border-white/15 hover:bg-surface-overlay",
         disabled && "opacity-55",
-        node.status === "running" && "workflow-node-running border-amber-300/60",
-        node.status === "success" && "border-emerald-300/45",
-        node.status === "failed" && "border-rose-300/55",
+        node.status === "running" && "workflow-node-running border-amber-800",
+        node.status === "success" && "border-green-800 bg-green-900/15",
+        node.status === "failed" && "border-red-800 bg-red-900/15",
       )}
     >
-      <div className={`absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent ${meta.line} to-transparent opacity-80`} />
       <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-4">
+        <div className="flex min-w-0 items-start gap-3">
           <CategoryIcon category={node.category} size="lg" />
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{meta.label}</p>
-            <h3 className="mt-2 truncate text-xl font-semibold text-white">{node.displayName}</h3>
-            <p className="mt-1 text-xs text-slate-400">Runtime: {runtimeHint(node.category, node.computeProfile)}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">{meta.label}</p>
+            <h3 className="mt-2 truncate text-lg font-semibold text-white">{node.displayName}</h3>
+            <p className="mt-1 text-xs text-gray-500">Runtime: {runtimeHint(node.category, node.computeProfile)}</p>
           </div>
         </div>
         <StatusPill status={node.status} />
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <ProfileBadge profile={node.computeProfile} />
         {node.runId && (
           <a
             href={`/runs/${node.runId}`}
             onClick={(e) => e.stopPropagation()}
-            className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/60 hover:bg-cyan-300/20"
+            className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent hover:border-accent/50 hover:bg-accent/15 transition-colors"
           >
             Run #{node.runId}
           </a>
         )}
       </div>
 
-      <div className="mt-5 grid gap-4 text-xs">
+      <div className="mt-4 grid gap-3 text-xs">
         <div>
-          <p className="font-semibold uppercase tracking-[0.18em] text-slate-500">Input</p>
-          <div className="mt-2">
+          <p className="font-semibold uppercase tracking-widest text-gray-500">Input</p>
+          <div className="mt-1.5">
             <ArtifactChip type={node.inputArtifactType} />
           </div>
         </div>
         <div>
-          <p className="font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <p className="font-semibold uppercase tracking-widest text-gray-500">
             {resolvedOutputs.length > 0 ? "Outputs" : "Produces"}
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-1.5 flex flex-wrap gap-2">
             {visibleOutputs.length > 0 ? (
               visibleOutputs.map((type) => <ArtifactChip key={`${node.id}-${type}`} type={type} />)
             ) : (
-              <span className="text-slate-500">No artifacts declared</span>
+              <span className="text-gray-500">No artifacts declared</span>
             )}
           </div>
         </div>
       </div>
 
       {node.status === "running" && (
-        <div className="mt-5 h-1 overflow-hidden rounded-full bg-white/10">
-          <div className="workflow-progress h-full w-2/3 rounded-full bg-gradient-to-r from-amber-300 via-cyan-200 to-emerald-300" />
+        <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/10">
+          <div className="workflow-progress h-full w-2/3 rounded-full bg-accent" />
         </div>
       )}
 
       {node.error && (
-        <p className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100">
+        <p className="mt-4 rounded-md border border-red-800 bg-red-900/30 px-3 py-2 text-xs leading-5 text-red-300">
           {node.error}
         </p>
       )}
@@ -452,14 +413,14 @@ function PipelineNode({
 function EmptyCanvas({ sourceReady }: { sourceReady: boolean }) {
   return (
     <div className="flex min-w-[18rem] max-w-md shrink-0 items-center pl-4">
-      <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.035] p-6 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl border border-cyan-300/20 bg-cyan-300/10 text-lg font-bold text-cyan-100">
+      <div className="rounded-xl border border-dashed border-white/10 bg-surface p-6 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-xl border border-accent/20 bg-accent/10 text-lg font-bold text-accent">
           +
         </div>
-        <h3 className="mt-4 text-base font-semibold text-white">
+        <h3 className="mt-4 text-sm font-semibold text-white">
           {sourceReady ? "Add the next compatible tool" : "Choose a starting point"}
         </h3>
-        <p className="mt-2 text-sm leading-6 text-slate-400">
+        <p className="mt-2 text-sm leading-6 text-gray-400">
           {sourceReady
             ? "Recommendations appear in the right rail from the artifacts currently on the canvas."
             : "Start with a registered dataset or a completed run, then NeuroForge will suggest what can run next."}
@@ -483,52 +444,54 @@ function RecommendationCard({
   const recommended = option.compute_profile === "local-ok" && index === 0;
 
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-lg shadow-black/15 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-white/[0.075]">
+    <article className="rounded-xl border border-white/8 bg-surface-raised p-4 transition-colors duration-200 hover:border-white/15 hover:bg-surface-overlay">
       <div className="flex items-start gap-3">
         <CategoryIcon category={category} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {recommended && (
-              <span className="rounded-full border border-yellow-300/25 bg-yellow-300/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-yellow-100">
+              <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-accent">
                 Recommended
               </span>
             )}
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.ring} bg-white/[0.03]`}>
+            <span className={`rounded-full border border-white/8 px-2 py-0.5 text-[10px] font-medium ${meta.iconColor}`}>
               {meta.label}
             </span>
           </div>
-          <h3 className="mt-3 truncate text-base font-semibold text-white">{option.display_name}</h3>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
+          <h3 className="mt-2.5 truncate text-sm font-semibold text-white">{option.display_name}</h3>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">
             {option.pipeline_description ?? "Compatible with the current artifact endpoint."}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/10 p-3 text-xs text-slate-300">
+      <div className="mt-4 grid gap-2 rounded-lg border border-white/5 bg-surface p-3 text-xs text-gray-400">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Accepts</span>
-          <span className="break-all font-mono text-slate-200">{option.accept_type}</span>
+          <span className="text-gray-500">Accepts</span>
+          <span className="break-all font-mono text-gray-300">{option.accept_type}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Profile</span>
+          <span className="text-gray-500">Profile</span>
           <ProfileBadge profile={option.compute_profile} />
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Runtime</span>
-          <span className="text-slate-200">{runtimeHint(category, option.compute_profile)}</span>
+          <span className="text-gray-500">Runtime</span>
+          <span className="text-gray-300">{runtimeHint(category, option.compute_profile)}</span>
         </div>
       </div>
 
       <button
         type="button"
         onClick={onAdd}
-        className="mt-4 w-full rounded-2xl bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 transition-all hover:-translate-y-0.5 hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+        className="mt-3 w-full rounded-md border border-white/15 px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-white/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
       >
         Add Step
       </button>
     </article>
   );
 }
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilder() {
   const { data: datasets = [] } = useDatasets();
@@ -798,36 +761,40 @@ export default function WorkflowBuilder() {
       ? "Run workflow"
       : `Run ${nodes.length}-step workflow`;
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <div className="min-h-full overflow-hidden bg-[#11131f] text-slate-100">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.13),transparent_28%),radial-gradient(circle_at_86%_12%,rgba(168,85,247,0.10),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_40%)]" />
-      <div className="relative flex min-h-full flex-col p-4 sm:p-6">
-        <header className="mb-5 rounded-[2rem] border border-white/10 bg-white/[0.055] px-5 py-4 shadow-2xl shadow-black/20 backdrop-blur">
+    <div className="min-h-full text-gray-100">
+      <div className="flex min-h-full flex-col px-4 sm:px-6 py-6">
+
+        {/* ── Page header ───────────────────────────────────────────────── */}
+        <header className="mb-5 pb-5 border-b border-white/5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                <span className="inline-block w-1.5 h-4 rounded-full bg-accent" />
+                <span className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-accent">
                   Workflow Studio
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowRules((value) => !value)}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-300 transition-colors hover:border-white/25 hover:text-white"
+                  className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:border-white/25 hover:text-gray-200 focus:outline-none"
                 >
                   {showRules ? "Hide rules" : "How chaining works"}
                 </button>
               </div>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              <h1 className="mt-4 text-xl sm:text-2xl font-bold tracking-tight text-white">
                 Build a neuroimaging workflow visually.
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                 Choose a source, follow compatible recommendations, then run the chain one verified step at a time.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="min-w-40">
-                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Start from</span>
+                <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">Start from</span>
                 <select
                   value={source.kind}
                   onChange={(e) =>
@@ -837,7 +804,7 @@ export default function WorkflowBuilder() {
                       runId: "",
                     })
                   }
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                  className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                 >
                   <option value="dataset">Existing Dataset</option>
                   <option value="run">Completed Run</option>
@@ -846,11 +813,11 @@ export default function WorkflowBuilder() {
 
               {source.kind === "dataset" ? (
                 <label className="min-w-0 flex-1 sm:w-[26rem]">
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dataset</span>
+                  <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">Dataset</span>
                   <select
                     value={source.datasetId}
                     onChange={(e) => resetWorkflow({ datasetId: e.target.value ? Number(e.target.value) : "" })}
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                    className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                   >
                     <option value="">Choose a dataset</option>
                     {datasets.map((dataset) => (
@@ -862,11 +829,11 @@ export default function WorkflowBuilder() {
                 </label>
               ) : (
                 <label className="min-w-0 flex-1 sm:w-[26rem]">
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Completed run</span>
+                  <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">Completed run</span>
                   <select
                     value={source.runId}
                     onChange={(e) => resetWorkflow({ runId: e.target.value ? Number(e.target.value) : "" })}
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                    className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                   >
                     <option value="">Choose a successful run</option>
                     {completedRuns.map((run) => (
@@ -882,7 +849,7 @@ export default function WorkflowBuilder() {
                 type="button"
                 onClick={runWorkflow}
                 disabled={isRunning || nodes.length === 0}
-                className="rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-xl shadow-cyan-950/25 transition-all hover:-translate-y-0.5 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors disabled:cursor-not-allowed disabled:opacity-45 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
               >
                 {isRunning ? "Running..." : runButtonText}
               </button>
@@ -890,26 +857,29 @@ export default function WorkflowBuilder() {
           </div>
 
           {showRules && (
-            <div className="mt-4 grid gap-3 rounded-3xl border border-white/10 bg-black/15 p-4 text-sm text-slate-400 md:grid-cols-3">
+            <div className="mt-5 grid gap-3 rounded-lg border border-white/8 bg-surface-raised p-4 text-sm text-gray-400 md:grid-cols-3">
               <p>Connections are created only from declared artifact types.</p>
-              <p>Compatible recommendations come from `/api/pipelines/compatible`.</p>
+              <p>Compatible recommendations come from <code className="font-mono text-xs text-gray-500">/api/pipelines/compatible</code>.</p>
               <p>Lineage is attached when a node starts from an upstream run.</p>
             </div>
           )}
         </header>
 
-        <main className="grid flex-1 min-h-[34rem] gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/35 shadow-2xl shadow-black/25">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        {/* ── Canvas + rail ─────────────────────────────────────────────── */}
+        <main className="grid flex-1 min-h-[34rem] gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+
+          {/* Canvas */}
+          <section className="relative overflow-hidden rounded-lg border border-white/8 bg-surface-raised">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
               <div>
-                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Canvas</h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Canvas</h2>
+                <p className="mt-1 text-xs text-gray-600">
                   {nodes.length === 0
                     ? "A clean slate for your chain."
-                    : `${nodes.length} node${nodes.length === 1 ? "" : "s"} - ${completeCount} complete - ${readyCount} ready`}
+                    : `${nodes.length} node${nodes.length === 1 ? "" : "s"} · ${completeCount} complete · ${readyCount} ready`}
                 </p>
               </div>
-              <div className="hidden rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400 sm:block">
+              <div className="hidden rounded-full border border-white/8 bg-surface px-3 py-1 text-xs text-gray-500 sm:block">
                 Sequential V1
               </div>
             </div>
@@ -941,26 +911,30 @@ export default function WorkflowBuilder() {
             </div>
           </section>
 
-          <aside className="flex min-h-0 flex-col rounded-[2rem] border border-white/10 bg-white/[0.055] shadow-2xl shadow-black/20 backdrop-blur">
-            <div className="border-b border-white/10 p-5">
-              <h2 className="text-lg font-semibold text-white">Next recommendations</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{addNextHelpText()}</p>
+          {/* Right rail */}
+          <aside className="flex min-h-0 flex-col rounded-lg border border-white/8 bg-surface-raised">
+
+            {/* Recommendations header */}
+            <div className="border-b border-white/5 p-5">
+              <h2 className="text-sm font-semibold text-gray-100">Next recommendations</h2>
+              <p className="mt-1.5 text-xs leading-5 text-gray-400">{addNextHelpText()}</p>
               <button
                 type="button"
                 onClick={loadCompatibleNext}
                 disabled={!sourceReady() || isLoadingCompat || isRunning}
-                className="mt-4 w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-all hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                className="mt-4 w-full rounded-md border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm font-medium text-accent transition-colors hover:border-accent/50 hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-45 focus:outline-none focus:ring-2 focus:ring-accent/50"
               >
-                {isLoadingCompat ? "Finding matches..." : "Find compatible steps"}
+                {isLoadingCompat ? "Finding matches…" : "Find compatible steps"}
               </button>
 
               {compatError && (
-                <p className="mt-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                <p className="mt-3 rounded-md border border-amber-800 bg-amber-900/30 px-3 py-2 text-xs leading-5 text-amber-300">
                   {compatError}
                 </p>
               )}
             </div>
 
+            {/* Recommendation list */}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
               {compatibles.length > 0 ? (
                 compatibles.map((option, index) => (
@@ -972,14 +946,14 @@ export default function WorkflowBuilder() {
                   />
                 ))
               ) : (
-                <div className="rounded-3xl border border-dashed border-white/15 bg-black/10 p-5 text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-300">
+                <div className="rounded-xl border border-dashed border-white/10 bg-surface p-5 text-center">
+                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-white/8 bg-surface-overlay text-xs font-bold text-gray-500">
                     REC
                   </div>
-                  <h3 className="mt-4 text-sm font-semibold text-white">
+                  <h3 className="mt-4 text-sm font-semibold text-gray-100">
                     {sourceReady() ? "Ready to recommend" : "Waiting for a source"}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                  <p className="mt-2 text-sm leading-6 text-gray-400">
                     {sourceReady()
                       ? "Click Find compatible steps to see pipelines that accept the current artifact."
                       : "Pick a dataset or completed run first."}
@@ -988,17 +962,18 @@ export default function WorkflowBuilder() {
               )}
             </div>
 
-            <div className="border-t border-white/10 p-5">
+            {/* Node settings footer */}
+            <div className="border-t border-white/5 p-5">
               {selectedNode ? (
                 <div>
                   <div className="flex items-center gap-3">
                     <CategoryIcon category={selectedNode.category} size="sm" />
                     <div>
-                      <h3 className="text-sm font-semibold text-white">{selectedNode.displayName}</h3>
-                      <p className="text-xs text-slate-500">Node settings</p>
+                      <h3 className="text-sm font-semibold text-gray-100">{selectedNode.displayName}</h3>
+                      <p className="text-xs text-gray-500">Node settings</p>
                     </div>
                   </div>
-                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-widest text-gray-500">
                     Dataset for this step
                   </label>
                   <select
@@ -1008,7 +983,7 @@ export default function WorkflowBuilder() {
                         datasetId: e.target.value ? Number(e.target.value) : "",
                       })
                     }
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                    className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                   >
                     <option value="">Use upstream/starting dataset when possible</option>
                     {datasets.map((dataset) => (
@@ -1018,19 +993,19 @@ export default function WorkflowBuilder() {
                     ))}
                   </select>
                   {selectedNode.edge.acceptDatasetSlot && (
-                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                    <p className="mt-2 text-xs leading-5 text-gray-400">
                       Dataset-slot steps use the registered upstream dataset first.
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-sm leading-6 text-slate-400">
+                <p className="text-sm leading-6 text-gray-400">
                   Select a node to inspect its dataset handoff and run link.
                 </p>
               )}
 
               {runMessage && (
-                <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-slate-200">
+                <p className="mt-4 rounded-md border border-white/8 bg-surface px-3 py-2 text-sm text-gray-200">
                   {runMessage}
                 </p>
               )}
