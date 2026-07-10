@@ -17,9 +17,11 @@ from app.core.database import SessionLocal
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.run import recover_interrupted_runs, seed_pipeline_registry
+    from app.services.execution_queue import start_processor
     with SessionLocal() as db:
         seed_pipeline_registry(db)
         await recover_interrupted_runs(db)
+    start_processor()
     yield
 
 
