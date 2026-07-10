@@ -79,7 +79,22 @@ describe("fmtSeconds", () => {
 describe("filterArtifacts", () => {
   const artifacts = [
     makeArtifact({ run_id: 1, type: "mriqc_report", pipeline_id: "mriqc", is_directory: false, size_bytes: 500 }),
-    makeArtifact({ run_id: 2, type: "connectivity_matrix_csv", pipeline_id: "functional-connectivity", is_directory: false, size_bytes: 2000, path: "/app/data/derivatives/functional-connectivity/2/matrix.csv", output_dir: "/app/data/derivatives/functional-connectivity/2" }),
+    makeArtifact({
+      run_id: 2,
+      type: "connectivity_matrix_csv",
+      pipeline_id: "functional-connectivity",
+      is_directory: false,
+      size_bytes: 2000,
+      path: "/app/data/derivatives/functional-connectivity/2/matrix.csv",
+      output_dir: "/app/data/derivatives/functional-connectivity/2",
+      atlas_metadata: {
+        atlas_id: "aal",
+        atlas: "AAL 3v2",
+        n_rois: 166,
+        matrix_shape: [166, 166],
+        correlation_method: "Pearson correlation",
+      },
+    }),
     makeArtifact({ run_id: 3, type: "freesurfer_dir", pipeline_id: "freesurfer", is_directory: true, size_bytes: 50000000 }),
   ];
 
@@ -123,6 +138,12 @@ describe("filterArtifacts", () => {
   it("search is case-insensitive", () => {
     const out = filterArtifacts(artifacts, { ...DEFAULT_ARTIFACT_FILTERS, search: "MRIQC" });
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it("filters by atlas metadata", () => {
+    const out = filterArtifacts(artifacts, { ...DEFAULT_ARTIFACT_FILTERS, search: "AAL" });
+    expect(out).toHaveLength(1);
+    expect(out[0].run_id).toBe(2);
   });
 
   it("returns empty for no matches", () => {

@@ -151,6 +151,8 @@ export function filterArtifacts(
         a.type.toLowerCase().includes(q) ||
         a.path.toLowerCase().includes(q) ||
         a.pipeline_id.toLowerCase().includes(q) ||
+        (a.atlas_metadata?.atlas ?? "").toLowerCase().includes(q) ||
+        (a.atlas_metadata?.atlas_id ?? "").toLowerCase().includes(q) ||
         String(a.run_id).includes(q),
     );
   }

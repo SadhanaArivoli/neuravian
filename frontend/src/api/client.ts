@@ -659,6 +659,13 @@ export interface DatasetArtifact {
   is_directory: boolean;
   size_bytes: number;
   output_dir: string;
+  atlas_metadata?: {
+    atlas_id?: string | null;
+    atlas?: string | null;
+    n_rois?: number | null;
+    matrix_shape?: [number, number] | null;
+    correlation_method?: string | null;
+  } | null;
 }
 
 export function fetchDatasetArtifacts(datasetId: number): Promise<DatasetArtifact[]> {

@@ -55,6 +55,19 @@ describe("getCitationsForPipelines", () => {
     expect(cits.some((c) => c.key === "nilearn")).toBe(true);
   });
 
+  it("returns only the selected atlas citation for functional-connectivity", () => {
+    const cits = getCitationsForPipelines(["functional-connectivity"], ["aal"]);
+    expect(cits.some((c) => c.key === "nilearn")).toBe(true);
+    expect(cits.some((c) => c.key === "atlas-aal3")).toBe(true);
+    expect(cits.some((c) => c.key === "atlas-schaefer-2018")).toBe(false);
+    expect(cits.some((c) => c.key === "atlas-harvard-oxford-cortical")).toBe(false);
+  });
+
+  it("maps the legacy Schaefer atlas id to the Schaefer citation", () => {
+    const cits = getCitationsForPipelines(["functional-connectivity"], ["schaefer_100_7"]);
+    expect(cits.some((c) => c.key === "atlas-schaefer-2018")).toBe(true);
+  });
+
   it("returns multiple citations for multi-pipeline selection", () => {
     const cits = getCitationsForPipelines(["mriqc", "synthstrip", "fastsurfer"]);
     expect(cits.length).toBeGreaterThanOrEqual(3);

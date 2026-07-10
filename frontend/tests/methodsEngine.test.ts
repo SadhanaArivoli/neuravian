@@ -135,6 +135,19 @@ describe("generateMethodsParagraphs", () => {
     expect(generateMethodsParagraphs(runs)[0]).toContain("Schaefer2018");
   });
 
+  it("expands known functional-connectivity atlas ids to readable methods prose", () => {
+    const runs = [
+      makeRun({
+        run_id: 1,
+        pipeline_id: "functional-connectivity",
+        params: { "atlas-name": "aal" },
+      }),
+    ];
+    const paragraph = generateMethodsParagraphs(runs)[0];
+    expect(paragraph).toContain("AAL3");
+    expect(paragraph).toContain("166 ROIs");
+  });
+
   it("uses generic prose for unknown pipelines", () => {
     const runs = [makeRun({ run_id: 1, pipeline_id: "custom-tool", pipeline_version: "1.0" })];
     const paras = generateMethodsParagraphs(runs);

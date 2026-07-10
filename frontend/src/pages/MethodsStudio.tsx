@@ -66,6 +66,24 @@ function downloadSVG(svgContent: string, filename: string) {
   downloadText(filename, svgContent, "image/svg+xml");
 }
 
+function normalizeFunctionalConnectivityAtlasId(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  if (value === "schaefer_100_7") return "schaefer100_7";
+  return value;
+}
+
+function atlasIdsFromRuns(runs: RunMetadata[]): string[] {
+  const ids = runs
+    .filter((run) => run.pipeline_id === "functional-connectivity")
+    .map((run) =>
+      normalizeFunctionalConnectivityAtlasId(
+        run.params?.["atlas-name"] ?? run.params?.atlas ?? "schaefer100_7",
+      ),
+    )
+    .filter((id): id is string => Boolean(id));
+  return [...new Set(ids)];
+}
+
 async function downloadPNG(svgContent: string, filename: string) {
   const blob = new Blob([svgContent], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
@@ -230,8 +248,8 @@ function CitationsTab({ runs }: { runs: RunMetadata[] }) {
     [runs],
   );
   const citations = useMemo(
-    () => getCitationsForPipelines(pipelineIds),
-    [pipelineIds],
+    () => getCitationsForPipelines(pipelineIds, atlasIdsFromRuns(runs)),
+    [pipelineIds, runs],
   );
 
   const allBibTeX = useMemo(
@@ -600,8 +618,8 @@ function ExportTab({
     [runs],
   );
   const citations = useMemo(
-    () => getCitationsForPipelines(pipelineIds),
-    [pipelineIds],
+    () => getCitationsForPipelines(pipelineIds, atlasIdsFromRuns(runs)),
+    [pipelineIds, runs],
   );
   const softwareTable = useMemo(() => buildSoftwareTable(runs), [runs]);
   const paramGroups = useMemo(() => buildParamAppendix(runs), [runs]);

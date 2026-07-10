@@ -81,6 +81,14 @@ const DISPLAY_NAMES: Record<string, string> = {
   "functional-connectivity": "Functional Connectivity (Nilearn)",
 };
 
+const FUNCTIONAL_CONNECTIVITY_ATLASES: Record<string, { label: string; rois: number; networks?: number }> = {
+  schaefer100_7: { label: "Schaefer 2018 100 parcels / 7 networks", rois: 100, networks: 7 },
+  schaefer_100_7: { label: "Schaefer 2018 100 parcels / 7 networks", rois: 100, networks: 7 },
+  schaefer200_7: { label: "Schaefer 2018 200 parcels / 7 networks", rois: 200, networks: 7 },
+  aal: { label: "AAL3", rois: 166 },
+  harvard_oxford_cortical: { label: "Harvard-Oxford cortical", rois: 48 },
+};
+
 export function pipelineDisplayName(m: RunMetadata): string {
   return m.pipeline_display_name ?? DISPLAY_NAMES[m.pipeline_id] ?? m.pipeline_id;
 }
@@ -260,15 +268,18 @@ const PROSE_TEMPLATES: Record<
     `following the method described by Milchenko & Marcus (2013).`,
 
   "functional-connectivity": (run) => {
-    const atlas = run.params?.atlas ?? run.params?.["atlas-name"] ?? NOT_RECORDED;
-    const n = run.params?.["n-rois"] ?? run.params?.n_rois ?? NOT_RECORDED;
+    const atlasId = String(run.params?.["atlas-name"] ?? run.params?.atlas ?? "schaefer100_7");
+    const atlasMeta = FUNCTIONAL_CONNECTIVITY_ATLASES[atlasId];
+    const atlas = atlasMeta?.label ?? atlasId;
+    const n = run.params?.["n-rois"] ?? run.params?.n_rois ?? atlasMeta?.rois ?? NOT_RECORDED;
+    const networkText = atlasMeta?.networks ? ` across ${atlasMeta.networks} networks` : "";
     const measure = run.params?.measure ?? "Pearson correlation";
     return (
       `Functional connectivity was computed using Nilearn ` +
       `(v${run.pipeline_version || NOT_RECORDED}) ` +
       `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
       `A ${measure} matrix was constructed using the ${atlas} atlas` +
-      (n !== NOT_RECORDED ? ` (${n} ROIs)` : "") +
+      (n !== NOT_RECORDED ? ` (${n} ROIs${networkText})` : "") +
       `. Time-series were extracted from the fMRIPrep-preprocessed BOLD data ` +
       `and connectivity was estimated as pairwise ${measure} coefficients.`
     );

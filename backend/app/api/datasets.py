@@ -347,6 +347,24 @@ def list_dataset_artifacts(
                 except OSError:
                     size_bytes = 0
 
+                atlas_metadata = None
+                if a.type.startswith("connectivity_") or a.type == "timeseries_tsv":
+                    meta_path = Path(r.output_dir) / "connectivity_metadata.json"
+                    if meta_path.is_file():
+                        try:
+                            meta = json.loads(meta_path.read_text())
+                            atlas_metadata = {
+                                "atlas_id": meta.get("atlas_id"),
+                                "atlas": meta.get("atlas")
+                                or meta.get("atlas_display_name"),
+                                "n_rois": meta.get("n_rois")
+                                or meta.get("roi_count"),
+                                "matrix_shape": meta.get("matrix_shape"),
+                                "correlation_method": meta.get("correlation_method"),
+                            }
+                        except Exception:
+                            atlas_metadata = None
+
                 result.append({
                     "run_id": r.id,
                     "pipeline_id": _pipeline_name(db, r.pipeline_id),
@@ -364,6 +382,7 @@ def list_dataset_artifacts(
                     "is_directory": is_dir,
                     "size_bytes": size_bytes,
                     "output_dir": r.output_dir,
+                    "atlas_metadata": atlas_metadata,
                 })
 
     # Sort newest run first

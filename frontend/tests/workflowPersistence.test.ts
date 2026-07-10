@@ -177,6 +177,38 @@ describe("deserializeWorkflowState", () => {
     expect(result).toBeNull();
   });
 
+  it("defaults old functional-connectivity workflow nodes to Schaefer 100", () => {
+    const state = makeValidState({
+      nodes: [
+        makeNode({
+          pipelineId: "functional-connectivity",
+          displayName: "Functional Connectivity",
+          category: "connectivity",
+          inputArtifactType: "fmriprep_derivatives",
+          params: {},
+        }),
+      ],
+    });
+    const result = deserializeWorkflowState(state as unknown as Record<string, unknown>);
+    expect(result?.nodes[0].params["atlas-name"]).toBe("schaefer100_7");
+  });
+
+  it("preserves an explicit functional-connectivity atlas when loading", () => {
+    const state = makeValidState({
+      nodes: [
+        makeNode({
+          pipelineId: "functional-connectivity",
+          displayName: "Functional Connectivity",
+          category: "connectivity",
+          inputArtifactType: "fmriprep_derivatives",
+          params: { "atlas-name": "aal" },
+        }),
+      ],
+    });
+    const result = deserializeWorkflowState(state as unknown as Record<string, unknown>);
+    expect(result?.nodes[0].params["atlas-name"]).toBe("aal");
+  });
+
   it("round-trips a serialized state", () => {
     const source = makeSource();
     const nodes = [makeNode()];

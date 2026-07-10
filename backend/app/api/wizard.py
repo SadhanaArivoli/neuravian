@@ -543,7 +543,7 @@ def launch_dcm2bids(
         params=params,
     )
     try:
-        run = svc.create_run(run_create, background_tasks)
+        run = svc.create_run(run_create)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

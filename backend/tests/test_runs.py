@@ -455,7 +455,7 @@ def test_create_run_returns_201(api_client, tmp_path):
     assert resp.status_code == 201
     data = resp.json()
     assert data["pipeline_manifest_id"] == "mriqc"
-    assert data["status"] == "pending"
+    assert data["status"] == "queued"
     assert data["command_preview"] is not None
     assert "nipreps/mriqc:24.0.2" in data["command_preview"]
 

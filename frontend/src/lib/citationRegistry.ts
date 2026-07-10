@@ -15,6 +15,9 @@
  *   dcm2bids  — doi:10.5281/zenodo.8167920
  *   pydeface  — doi:10.1007/s12021-012-9160-3
  *   Nilearn   — doi:10.3389/fninf.2014.00014   / RRID:SCR_001362
+ *   Schaefer  — doi:10.1093/cercor/bhx179
+ *   AAL3      — doi:10.1016/j.neuroimage.2019.116189
+ *   Harvard-Oxford cortical atlas source — doi:10.1016/j.neuroimage.2006.01.021
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,6 +29,8 @@ export interface Citation {
   tool: string;
   /** Pipeline manifest ID(s) this citation covers. */
   pipelineIds: string[];
+  /** Optional atlas IDs this citation covers when a pipeline has selectable atlases. */
+  atlasIds?: string[];
   authors: string;
   year: number;
   title: string;
@@ -196,16 +201,74 @@ export const CITATION_DB: Citation[] = [
     rrid: "SCR_001362",
     url: "https://nilearn.github.io",
   },
+  {
+    key: "atlas-schaefer-2018",
+    tool: "Schaefer 2018 atlas",
+    pipelineIds: ["functional-connectivity"],
+    atlasIds: ["schaefer100_7", "schaefer200_7"],
+    authors:
+      "Schaefer A, Kong R, Gordon EM, Laumann TO, Zuo XN, Holmes AJ, Eickhoff SB, Yeo BTT",
+    year: 2018,
+    title:
+      "Local-global parcellation of the human cerebral cortex from intrinsic functional connectivity MRI",
+    journal: "Cerebral Cortex",
+    volume: "28",
+    issue: "9",
+    pages: "3095–3114",
+    doi: "10.1093/cercor/bhx179",
+    url: "https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_schaefer_2018.html",
+  },
+  {
+    key: "atlas-aal3",
+    tool: "AAL3 atlas",
+    pipelineIds: ["functional-connectivity"],
+    atlasIds: ["aal"],
+    authors: "Rolls ET, Huang CC, Lin CP, Feng J, Joliot M",
+    year: 2020,
+    title: "Automated anatomical labelling atlas 3",
+    journal: "NeuroImage",
+    volume: "206",
+    pages: "116189",
+    doi: "10.1016/j.neuroimage.2019.116189",
+    url: "https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_aal.html",
+  },
+  {
+    key: "atlas-harvard-oxford-cortical",
+    tool: "Harvard-Oxford cortical atlas",
+    pipelineIds: ["functional-connectivity"],
+    atlasIds: ["harvard_oxford_cortical"],
+    authors:
+      "Desikan RS, Segonne F, Fischl B, Quinn BT, Dickerson BC, Blacker D, Buckner RL, Dale AM, Maguire RP, Hyman BT, Albert MS, Killiany RJ",
+    year: 2006,
+    title:
+      "An automated labeling system for subdividing the human cerebral cortex on MRI scans into gyral based regions of interest",
+    journal: "NeuroImage",
+    volume: "31",
+    issue: "3",
+    pages: "968–980",
+    doi: "10.1016/j.neuroimage.2006.01.021",
+    url: "https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_harvard_oxford.html",
+  },
 ];
 
 // ── Lookup helpers ────────────────────────────────────────────────────────────
 
+function normalizeAtlasId(atlasId: string): string {
+  if (atlasId === "schaefer_100_7") return "schaefer100_7";
+  return atlasId;
+}
+
 /** Return citations relevant to a set of pipeline manifest IDs. */
-export function getCitationsForPipelines(pipelineIds: string[]): Citation[] {
+export function getCitationsForPipelines(pipelineIds: string[], atlasIds: string[] = []): Citation[] {
   const seen = new Set<string>();
   const out: Citation[] = [];
+  const normalizedAtlasIds = new Set(atlasIds.map(normalizeAtlasId));
   for (const cit of CITATION_DB) {
-    if (cit.pipelineIds.some((pid) => pipelineIds.includes(pid))) {
+    const pipelineMatches = cit.pipelineIds.some((pid) => pipelineIds.includes(pid));
+    const atlasMatches =
+      !cit.atlasIds ||
+      cit.atlasIds.some((atlasId) => normalizedAtlasIds.has(normalizeAtlasId(atlasId)));
+    if (pipelineMatches && atlasMatches) {
       if (!seen.has(cit.key)) {
         seen.add(cit.key);
         out.push(cit);

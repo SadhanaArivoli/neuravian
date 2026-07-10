@@ -9,7 +9,7 @@ import {
 
 const baseMeta: ConnectivityMetadata = {
   atlas: "Schaefer 2018, 100 parcels, 7 networks",
-  atlas_id: "schaefer_100_7",
+  atlas_id: "schaefer100_7",
   correlation_method: "Pearson correlation",
   n_rois: 100,
   n_volumes: 168,
@@ -84,7 +84,7 @@ describe("checkMatrixCompatibility", () => {
   });
 
   it("rejects atlas mismatch", () => {
-    const b: ConnectivityMetadata = { ...baseMeta, atlas_id: "schaefer_200_7" };
+    const b: ConnectivityMetadata = { ...baseMeta, atlas_id: "schaefer200_7" };
     const result = checkMatrixCompatibility(baseMeta, b);
     expect(result.compatible).toBe(false);
     expect(result.reason).toMatch(/atlas mismatch/i);

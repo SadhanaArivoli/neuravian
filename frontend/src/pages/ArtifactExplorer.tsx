@@ -355,6 +355,14 @@ function ArtifactRow({
             </Link>
           </span>
           <span>{artifact.pipeline_id}</span>
+          {artifact.atlas_metadata?.atlas && (
+            <span title={artifact.atlas_metadata.atlas}>
+              {artifact.atlas_metadata.atlas}
+              {artifact.atlas_metadata.n_rois
+                ? ` · ${artifact.atlas_metadata.n_rois} ROIs`
+                : ""}
+            </span>
+          )}
           <span>{fmtBytes(artifact.size_bytes)}</span>
           {artifact.run_finished_at && (
             <span title={fmtDatetime(artifact.run_finished_at)}>
