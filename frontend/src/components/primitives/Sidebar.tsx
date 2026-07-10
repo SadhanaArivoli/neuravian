@@ -18,13 +18,13 @@ export function Sidebar() {
   const { isSuccess, isLoading } = useHealth();
 
   return (
-    <aside className="flex h-screen w-52 flex-col bg-surface-raised border-r border-white/5 py-4 px-3 shrink-0">
-      <div className="mb-6 px-2">
+    <aside className="flex shrink-0 flex-col gap-3 border-b border-white/5 bg-surface-raised px-3 py-3 md:h-screen md:w-52 md:border-b-0 md:border-r md:py-4">
+      <div className="px-2 md:mb-3">
         <h1 className="text-lg font-semibold tracking-tight text-white">NeuroForge</h1>
-        <p className="text-xs text-muted mt-0.5">Neuroimaging orchestrator</p>
+        <p className="mt-0.5 hidden text-xs text-muted sm:block">Neuroimaging orchestrator</p>
       </div>
 
-      <nav className="flex flex-col gap-1 flex-1">
+      <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
         {NAV_ITEMS.map(({ to, label, end }) => (
           <NavLink
             key={to}
@@ -42,7 +42,7 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        <div className="mt-4 mb-1 px-3">
+        <div className="hidden md:mb-1 md:mt-4 md:block md:px-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Wizards</p>
         </div>
         {WIZARD_ITEMS.map(({ to, label, end }) => (
@@ -66,7 +66,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-2 pt-4 border-t border-white/5">
+      <div className="hidden border-t border-white/5 px-2 pt-4 md:block">
         <StatusBadge connected={isSuccess} loading={isLoading} />
       </div>
     </aside>

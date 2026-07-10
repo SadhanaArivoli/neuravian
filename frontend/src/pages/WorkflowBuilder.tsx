@@ -151,12 +151,18 @@ function SourceCard({
   const selectedDataset = datasets.find((d) => d.id === source.datasetId);
   const selectedRun = completedRuns.find((r) => r.id === source.runId);
   const artifacts =
-    source.kind === "dataset"
+    source.kind === "dataset" && selectedDataset
       ? ["bids_dataset"]
-      : resolvedArtifactTypes(sourceRunResults?.artifacts ?? []);
+      : source.kind === "run"
+        ? resolvedArtifactTypes(sourceRunResults?.artifacts ?? [])
+        : [];
+  const emptyArtifactText =
+    source.kind === "dataset"
+      ? "Select a dataset to expose bids_dataset"
+      : "Select a successful run with resolved artifacts";
 
   return (
-    <section className="w-72 shrink-0 rounded-lg border border-white/10 bg-surface-raised p-4">
+    <section className="w-72 shrink-0 rounded-lg border border-white/10 bg-surface-raised p-4 sm:w-80">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Start</p>
@@ -187,7 +193,7 @@ function SourceCard({
               </span>
             ))
           ) : (
-            <span className="text-xs text-gray-500">No resolved artifacts yet</span>
+            <span className="text-xs text-gray-500">{emptyArtifactText}</span>
           )}
         </div>
       </div>
@@ -208,7 +214,7 @@ function NodeCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-80 shrink-0 rounded-lg border p-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+      className={`w-72 shrink-0 rounded-lg border p-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 sm:w-80 ${
         selected
           ? "border-blue-400 bg-blue-500/10"
           : "border-white/10 bg-surface-raised hover:border-white/20"
@@ -238,14 +244,14 @@ function NodeCard({
       <dl className="mt-4 space-y-3 text-xs">
         <div>
           <dt className="text-gray-500">Input artifact</dt>
-          <dd className="mt-1 font-mono text-gray-200">{node.inputArtifactType}</dd>
+          <dd className="mt-1 break-all font-mono text-gray-200">{node.inputArtifactType}</dd>
         </div>
         <div>
           <dt className="text-gray-500">Produced artifacts</dt>
           <dd className="mt-1 flex flex-wrap gap-1.5">
             {node.produced.length > 0 ? (
               node.produced.map((p) => (
-                <span key={`${node.id}-${p.type}`} className="rounded bg-white/10 px-2 py-1 font-mono text-gray-200">
+                <span key={`${node.id}-${p.type}`} className="break-all rounded bg-white/10 px-2 py-1 font-mono text-gray-200">
                   {p.type}
                 </span>
               ))
@@ -267,9 +273,9 @@ function NodeCard({
 
 function Arrow({ label }: { label: string }) {
   return (
-    <div className="flex w-28 shrink-0 flex-col items-center justify-center text-center">
+    <div className="flex w-20 shrink-0 flex-col items-center justify-center text-center sm:w-28">
       <div className="h-px w-full bg-white/20" />
-      <span className="mt-2 rounded bg-surface-overlay px-2 py-1 font-mono text-[11px] text-gray-300">
+      <span className="mt-2 max-w-full break-all rounded bg-surface-overlay px-2 py-1 font-mono text-[11px] text-gray-300">
         {label}
       </span>
     </div>
@@ -515,8 +521,26 @@ export default function WorkflowBuilder() {
     return Boolean(selectedRun && sourceRunResults);
   }
 
+  function addNextHelpText() {
+    if (isRunning) return "Wait for the current workflow run to finish.";
+    if (!sourceReady()) {
+      return source.kind === "dataset"
+        ? "Select a starting dataset to find compatible pipelines."
+        : "Select a successful run before loading compatible pipelines.";
+    }
+    if (currentArtifactTypes().length === 0) {
+      return "The current endpoint has no resolved artifact types.";
+    }
+    return "Compatibility is checked against manifest-declared artifact types.";
+  }
+
+  const runButtonText =
+    nodes.length === 0
+      ? "Run workflow"
+      : `Run ${nodes.length}-step workflow`;
+
   return (
-    <div className="min-h-full bg-surface p-6">
+    <div className="min-h-full bg-surface p-4 sm:p-6">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">Workflow Builder</h1>
@@ -530,7 +554,7 @@ export default function WorkflowBuilder() {
           disabled={isRunning || nodes.length === 0}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isRunning ? "Running workflow..." : "Run Workflow"}
+          {isRunning ? "Running workflow..." : runButtonText}
         </button>
       </header>
 
@@ -556,7 +580,7 @@ export default function WorkflowBuilder() {
 
           {source.kind === "dataset" ? (
             <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-gray-500">Dataset</label>
+              <label className="block text-xs font-medium text-gray-500">Starting dataset</label>
               <select
                 value={source.datasetId}
                 onChange={(e) => resetWorkflow({ datasetId: e.target.value ? Number(e.target.value) : "" })}
@@ -572,7 +596,7 @@ export default function WorkflowBuilder() {
             </div>
           ) : (
             <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-gray-500">Completed run</label>
+              <label className="block text-xs font-medium text-gray-500">Starting completed run</label>
               <select
                 value={source.runId}
                 onChange={(e) => resetWorkflow({ runId: e.target.value ? Number(e.target.value) : "" })}
@@ -614,8 +638,10 @@ export default function WorkflowBuilder() {
                 </div>
               ))}
               {nodes.length === 0 && (
-                <div className="flex items-center pl-6 text-sm text-gray-500">
-                  Add a compatible next step to start the chain.
+                <div className="flex max-w-xs items-center pl-6 text-sm text-gray-500">
+                  {sourceReady()
+                    ? "Find a compatible next step from the controls panel."
+                    : "Choose a starting dataset or completed run first."}
                 </div>
               )}
             </div>
@@ -630,8 +656,9 @@ export default function WorkflowBuilder() {
             disabled={!sourceReady() || isLoadingCompat || isRunning}
             className="mt-4 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isLoadingCompat ? "Loading..." : "Add compatible next step"}
+            {isLoadingCompat ? "Checking manifests..." : "Find compatible next step"}
           </button>
+          <p className="mt-2 text-xs leading-relaxed text-gray-400">{addNextHelpText()}</p>
 
           {compatError && (
             <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -656,6 +683,7 @@ export default function WorkflowBuilder() {
                     accepts {option.accept_type}
                     {option.accept_param ? ` -> ${option.accept_param}` : " -> dataset"}
                   </p>
+                  <p className="mt-2 text-xs font-medium text-blue-300">Add this step</p>
                 </button>
               ))}
             </div>
@@ -665,7 +693,7 @@ export default function WorkflowBuilder() {
             <div className="mt-6 border-t border-white/10 pt-4">
               <h3 className="text-sm font-semibold text-gray-100">{selectedNode.displayName}</h3>
               <label className="mt-4 block text-xs font-medium text-gray-500">
-                Dataset fallback
+                Dataset for this step
               </label>
               <select
                 value={selectedNode.datasetId}
@@ -676,7 +704,7 @@ export default function WorkflowBuilder() {
                 }
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800"
               >
-                <option value="">Use upstream dataset when possible</option>
+                <option value="">Use upstream/starting dataset when possible</option>
                 {datasets.map((dataset) => (
                   <option key={dataset.id} value={dataset.id}>
                     {dataset.name ?? dataset.path}
@@ -685,7 +713,7 @@ export default function WorkflowBuilder() {
               </select>
               {selectedNode.edge.acceptDatasetSlot && (
                 <p className="mt-2 text-xs text-gray-400">
-                  Dataset-slot steps use a registered upstream dataset when available.
+                  Dataset-slot steps use the registered upstream dataset first; select one only if that is missing.
                 </p>
               )}
             </div>
@@ -698,7 +726,7 @@ export default function WorkflowBuilder() {
           )}
 
           <div className="mt-6 rounded border border-white/10 bg-white/5 px-3 py-2 text-xs leading-relaxed text-gray-400">
-            V1 is linear and frontend-only. It advances only when the previous run succeeds.
+            Review compute profile badges before running. Cloud recommended steps may be slow or unsafe locally.
           </div>
         </aside>
       </div>

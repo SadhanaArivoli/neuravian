@@ -11,9 +11,9 @@ import WizardDcm2bids from "./pages/WizardDcm2bids";
 
 export default function App() {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<Welcome />} />
           <Route path="/datasets" element={<Datasets />} />
