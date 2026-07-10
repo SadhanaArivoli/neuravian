@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createRun,
   fetchCompatiblePipelines,
@@ -21,7 +21,7 @@ import { useDatasets } from "../hooks/useDatasets";
 import { useRunResults, useRuns } from "../hooks/useRuns";
 import {
   WORKFLOW_TEMPLATES,
-  isNiftiRawRun,
+  filterRunsByArtifact,
   validateTemplateEdges,
   type ManifestSlim,
   type WorkflowTemplate,
@@ -506,31 +506,28 @@ function TemplatePicker({
   loading,
   loadError,
   datasets,
-  niftiRuns,
   completedRuns,
+  pipelineProducesCache,
 }: {
   onBlank: () => void;
   onTemplate: (t: WorkflowTemplate) => void;
   loading: boolean;
   loadError: string | null;
   datasets: DatasetSummary[];
-  niftiRuns: RunSummary[];
   completedRuns: RunSummary[];
+  pipelineProducesCache: Record<string, string[]>;
 }) {
   function templateAvailable(template: WorkflowTemplate): boolean {
     if (template.disabled) return false;
     if (template.requiredSourceKind === "dataset") return datasets.length > 0;
-    if (template.requiredSourceArtifact === "nifti_raw") return niftiRuns.length > 0;
-    return completedRuns.length > 0;
+    return filterRunsByArtifact(completedRuns, template.requiredSourceArtifact, pipelineProducesCache).length > 0;
   }
 
   function unavailableReason(template: WorkflowTemplate): string {
     if (template.disabled) return template.disabledReason ?? "Not available yet.";
     if (template.requiredSourceKind === "dataset" && datasets.length === 0)
       return "Register a BIDS dataset in the Datasets tab first.";
-    if (template.requiredSourceArtifact === "nifti_raw" && niftiRuns.length === 0)
-      return "Run dcm2niix to produce a nifti_raw artifact first.";
-    return "No compatible source available.";
+    return `No completed run producing "${template.requiredSourceArtifact}" found. Check the Runs tab.`;
   }
 
   return (
@@ -684,7 +681,40 @@ export default function WorkflowBuilder() {
     () => runs.filter((r) => r.status === "success"),
     [runs],
   );
-  const niftiRuns = useMemo(() => completedRuns.filter(isNiftiRawRun), [completedRuns]);
+
+  // Maps pipeline ID → artifact types it declares in produces[]. Populated
+  // lazily by fetching the full manifest for each unique pipeline ID seen in
+  // completed runs so run-sourced template filters are manifest-driven, not
+  // hardcoded to specific pipeline IDs.
+  const [pipelineProducesCache, setPipelineProducesCache] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    const uniqueIds = [...new Set(completedRuns.map((r) => r.pipeline_manifest_id))];
+    const uncached = uniqueIds.filter((id) => !(id in pipelineProducesCache));
+    if (uncached.length === 0) return;
+    Promise.all(uncached.map((id) => fetchPipeline(id)))
+      .then((pipelines) => {
+        setPipelineProducesCache((prev) => {
+          const updates: Record<string, string[]> = {};
+          for (const p of pipelines) {
+            updates[p.id] = (p.produces ?? []).map((s) => s.type);
+          }
+          return { ...prev, ...updates };
+        });
+      })
+      .catch(() => {
+        // Uncached pipelines simply won't appear as compatible sources yet.
+      });
+  // pipelineProducesCache excluded to avoid a refetch loop — the effect only
+  // needs to re-run when the set of completed runs changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedRuns]);
+
+  const templateSourceRuns = useMemo(() => {
+    if (!activeTemplate || activeTemplate.requiredSourceKind !== "run") return completedRuns;
+    return filterRunsByArtifact(completedRuns, activeTemplate.requiredSourceArtifact, pipelineProducesCache);
+  }, [activeTemplate, completedRuns, pipelineProducesCache]);
+
   const selectedDataset = datasets.find((d) => d.id === source.datasetId);
   const selectedRunId = typeof source.runId === "number" ? source.runId : 0;
   const selectedRun = completedRuns.find((r) => r.id === source.runId);
@@ -1009,8 +1039,8 @@ export default function WorkflowBuilder() {
             loading={templateLoading}
             loadError={templateLoadError}
             datasets={datasets}
-            niftiRuns={niftiRuns}
             completedRuns={completedRuns}
+            pipelineProducesCache={pipelineProducesCache}
           />
         )}
       </div>
@@ -1097,9 +1127,9 @@ export default function WorkflowBuilder() {
                 <label className="min-w-0 flex-1 sm:w-[26rem]">
                   <span className="block text-xs font-semibold uppercase tracking-widest text-gray-500">
                     Completed run
-                    {activeTemplate?.requiredSourceArtifact === "nifti_raw" && (
+                    {activeTemplate?.requiredSourceKind === "run" && (
                       <span className="ml-2 font-normal normal-case tracking-normal text-gray-600">
-                        (filtered to nifti_raw producers)
+                        (filtered to {activeTemplate.requiredSourceArtifact} producers)
                       </span>
                     )}
                   </span>
@@ -1109,17 +1139,16 @@ export default function WorkflowBuilder() {
                     className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
                   >
                     <option value="">Choose a successful run</option>
-                    {(activeTemplate?.requiredSourceArtifact === "nifti_raw"
-                      ? niftiRuns
-                      : completedRuns
-                    ).map((run) => (
+                    {templateSourceRuns.map((run) => (
                       <option key={run.id} value={run.id}>
                         Run #{run.id} – {run.pipeline_manifest_id}
                       </option>
                     ))}
                   </select>
-                  {activeTemplate?.requiredSourceArtifact === "nifti_raw" && niftiRuns.length === 0 && (
-                    <p className="mt-1 text-xs text-amber-400">No dcm2niix runs found. Run dcm2niix first.</p>
+                  {activeTemplate?.requiredSourceKind === "run" && templateSourceRuns.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-400">
+                      No run producing "{activeTemplate.requiredSourceArtifact}" found. Check the Runs tab.
+                    </p>
                   )}
                 </label>
               )}

@@ -166,14 +166,22 @@ export function validateTemplateEdges(
 // ── Source helpers ────────────────────────────────────────────────────────────
 
 /**
- * Pipeline IDs whose successful runs expose nifti_raw artifacts.
- * Used to filter the run selector when a template requires a nifti_raw source.
- * Add new IDs here if future pipelines produce nifti_raw.
+ * Filter runs to those whose pipeline declares the required artifact type in
+ * its `produces[]` manifest slot. The caller supplies a pre-fetched
+ * `pipelineProducesMap` (pipeline ID → produced artifact types) so this
+ * function stays pure and testable without network calls.
+ *
+ * A run qualifies automatically when its pipeline's manifest lists the type —
+ * no hardcoded pipeline-ID lists are needed.
  */
-const NIFTI_RAW_PRODUCER_IDS: ReadonlySet<string> = new Set(["dcm2niix"]);
-
-export function isNiftiRawRun(run: { pipeline_manifest_id: string }): boolean {
-  return NIFTI_RAW_PRODUCER_IDS.has(run.pipeline_manifest_id);
+export function filterRunsByArtifact<T extends { pipeline_manifest_id: string }>(
+  runs: T[],
+  requiredArtifact: string,
+  pipelineProducesMap: Record<string, string[]>,
+): T[] {
+  return runs.filter((run) =>
+    (pipelineProducesMap[run.pipeline_manifest_id] ?? []).includes(requiredArtifact),
+  );
 }
 
 // ── Template definitions ──────────────────────────────────────────────────────

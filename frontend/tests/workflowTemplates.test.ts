@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKFLOW_TEMPLATES,
-  isNiftiRawRun,
+  filterRunsByArtifact,
   validateTemplateEdges,
   type ManifestSlim,
   type WorkflowTemplate,
@@ -207,22 +207,57 @@ describe("validateTemplateEdges — known invalid chains are rejected", () => {
   });
 });
 
-// ── isNiftiRawRun ─────────────────────────────────────────────────────────────
+// ── filterRunsByArtifact ──────────────────────────────────────────────────────
+// Qualification is driven by the pipeline's declared produces[], not by a
+// hardcoded pipeline-ID allowlist.  A run from any pipeline whose manifest
+// declares the required artifact type should qualify automatically.
 
-describe("isNiftiRawRun", () => {
-  it("returns true for dcm2niix runs", () => {
-    expect(isNiftiRawRun({ pipeline_manifest_id: "dcm2niix" })).toBe(true);
+const PRODUCES_CACHE: Record<string, string[]> = {
+  "dcm2niix":      ["nifti_raw"],
+  "brainchop":     ["nifti_skull_stripped"],
+  "mriqc":         ["mriqc_report"],
+  "bids-validator": ["bids_dataset_validated"],
+  // Hypothetical future pipeline — not dcm2niix, but also produces nifti_raw
+  "dicom-custom":  ["nifti_raw", "nifti_defaced"],
+};
+
+const RUNS = [
+  { id: 1, pipeline_manifest_id: "dcm2niix" },
+  { id: 2, pipeline_manifest_id: "mriqc" },
+  { id: 3, pipeline_manifest_id: "bids-validator" },
+  { id: 4, pipeline_manifest_id: "brainchop" },
+  { id: 5, pipeline_manifest_id: "dicom-custom" },
+];
+
+describe("filterRunsByArtifact", () => {
+  it("returns dcm2niix run for nifti_raw requirement", () => {
+    const result = filterRunsByArtifact(RUNS, "nifti_raw", PRODUCES_CACHE);
+    expect(result.map((r) => r.id)).toContain(1);
   });
 
-  it("returns false for mriqc runs", () => {
-    expect(isNiftiRawRun({ pipeline_manifest_id: "mriqc" })).toBe(false);
+  it("returns a hypothetical non-dcm2niix run that also produces nifti_raw", () => {
+    const result = filterRunsByArtifact(RUNS, "nifti_raw", PRODUCES_CACHE);
+    // Both dcm2niix (id=1) and dicom-custom (id=5) produce nifti_raw
+    expect(result.map((r) => r.id)).toContain(5);
   });
 
-  it("returns false for bids-validator runs", () => {
-    expect(isNiftiRawRun({ pipeline_manifest_id: "bids-validator" })).toBe(false);
+  it("excludes mriqc runs from nifti_raw filter (mriqc produces mriqc_report)", () => {
+    const result = filterRunsByArtifact(RUNS, "nifti_raw", PRODUCES_CACHE);
+    expect(result.map((r) => r.id)).not.toContain(2);
   });
 
-  it("returns false for brainchop runs (produces nifti_skull_stripped, not nifti_raw)", () => {
-    expect(isNiftiRawRun({ pipeline_manifest_id: "brainchop" })).toBe(false);
+  it("excludes brainchop runs from nifti_raw filter (brainchop produces nifti_skull_stripped)", () => {
+    const result = filterRunsByArtifact(RUNS, "nifti_raw", PRODUCES_CACHE);
+    expect(result.map((r) => r.id)).not.toContain(4);
+  });
+
+  it("returns empty array when no runs match the required artifact", () => {
+    const result = filterRunsByArtifact(RUNS, "freesurfer_dir", PRODUCES_CACHE);
+    expect(result).toHaveLength(0);
+  });
+
+  it("returns empty array when pipelineProducesMap is empty (cache not yet populated)", () => {
+    const result = filterRunsByArtifact(RUNS, "nifti_raw", {});
+    expect(result).toHaveLength(0);
   });
 });
