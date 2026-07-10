@@ -16,7 +16,13 @@ from app.schemas.run import RunCreate, RunRead, RunSummary
 from app.execution.docker_executor import to_host_path
 from app.services.artifact_registry import resolve_run_artifacts
 from app.services.pipeline import get_registry
-from app.services.run import RunService, get_log_history, subscribe, unsubscribe
+from app.services.run import (
+    RunService,
+    get_log_buffer,
+    get_log_history,
+    subscribe,
+    unsubscribe,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])

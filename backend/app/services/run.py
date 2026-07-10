@@ -214,6 +214,8 @@ async def _reattach_run(run_id: int, container_id: str) -> None:
     # so another restart can replay them via get_log_history().
     _reattach_fh = open(p, "a", encoding="utf-8")  # noqa: SIM115
 
+    new_lines: list[str] = []
+
     def _monitor_sync() -> int:
         client = docker_sdk.from_env()
         try:
@@ -233,6 +235,7 @@ async def _reattach_run(run_id: int, container_id: str) -> None:
                             _reattach_fh.flush()
                         except OSError:
                             pass
+                        new_lines.append(stripped)
                         loop.call_soon_threadsafe(_broadcast, run_id, stripped)
         except Exception:
             pass
