@@ -628,3 +628,89 @@ export interface DatasetArtifact {
 export function fetchDatasetArtifacts(datasetId: number): Promise<DatasetArtifact[]> {
   return apiFetch<DatasetArtifact[]>(`/datasets/${datasetId}/artifacts`);
 }
+
+// ------------------------------------------------------------------ //
+// Saved Workflows                                                      //
+// ------------------------------------------------------------------ //
+
+export const WORKFLOW_SCHEMA_VERSION = "neuroforge-workflow-v1";
+
+export interface WorkflowSummary {
+  id: number;
+  name: string;
+  description: string | null;
+  dataset_id: number | null;
+  tags: string[];
+  schema_version: string;
+  is_template: boolean;
+  is_favorite: boolean;
+  is_archived: boolean;
+  template_source_id: number | null;
+  node_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowRead extends WorkflowSummary {
+  state: Record<string, unknown>;
+}
+
+export interface WorkflowCreate {
+  name: string;
+  description?: string | null;
+  dataset_id?: number | null;
+  tags?: string[];
+  state: Record<string, unknown>;
+  schema_version?: string;
+  is_template?: boolean;
+  is_favorite?: boolean;
+  is_archived?: boolean;
+  template_source_id?: number | null;
+}
+
+export interface WorkflowUpdate {
+  name?: string;
+  description?: string | null;
+  dataset_id?: number | null;
+  tags?: string[];
+  state?: Record<string, unknown>;
+  is_template?: boolean;
+  is_favorite?: boolean;
+  is_archived?: boolean;
+}
+
+export function fetchWorkflows(): Promise<WorkflowSummary[]> {
+  return apiFetch<WorkflowSummary[]>("/workflows");
+}
+
+export function fetchWorkflow(id: number): Promise<WorkflowRead> {
+  return apiFetch<WorkflowRead>(`/workflows/${id}`);
+}
+
+export function createWorkflow(body: WorkflowCreate): Promise<WorkflowRead> {
+  return apiFetch<WorkflowRead>("/workflows", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema_version: WORKFLOW_SCHEMA_VERSION, ...body }),
+  });
+}
+
+export function updateWorkflow(id: number, body: WorkflowUpdate): Promise<WorkflowRead> {
+  return apiFetch<WorkflowRead>(`/workflows/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteWorkflow(id: number): Promise<void> {
+  return apiFetch<void>(`/workflows/${id}`, { method: "DELETE" });
+}
+
+export function duplicateWorkflow(id: number): Promise<WorkflowRead> {
+  return apiFetch<WorkflowRead>(`/workflows/${id}/duplicate`, { method: "POST" });
+}
+
+export function promoteWorkflowToTemplate(id: number): Promise<WorkflowRead> {
+  return apiFetch<WorkflowRead>(`/workflows/${id}/promote-template`, { method: "POST" });
+}

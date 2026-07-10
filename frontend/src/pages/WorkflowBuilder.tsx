@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   createRun,
+  createWorkflow,
   fetchCompatiblePipelines,
   fetchPipeline,
   fetchRun,
   fetchRunResults,
+  fetchWorkflow,
+  updateWorkflow,
   type CompatiblePipeline,
   type ComputeProfile,
   type DatasetSummary,
@@ -26,6 +30,11 @@ import {
   type ManifestSlim,
   type WorkflowTemplate,
 } from "../lib/workflowTemplates";
+import {
+  deserializeWorkflowState,
+  serializeWorkflowState,
+  type SerializedSource,
+} from "../lib/workflowPersistence";
 
 type SourceKind = "dataset" | "run";
 type WorkflowNodeStatus = "draft" | "ready" | "running" | "success" | "failed";
@@ -659,6 +668,7 @@ function TemplatePicker({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilder() {
+  const [searchParams] = useSearchParams();
   const { data: datasets = [] } = useDatasets();
   const { data: runs = [] } = useRuns();
   const [source, setSource] = useState<WorkflowSource>({
@@ -678,6 +688,110 @@ export default function WorkflowBuilder() {
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
   const [activeTemplate, setActiveTemplate] = useState<WorkflowTemplate | null>(null);
+
+  // ── Persistence state ──────────────────────────────────────────────────────
+  const [savedWorkflowId, setSavedWorkflowId] = useState<number | null>(null);
+  const [workflowName, setWorkflowName] = useState<string>("Untitled Workflow");
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [_isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
+  const [showRenameInput, setShowRenameInput] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const saveSuccessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load a saved workflow from ?open=<id> param
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId) return;
+    const id = Number(openId);
+    if (!id) return;
+    setIsLoadingWorkflow(true);
+    fetchWorkflow(id)
+      .then((wf) => {
+        const state = deserializeWorkflowState(wf.state);
+        if (!state) {
+          console.warn("Could not deserialize workflow state", wf.state);
+          return;
+        }
+        suppressDirty.current = true;
+        const src = state.source as WorkflowSource;
+        setSource(src);
+        setNodes(state.nodes.map((n) => ({ ...n, status: "draft" as const })));
+        setActiveTemplate(null);
+        setSavedWorkflowId(wf.id);
+        setWorkflowName(wf.name);
+        setIsDirty(false);
+        setTemplateChosen(true);
+        // Re-enable dirty tracking after React flushes the state updates
+        setTimeout(() => { suppressDirty.current = false; }, 50);
+      })
+      .catch((err) => {
+        console.error("Failed to load workflow", err);
+      })
+      .finally(() => setIsLoadingWorkflow(false));
+  // Only run once on mount when ?open param is present
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mark dirty when canvas changes. suppressDirty is true during load operations.
+  const suppressDirty = useRef(true); // start suppressed until first user interaction
+  useEffect(() => {
+    if (suppressDirty.current) return;
+    setIsDirty(true);
+  }, [source, nodes]);
+
+  async function saveWorkflow(asNew = false) {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const state = serializeWorkflowState(
+        source as SerializedSource,
+        nodes,
+        activeTemplate?.id ?? null,
+      );
+      const datasetId =
+        source.kind === "dataset" && source.datasetId ? (source.datasetId as number) : null;
+
+      if (savedWorkflowId && !asNew) {
+        await updateWorkflow(savedWorkflowId, { name: workflowName, state: state as unknown as Record<string, unknown>, dataset_id: datasetId });
+      } else {
+        const created = await createWorkflow({
+          name: workflowName,
+          state: state as unknown as Record<string, unknown>,
+          dataset_id: datasetId,
+        });
+        setSavedWorkflowId(created.id);
+        // Update URL without triggering a reload
+        const url = new URL(window.location.href);
+        url.searchParams.set("open", String(created.id));
+        window.history.replaceState({}, "", url.toString());
+      }
+      setIsDirty(false);
+      setSaveSuccess(true);
+      if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
+      saveSuccessTimer.current = setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function startRename() {
+    setRenameValue(workflowName);
+    setShowRenameInput(true);
+  }
+
+  function commitRename() {
+    const trimmed = renameValue.trim();
+    if (trimmed) {
+      setWorkflowName(trimmed);
+      setIsDirty(true);
+    }
+    setShowRenameInput(false);
+  }
 
   const completedRuns = useMemo(
     () => runs.filter((r) => r.status === "success"),
@@ -743,6 +857,7 @@ export default function WorkflowBuilder() {
     setActiveTemplate(null);
     setTemplateLoadError(null);
     setTemplateChosen(true);
+    setTimeout(() => { suppressDirty.current = false; }, 50);
   }
 
   async function loadTemplate(template: WorkflowTemplate) {
@@ -790,6 +905,7 @@ export default function WorkflowBuilder() {
       setNodes(newNodes);
       setActiveTemplate(template);
       setTemplateChosen(true);
+      setTimeout(() => { suppressDirty.current = false; }, 50);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load template.";
       setTemplateLoadError(message);
@@ -1081,6 +1197,67 @@ export default function WorkflowBuilder() {
                 >
                   {showRules ? "Hide rules" : "How chaining works"}
                 </button>
+              </div>
+
+              {/* ── Workflow name + save toolbar ─────────────────────── */}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {showRenameInput ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setShowRenameInput(false); }}
+                    className="rounded-md border border-accent/40 bg-surface px-3 py-1 text-sm font-semibold text-white outline-none focus:border-accent/70 w-56"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startRename}
+                    title="Click to rename"
+                    className="group flex items-center gap-1.5 rounded-md border border-white/10 bg-surface-raised px-3 py-1 text-sm font-semibold text-gray-200 transition-colors hover:border-white/25 hover:text-white"
+                  >
+                    {workflowName}
+                    {isDirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />}
+                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3 text-gray-500 group-hover:text-gray-300">
+                      <path d="M8 1.5l2.5 2.5-6 6H2V7.5l6-6z" />
+                    </svg>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void saveWorkflow(false)}
+                  disabled={isSaving || !templateChosen}
+                  className={classNames(
+                    "rounded-md border px-3 py-1 text-xs font-medium transition-colors focus:outline-none",
+                    saveSuccess
+                      ? "border-green-700 bg-green-900/30 text-green-300"
+                      : "border-white/15 bg-white/5 text-gray-300 hover:border-white/30 hover:text-white disabled:opacity-40",
+                  )}
+                >
+                  {isSaving ? "Saving…" : saveSuccess ? "Saved ✓" : savedWorkflowId ? "Save" : "Save"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void saveWorkflow(true)}
+                  disabled={isSaving || !templateChosen}
+                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:border-white/25 hover:text-gray-200 focus:outline-none disabled:opacity-40"
+                >
+                  Save As…
+                </button>
+
+                <Link
+                  to="/workflows/library"
+                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:border-white/25 hover:text-gray-200"
+                >
+                  Library
+                </Link>
+
+                {saveError && (
+                  <span className="text-xs text-red-400">{saveError}</span>
+                )}
               </div>
               <h1 className="mt-4 text-xl sm:text-2xl font-bold tracking-tight text-white">
                 Build a neuroimaging workflow visually.

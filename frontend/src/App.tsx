@@ -13,6 +13,7 @@ import WorkflowGraph from "./pages/WorkflowGraph";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
+import WorkflowLibrary from "./pages/WorkflowLibrary";
 import WizardDcm2bids from "./pages/WizardDcm2bids";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/runs" element={<Runs />} />
           <Route path="/runs/:id" element={<RunDetail />} />
           <Route path="/workflows/new" element={<WorkflowBuilder />} />
+          <Route path="/workflows/library" element={<WorkflowLibrary />} />
           <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
           <Route path="/compare" element={<ComparisonStudio />} />
           <Route path="/settings/remote-hosts" element={<RemoteHosts />} />

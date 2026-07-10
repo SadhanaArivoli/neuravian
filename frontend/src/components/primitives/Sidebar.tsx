@@ -7,7 +7,8 @@ const NAV_ITEMS = [
   { to: "/datasets", label: "Datasets", end: false },
   { to: "/pipelines", label: "Pipelines", end: false },
   { to: "/runs", label: "Runs", end: false },
-  { to: "/workflows/new", label: "Workflows", end: false },
+  { to: "/workflows/new", label: "Workflows", end: true },
+  { to: "/workflows/library", label: "Library", end: false },
 ] as const;
 
 const WIZARD_ITEMS = [
