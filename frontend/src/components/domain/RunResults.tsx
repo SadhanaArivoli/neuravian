@@ -247,10 +247,18 @@ function MriqcGroupSummary({ runId, tablePath }: { runId: number; tablePath: str
 interface ConnectivityMetadata {
   atlas?: string;
   atlas_id?: string;
+  atlas_source?: string;
+  atlas_version?: string | null;
+  atlas_type?: string;
+  atlas_space?: string;
+  atlas_resolution?: string;
+  atlas_network_count?: number | null;
   correlation_method?: string;
   nilearn_version?: string;
   n_rois?: number;
+  roi_count?: number;
   n_volumes?: number;
+  matrix_shape?: [number, number];
   correlation_min?: number;
   correlation_max?: number;
   correlation_mean?: number;
@@ -260,12 +268,13 @@ interface ConnectivityMetadata {
 function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][] }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hover, setHover] = useState<{ row: number; col: number; value: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const size = matrix.length;
-    const cell = Math.max(3, Math.floor(520 / Math.max(1, size)));
+    const cell = Math.max(2, Math.floor((520 * zoom) / Math.max(1, size)));
     canvas.width = size * cell;
     canvas.height = size * cell;
     const ctx = canvas.getContext("2d");
@@ -281,7 +290,7 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
         ctx.fillRect(x * cell, y * cell, cell, cell);
       }
     }
-  }, [matrix]);
+  }, [matrix, zoom]);
 
   function handleMove(event: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
@@ -319,6 +328,19 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
           Export PNG
         </button>
       </div>
+      <label className="mt-2 flex max-w-xs items-center gap-2 text-xs text-gray-500">
+        Zoom
+        <input
+          type="range"
+          min="1"
+          max="4"
+          step="0.25"
+          value={zoom}
+          onChange={(event) => setZoom(Number(event.target.value))}
+          className="flex-1"
+        />
+        <span className="w-10 text-right font-mono">{zoom.toFixed(2)}×</span>
+      </label>
       <div className="mt-3 max-h-[560px] overflow-auto rounded border border-gray-200 bg-gray-50 p-3">
         <canvas
           ref={canvasRef}
@@ -400,17 +422,34 @@ function ConnectivitySummary({
       {metadata && (
         <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            ["ROIs", metadata.n_rois ?? "—"],
+            ["ROIs", metadata.n_rois ?? metadata.roi_count ?? "—"],
+            ["Matrix", metadata.matrix_shape?.join("×") ?? "—"],
             ["Volumes", metadata.n_volumes ?? "—"],
+            ["Networks", metadata.atlas_network_count ?? "—"],
             ["Min r", metadata.correlation_min?.toFixed(3) ?? "—"],
             ["Max r", metadata.correlation_max?.toFixed(3) ?? "—"],
+            ["Atlas type", metadata.atlas_type ?? "—"],
+            ["Space", metadata.atlas_space ?? "—"],
           ].map(([label, value]) => (
             <div key={label} className="rounded bg-gray-50 p-2">
               <div className="text-xs text-gray-500">{label}</div>
-              <div className="font-mono text-sm font-semibold text-gray-900">{value}</div>
+              <div className="font-mono text-sm font-semibold text-gray-900" title={String(value)}>{value}</div>
             </div>
           ))}
         </div>
+      )}
+      {metadata?.atlas_source && (
+        <p className="mb-3 text-xs text-gray-500">
+          Atlas source:{" "}
+          <a
+            href={metadata.atlas_source}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            {metadata.atlas_version ?? metadata.atlas_id ?? "Nilearn atlas fetcher"}
+          </a>
+        </p>
       )}
       {matrixData ? (
         <MatrixCanvas labels={matrixData.labels} matrix={matrixData.values} />

@@ -74,6 +74,12 @@ interface ConnectivityCompareState {
   largestAbsDiff?: number;
 }
 
+function formatAtlasBadge(meta: ConnectivityMetadata | undefined, fallback: string): string {
+  if (!meta) return fallback;
+  const roi = meta.n_rois ? ` · ${meta.n_rois} ROIs` : "";
+  return `${meta.atlas ?? meta.atlas_id ?? fallback}${roi}`;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatRuntime(seconds: number | null): string {
@@ -496,12 +502,15 @@ function ConnectivityComparisonPanel({
   const rangeA = connectivityMatrixRange(state.a);
   const rangeB = connectivityMatrixRange(state.b);
 
-  const diffMatrix: ConnectivityMatrixData = {
-    labels: state.a.labels,
-    values: state.a.values.map((row, y) =>
-      row.map((value, x) => value - (state.b!.values[y]?.[x] ?? 0)),
-    ),
-  };
+  const canDiff = compat?.compatible !== false;
+  const diffMatrix: ConnectivityMatrixData | null = canDiff
+    ? {
+        labels: state.a.labels,
+        values: state.a.values.map((row, y) =>
+          row.map((value, x) => value - (state.b!.values[y]?.[x] ?? 0)),
+        ),
+      }
+    : null;
 
   const MATRIX_VIEW_MODES: Array<{ mode: MatrixViewMode; label: string }> = [
     { mode: "sidebyside", label: "Side by side" },
@@ -513,7 +522,7 @@ function ConnectivityComparisonPanel({
     <div className="space-y-4">
       {/* Header: mode badge + view switcher */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SectionHeading>Connectivity matrix comparison</SectionHeading>
           {compat && (
             <span
@@ -537,11 +546,14 @@ function ConnectivityComparisonPanel({
           {MATRIX_VIEW_MODES.map(({ mode, label }) => (
             <button
               key={mode}
+              disabled={!canDiff && mode === "difference"}
               onClick={() => onMatrixViewModeChange(mode)}
               className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
                 matrixViewMode === mode
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-400 hover:text-gray-200"
+                  : !canDiff && mode === "difference"
+                    ? "text-gray-600 cursor-not-allowed"
+                    : "text-gray-400 hover:text-gray-200"
               }`}
             >
               {label}
@@ -559,6 +571,24 @@ function ConnectivityComparisonPanel({
         </div>
       )}
 
+      {compat && !compat.compatible && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-2 text-xs text-red-300">
+          Matrix difference is disabled because these runs are not directly comparable:
+          {" "}{compat.reason}. Atlas metadata is still shown side by side below.
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-200">
+          <span className="text-gray-400">{labelA}</span>
+          <div className="mt-1 font-mono text-blue-100">{formatAtlasBadge(state.metaA, "Atlas not recorded")}</div>
+        </div>
+        <div className="rounded border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs text-violet-200">
+          <span className="text-gray-400">{labelB}</span>
+          <div className="mt-1 font-mono text-violet-100">{formatAtlasBadge(state.metaB, "Atlas not recorded")}</div>
+        </div>
+      </div>
+
       {/* Heatmaps */}
       {matrixViewMode === "sidebyside" && (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -573,7 +603,7 @@ function ConnectivityComparisonPanel({
         </div>
       )}
 
-      {matrixViewMode === "difference" && (
+      {matrixViewMode === "difference" && diffMatrix && (
         <div className="rounded-lg border border-white/10 bg-surface-raised p-3">
           <p className="mb-1 text-xs font-medium text-gray-300">
             Difference heatmap — {labelA} minus {labelB}
@@ -593,8 +623,8 @@ function ConnectivityComparisonPanel({
             { label: "Atlas", value: state.metaA?.atlas_id ?? "—", title: state.metaA?.atlas },
             { label: "A range", value: `${rangeA.min.toFixed(3)} → ${rangeA.max.toFixed(3)}` },
             { label: "B range", value: `${rangeB.min.toFixed(3)} → ${rangeB.max.toFixed(3)}` },
-            { label: "Frobenius diff", value: state.frobenius?.toFixed(4) ?? "—", title: "||A - B||_F (entry-wise Euclidean distance)" },
-            { label: "Max |Δ|", value: state.largestAbsDiff?.toFixed(4) ?? "—", title: "Largest single-entry absolute difference" },
+            { label: "Frobenius diff", value: canDiff ? state.frobenius?.toFixed(4) ?? "—" : "not comparable", title: "||A - B||_F (entry-wise Euclidean distance)" },
+            { label: "Max |Δ|", value: canDiff ? state.largestAbsDiff?.toFixed(4) ?? "—" : "not comparable", title: "Largest single-entry absolute difference" },
           ].map(({ label, value, title }) => (
             <div key={label} title={title} className="rounded border border-white/10 bg-white/5 px-3 py-2">
               <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
@@ -651,22 +681,24 @@ function ConnectivityComparisonPanel({
           </div>
 
           {/* Difference stats */}
-          <div>
-            <p className="text-xs text-gray-400 mb-2">Difference statistics (A − B)</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Frobenius norm", value: state.frobenius?.toFixed(4) ?? "—", color: "text-gray-200", title: "||A - B||_F" },
-                { label: "Max |Δ|", value: state.largestAbsDiff?.toFixed(4) ?? "—", color: "text-amber-300", title: "Largest single-entry absolute difference" },
-                { label: "Min Δ", value: state.minDiff?.toFixed(4) ?? "—", color: "text-blue-300" },
-                { label: "Max Δ", value: state.maxDiff?.toFixed(4) ?? "—", color: "text-violet-300" },
-              ].map(({ label, value, color, title }) => (
-                <div key={label} title={title} className="rounded border border-white/10 bg-white/5 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-                  <div className={`font-mono text-sm font-semibold ${color}`}>{value}</div>
-                </div>
-              ))}
+          {canDiff && (
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Difference statistics (A − B)</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Frobenius norm", value: state.frobenius?.toFixed(4) ?? "—", color: "text-gray-200", title: "||A - B||_F" },
+                  { label: "Max |Δ|", value: state.largestAbsDiff?.toFixed(4) ?? "—", color: "text-amber-300", title: "Largest single-entry absolute difference" },
+                  { label: "Min Δ", value: state.minDiff?.toFixed(4) ?? "—", color: "text-blue-300" },
+                  { label: "Max Δ", value: state.maxDiff?.toFixed(4) ?? "—", color: "text-violet-300" },
+                ].map(({ label, value, color, title }) => (
+                  <div key={label} title={title} className="rounded border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+                    <div className={`font-mono text-sm font-semibold ${color}`}>{value}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -804,17 +836,17 @@ function RunSelector({
   label,
   value,
   options,
-  ref: refRun,
+  referenceRun,
   onChange,
 }: {
   label: string;
   value: number | null;
   options: RunOption[];
-  ref?: RunSummary | null;
+  referenceRun?: RunSummary | null;
   onChange: (id: number | null) => void;
 }) {
-  const grouped = refRun
-    ? sortByEligibility(refRun, options.map((o) => ({ run: o.run, producedTypes: o.producedTypes })))
+  const grouped = referenceRun
+    ? sortByEligibility(referenceRun, options.map((o) => ({ run: o.run, producedTypes: o.producedTypes })))
     : null;
 
   const verifiedGroup = grouped?.filter((o) => o.eligibility.tier === "verified") ?? [];
@@ -1053,15 +1085,18 @@ export default function ComparisonStudio() {
       .then(([textA, textB, metaA, metaB]) => {
         const a = parseConnectivityMatrixCsv(textA);
         const b = parseConnectivityMatrixCsv(textB);
-        if (
-          a.values.length !== b.values.length ||
-          (a.values[0]?.length ?? 0) !== (b.values[0]?.length ?? 0)
-        ) {
-          throw new Error("Connectivity matrices have different dimensions.");
-        }
-        const diffStats = connectivityMatrixDifference(a, b);
+        const sameDimensions =
+          a.values.length === b.values.length &&
+          (a.values[0]?.length ?? 0) === (b.values[0]?.length ?? 0);
         const compatibility =
           metaA && metaB ? checkMatrixCompatibility(metaA, metaB) : undefined;
+        const canDiff = compatibility?.compatible !== false;
+        if (!sameDimensions && canDiff) {
+          throw new Error("Connectivity matrices have different dimensions.");
+        }
+        const diffStats = sameDimensions && canDiff
+          ? connectivityMatrixDifference(a, b)
+          : {};
         setConnectivityState({
           status: "done",
           a,
@@ -1281,14 +1316,14 @@ export default function ComparisonStudio() {
             label="Run A"
             value={runAId}
             options={aOptions.length > 0 ? aOptions : runOptions}
-            ref={runBSummary}
+            referenceRun={runBSummary}
             onChange={setRunA}
           />
           <RunSelector
             label="Run B"
             value={runBId}
             options={bOptions.length > 0 ? bOptions : runOptions.filter((o) => o.run.id !== runAId)}
-            ref={runASummary}
+            referenceRun={runASummary}
             onChange={setRunB}
           />
         </div>

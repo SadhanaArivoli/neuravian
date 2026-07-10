@@ -13,6 +13,7 @@
 import type { ComputeProfile, PipelineCategory, PipelineProduceSlot } from "../api/client";
 
 export const WORKFLOW_SCHEMA_VERSION = "neuroforge-workflow-v1";
+const DEFAULT_FUNCTIONAL_CONNECTIVITY_ATLAS = "schaefer100_7";
 
 // ── Serializable types ────────────────────────────────────────────────────────
 
@@ -151,8 +152,26 @@ export function deserializeWorkflowState(raw: Record<string, unknown>): Workflow
     console.warn("deserializeWorkflowState: invalid state", result.errors);
     return null;
   }
-  // Currently only one schema version; future: add migration shims here
-  return raw as unknown as WorkflowState;
+  const state = raw as unknown as WorkflowState;
+  return {
+    ...state,
+    nodes: state.nodes.map((node) => {
+      if (
+        node.pipelineId !== "functional-connectivity" ||
+        node.params["atlas-name"] !== undefined ||
+        node.params.atlas !== undefined
+      ) {
+        return node;
+      }
+      return {
+        ...node,
+        params: {
+          ...node.params,
+          "atlas-name": DEFAULT_FUNCTIONAL_CONNECTIVITY_ATLAS,
+        },
+      };
+    }),
+  };
 }
 
 // ── Import / Export ───────────────────────────────────────────────────────────

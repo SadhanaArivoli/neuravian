@@ -20,6 +20,16 @@ export interface ConnectivityMatrixDifference {
 export interface ConnectivityMetadata {
   atlas: string;
   atlas_id: string;
+  atlas_display_name?: string;
+  atlas_source?: string;
+  atlas_version?: string | null;
+  atlas_fetcher?: string;
+  atlas_type?: string;
+  atlas_space?: string;
+  atlas_resolution?: string;
+  atlas_citation?: string;
+  atlas_network_count?: number | null;
+  roi_count?: number;
   correlation_method: string;
   n_rois: number;
   n_volumes: number;
@@ -130,4 +140,3 @@ export function connectivityMatrixDifference(
     largestAbsDiff: Math.max(Math.abs(finalMin), Math.abs(finalMax)),
   };
 }
-

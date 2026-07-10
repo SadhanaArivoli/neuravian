@@ -291,7 +291,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     id: "functional-connectivity-analysis",
     name: "Functional Connectivity Analysis",
     description:
-      "Import precomputed fMRIPrep derivatives, then compute a Schaefer atlas Pearson connectivity matrix.",
+      "Import precomputed fMRIPrep derivatives, then compute an atlas-based Pearson connectivity matrix.",
     categoryKey: "connectivity",
     estimatedRuntime: "minutes",
     requiredSourceKind: "dataset",

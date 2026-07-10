@@ -208,7 +208,7 @@ const PIPELINES = [
     name: "Functional Connectivity",
     category: "connectivity",
     profile: "local-ok" as const,
-    blurb: "Computes Schaefer atlas Pearson connectivity matrices from fMRIPrep outputs.",
+    blurb: "Computes atlas-based Pearson connectivity matrices from fMRIPrep outputs.",
   },
 ] as const;
 

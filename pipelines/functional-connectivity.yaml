@@ -68,7 +68,7 @@ parameters:
     help: >
       Optional Nilearn atlas cache directory. If unset, Nilearn uses its
       default cache location. First run requires internet access to download
-      the Schaefer atlas unless it is already cached.
+      the selected atlas unless it is already cached.
 
   - name: subject-label
     type: string
@@ -120,7 +120,7 @@ produces:
   - type: timeseries_tsv
     path_hint: "timeseries.tsv"
     label: "Atlas Time Series"
-    description: "Extracted Schaefer ROI time series"
+    description: "Extracted atlas ROI time series"
 
   - type: connectivity_report_html
     path_hint: "connectivity_report.html"
@@ -139,9 +139,9 @@ known_errors:
       Connectivity from that import run's Run Next card. If you used filters,
       clear subject/task/run filters and retry.
 
-  - pattern: "fetch_atlas_schaefer_2018|raw.githubusercontent.com|ConnectionError|NameResolutionError"
+  - pattern: "fetch_atlas_schaefer_2018|fetch_atlas_aal|fetch_atlas_harvard_oxford|raw.githubusercontent.com|osf.io|nitrc.org|ConnectionError|NameResolutionError"
     explanation: >
-      Nilearn could not download or read the Schaefer 2018 atlas files.
+      Nilearn could not download or read the selected atlas files.
     fix_hint: >
       Connect the backend to the internet for the first run, or pre-populate
       the Nilearn atlas cache and set atlas-data-dir to that cache path.

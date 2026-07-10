@@ -12,6 +12,7 @@ import {
   type CompatiblePipeline,
   type ComputeProfile,
   type DatasetSummary,
+  type Pipeline,
   type PipelineCategory,
   type PipelineParameter,
   type PipelineProduceSlot,
@@ -140,6 +141,26 @@ function buildDefaults(params: PipelineParameter[]): Record<string, unknown> {
     }
   }
   return out;
+}
+
+function formatParameterLabel(name: string): string {
+  return name
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function editableNodeParameters(
+  params: PipelineParameter[],
+  node: WorkflowNode,
+): PipelineParameter[] {
+  return params.filter((param) => {
+    if (param.advanced) return false;
+    if (param.name === "output-dir") return false;
+    if (node.edge.acceptParam && param.name === node.edge.acceptParam) return false;
+    return true;
+  });
 }
 
 function artifactTypesFromProduces(produces: PipelineProduceSlot[] | undefined): string[] {
@@ -803,6 +824,7 @@ export default function WorkflowBuilder() {
   // completed runs so run-sourced template filters are manifest-driven, not
   // hardcoded to specific pipeline IDs.
   const [pipelineProducesCache, setPipelineProducesCache] = useState<Record<string, string[]>>({});
+  const [pipelineManifestCache, setPipelineManifestCache] = useState<Record<string, Pipeline>>({});
 
   useEffect(() => {
     const uniqueIds = [...new Set(completedRuns.map((r) => r.pipeline_manifest_id))];
@@ -840,8 +862,25 @@ export default function WorkflowBuilder() {
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedPipelineManifest = selectedNode ? pipelineManifestCache[selectedNode.pipelineId] : null;
+  const selectedEditableParams =
+    selectedNode && selectedPipelineManifest
+      ? editableNodeParameters(selectedPipelineManifest.parameters, selectedNode)
+      : [];
   const readyCount = nodes.filter((node) => node.status === "ready").length;
   const completeCount = nodes.filter((node) => node.status === "success").length;
+
+  useEffect(() => {
+    if (!selectedNode || pipelineManifestCache[selectedNode.pipelineId]) return;
+    fetchPipeline(selectedNode.pipelineId)
+      .then((pipeline) => {
+        setPipelineManifestCache((prev) => ({ ...prev, [pipeline.id]: pipeline }));
+      })
+      .catch(() => {
+        // The node can still run with stored params; the inspector just won't
+        // show editable manifest parameters until the manifest loads.
+      });
+  }, [pipelineManifestCache, selectedNode]);
 
   function resetWorkflow(nextSource: Partial<WorkflowSource>) {
     setSource((prev) => ({ ...prev, ...nextSource }));
@@ -1483,6 +1522,85 @@ export default function WorkflowBuilder() {
                     <p className="mt-2 text-xs leading-5 text-gray-400">
                       Dataset-slot steps use the registered upstream dataset first.
                     </p>
+                  )}
+
+                  {selectedEditableParams.length > 0 && (
+                    <div className="mt-5 space-y-4 border-t border-white/5 pt-4">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+                          Parameters
+                        </h4>
+                        <p className="mt-1 text-xs leading-5 text-gray-500">
+                          Manifest-declared options for this workflow node.
+                        </p>
+                      </div>
+                      {selectedEditableParams.map((param) => {
+                        const value = selectedNode.params[param.name];
+                        return (
+                          <label key={param.name} className="block">
+                            <span className="text-xs font-medium text-gray-300">
+                              {formatParameterLabel(param.name)}
+                            </span>
+                            {param.type === "select" && Array.isArray(param.options) ? (
+                              <select
+                                value={String(value ?? param.default ?? "")}
+                                onChange={(e) =>
+                                  updateNode(selectedNode.id, {
+                                    params: {
+                                      ...selectedNode.params,
+                                      [param.name]: e.target.value,
+                                    },
+                                  })
+                                }
+                                className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
+                              >
+                                {param.options.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : param.type === "boolean" ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(value)}
+                                onChange={(e) =>
+                                  updateNode(selectedNode.id, {
+                                    params: {
+                                      ...selectedNode.params,
+                                      [param.name]: e.target.checked,
+                                    },
+                                  })
+                                }
+                                className="mt-2 h-4 w-4 rounded border-white/20 bg-surface text-accent focus:ring-accent/50"
+                              />
+                            ) : (
+                              <input
+                                type={param.type === "integer" || param.type === "float" ? "number" : "text"}
+                                value={String(value ?? "")}
+                                onChange={(e) =>
+                                  updateNode(selectedNode.id, {
+                                    params: {
+                                      ...selectedNode.params,
+                                      [param.name]:
+                                        param.type === "integer" || param.type === "float"
+                                          ? Number(e.target.value)
+                                          : e.target.value,
+                                    },
+                                  })
+                                }
+                                className="mt-2 w-full rounded-md border border-white/10 bg-surface px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-accent/50"
+                              />
+                            )}
+                            {param.help && (
+                              <span className="mt-1 block text-xs leading-5 text-gray-500">
+                                {param.help}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               ) : (
