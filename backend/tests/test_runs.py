@@ -27,6 +27,7 @@ from app.core.database import Base, get_db
 from app.core.config import settings
 from app.execution.docker_executor import DockerExecutor, translate_errors, to_host_path
 from app.execution.executor import RunContext
+from app.execution.native_executor import NativeExecutor
 from app.main import app
 from app.services.pipeline import get_registry
 from app.services.run import seed_pipeline_registry
@@ -287,6 +288,47 @@ def test_build_command_skips_internal_params(tmp_path):
     assert "--no-sub" in cmd
     assert "--upstream-mriqc-dir" not in cmd
     assert str(tmp_path / "mriqc") not in cmd
+
+
+def test_functional_connectivity_native_command_uses_prefilled_derivatives(tmp_path):
+    manifest = get_registry()["functional-connectivity"]
+    ctx = RunContext(
+        run_id=1,
+        manifest=manifest,
+        params={
+            "fmriprep-dir": str(tmp_path / "fmriprep"),
+            "output-dir": str(tmp_path / "out"),
+            "atlas-name": "schaefer_100_7",
+        },
+        dataset_path="/unused",
+        output_dir=str(tmp_path / "out"),
+    )
+    cmd = NativeExecutor().build_command(ctx)
+    assert cmd[0] == "neuroforge-functional-connectivity"
+    assert "--fmriprep-dir" in cmd
+    assert str(tmp_path / "fmriprep") in cmd
+    assert "--output-dir" in cmd
+    assert str(tmp_path / "out") in cmd
+
+
+def test_import_fmriprep_derivatives_native_command_uses_selected_dir(tmp_path):
+    manifest = get_registry()["import-fmriprep-derivatives"]
+    ctx = RunContext(
+        run_id=1,
+        manifest=manifest,
+        params={
+            "fmriprep-dir": str(tmp_path / "fmriprep"),
+            "output-dir": str(tmp_path / "out"),
+        },
+        dataset_path="/unused",
+        output_dir=str(tmp_path / "out"),
+    )
+    cmd = NativeExecutor().build_command(ctx)
+    assert cmd[0] == "neuroforge-import-fmriprep-derivatives"
+    assert "--fmriprep-dir" in cmd
+    assert str(tmp_path / "fmriprep") in cmd
+    assert "--output-dir" in cmd
+    assert str(tmp_path / "out") in cmd
 
 
 # ------------------------------------------------------------------ #

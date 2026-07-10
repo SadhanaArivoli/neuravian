@@ -193,7 +193,8 @@ export function filterRunsByArtifact<T extends { pipeline_manifest_id: string }>
 // Artifact graph for reference:
 //   bids_dataset       → bids-validator → bids_dataset_validated
 //   bids_dataset_validated → mriqc      → mriqc_report → mriqc-group → mriqc_group_report
-//   bids_dataset_validated → fmriprep   → fmriprep_derivatives
+//   bids_dataset       → import-fmriprep-derivatives → fmriprep_derivatives
+//   fmriprep_derivatives → functional-connectivity
 //   nifti_raw          → brainchop      → nifti_skull_stripped
 //   nifti_skull_stripped → fastsurfer   → freesurfer_dir
 //   nifti_raw          → pydeface       → nifti_defaced
@@ -284,7 +285,46 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 3. NIfTI De-identification ─────────────────────────────────────────────
+  // ── 3. Functional Connectivity Analysis ───────────────────────────────────
+  // import-fmriprep-derivatives → functional-connectivity
+  {
+    id: "functional-connectivity-analysis",
+    name: "Functional Connectivity Analysis",
+    description:
+      "Import precomputed fMRIPrep derivatives, then compute a Schaefer atlas Pearson connectivity matrix.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "minutes",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "bids_dataset",
+    requiredSourceLabel: "Registered source BIDS dataset",
+    worstComputeProfile: "local-ok",
+    computeWarning:
+      "Requires precomputed fMRIPrep derivatives. NeuroForge does not run fMRIPrep locally for this template.",
+    steps: [
+      {
+        pipelineId: "import-fmriprep-derivatives",
+        inputArtifactType: "bids_dataset",
+        edge: {
+          artifactType: "bids_dataset",
+          acceptParam: null,
+          acceptDatasetSlot: true,
+          acceptLabel: "Associated BIDS Dataset",
+        },
+      },
+      {
+        pipelineId: "functional-connectivity",
+        inputArtifactType: "fmriprep_derivatives",
+        edge: {
+          artifactType: "fmriprep_derivatives",
+          acceptParam: "fmriprep-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "fMRIPrep Derivatives",
+        },
+      },
+    ],
+  },
+
+  // ── 4. NIfTI De-identification ─────────────────────────────────────────────
   // pydeface (nifti_raw → nifti_defaced)
   {
     id: "nifti-deidentification",
@@ -311,7 +351,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 4. Skull Strip + Surface Reconstruction ────────────────────────────────
+  // ── 5. Skull Strip + Surface Reconstruction ────────────────────────────────
   // brainchop (nifti_raw → nifti_skull_stripped) → fastsurfer (nifti_skull_stripped)
   {
     id: "skull-strip-surface",
@@ -349,7 +389,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 5. SynthStrip + Surface Reconstruction ────────────────────────────────
+  // ── 6. SynthStrip + Surface Reconstruction ────────────────────────────────
   // synthstrip (nifti_raw → nifti_skull_stripped) → fastsurfer (nifti_skull_stripped)
   // FreeSurfer-team chain: SynthStrip skull-strips, FastSurfer reconstructs surfaces.
   // Both tools originate from the Fischl lab; the stripped T1 feeds FastSurfer's --t1.
@@ -389,7 +429,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 6. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 7. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

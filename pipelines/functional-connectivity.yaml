@@ -1,0 +1,150 @@
+id: functional-connectivity
+display_name: Functional Connectivity
+description: >
+  Extracts Schaefer atlas regional time series from validated fMRIPrep BOLD
+  derivatives and computes a Pearson correlation connectivity matrix with a
+  heatmap and HTML report.
+homepage: https://nilearn.github.io/stable/modules/generated/nilearn.connectome.ConnectivityMeasure.html
+category: connectivity
+input_type: bids_dataset
+
+# Native Python/Nilearn execution inside the backend environment. No Docker
+# image and no Rosetta emulation are needed; on Apple Silicon this runs as
+# native arm64 Python when the backend is local.
+execution:
+  type: native
+  command: neuroforge-functional-connectivity
+
+dataset_positional: false
+compute_profile: local-ok
+
+inputs:
+  - fmriprep_derivatives
+
+outputs:
+  - connectivity_matrix_csv
+  - connectivity_matrix_png
+  - connectivity_matrix_npy
+  - timeseries_tsv
+  - connectivity_report_html
+
+parameters:
+  - name: fmriprep-dir
+    type: directory_path
+    required: true
+    help: >
+      fMRIPrep derivatives directory containing sub-*/func/*desc-preproc_bold.nii.gz
+      files and, when available, matching desc-confounds_timeseries.tsv files.
+      This is normally filled automatically from an imported precomputed
+      fMRIPrep derivatives run.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: >
+      Output directory for the connectivity report bundle. Leave unchanged
+      unless you are debugging the native command.
+
+  - name: atlas-name
+    type: select
+    required: true
+    default: schaefer_100_7
+    options: [schaefer_100_7]
+    advanced: true
+    help: >
+      V1 uses the Schaefer 2018 atlas with 100 cortical parcels and 7 Yeo
+      networks. Additional atlases will be configurable in a later version.
+
+  - name: atlas-data-dir
+    type: directory_path
+    required: false
+    advanced: true
+    help: >
+      Optional Nilearn atlas cache directory. If unset, Nilearn uses its
+      default cache location. First run requires internet access to download
+      the Schaefer atlas unless it is already cached.
+
+  - name: subject-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional subject filter without the "sub-" prefix, e.g. "01".
+      Leave blank to use the first available preprocessed BOLD run.
+
+  - name: task-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional task filter without the "task-" prefix, e.g. "rest".
+
+  - name: run-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional run filter without the "run-" prefix, e.g. "01".
+
+accepts:
+  - type: fmriprep_derivatives
+    param: fmriprep-dir
+    label: "fMRIPrep Derivatives"
+    description: >
+      Preprocessed BOLD derivatives from fMRIPrep, preferably in MNI space
+      with matching confounds.
+    required: true
+
+produces:
+  - type: connectivity_matrix_csv
+    path_hint: "connectivity_matrix.csv"
+    label: "Connectivity Matrix CSV"
+    description: "ROI-by-ROI Pearson correlation matrix"
+
+  - type: connectivity_matrix_png
+    path_hint: "connectivity_heatmap.png"
+    label: "Connectivity Heatmap"
+    description: "PNG heatmap of the ROI correlation matrix"
+
+  - type: connectivity_matrix_npy
+    path_hint: "connectivity_matrix.npy"
+    label: "Connectivity Matrix NPY"
+    description: "NumPy binary matrix for downstream analysis"
+
+  - type: timeseries_tsv
+    path_hint: "timeseries.tsv"
+    label: "Atlas Time Series"
+    description: "Extracted Schaefer ROI time series"
+
+  - type: connectivity_report_html
+    path_hint: "connectivity_report.html"
+    label: "Connectivity Report"
+    description: "HTML report with atlas, method, matrix statistics, and outputs"
+
+max_runtime_hours: 1
+
+known_errors:
+  - pattern: "No fMRIPrep preprocessed BOLD files were found|No preprocessed BOLD file matched"
+    explanation: >
+      Functional Connectivity could not find a fMRIPrep preprocessed BOLD file
+      in the selected derivatives directory.
+    fix_hint: >
+      Import precomputed fMRIPrep derivatives first, then launch Functional
+      Connectivity from that import run's Run Next card. If you used filters,
+      clear subject/task/run filters and retry.
+
+  - pattern: "fetch_atlas_schaefer_2018|raw.githubusercontent.com|ConnectionError|NameResolutionError"
+    explanation: >
+      Nilearn could not download or read the Schaefer 2018 atlas files.
+    fix_hint: >
+      Connect the backend to the internet for the first run, or pre-populate
+      the Nilearn atlas cache and set atlas-data-dir to that cache path.
+
+  - pattern: "Selected BOLD file is not 4D|Atlas extraction produced no ROI time series"
+    explanation: >
+      The selected file is not a valid 4D BOLD time series for atlas extraction.
+    fix_hint: >
+      Confirm the fMRIPrep directory contains desc-preproc_bold.nii.gz outputs,
+      not only bold reference images, masks, or validation reports.

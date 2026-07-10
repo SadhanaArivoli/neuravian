@@ -222,6 +222,39 @@ def test_results_niftis_empty_for_mriqc_style_output(api_client, run_without_out
     assert body["niftis"] == []
 
 
+def test_results_includes_connectivity_outputs(api_client, db_session, tmp_path):
+    dataset = Dataset(path="/data/ds001", validation_status="valid")
+    db_session.add(dataset)
+    db_session.flush()
+    pipeline = db_session.query(Pipeline).filter_by(name="functional-connectivity").first()
+    output_dir = tmp_path / "derivatives" / "functional-connectivity" / "1"
+    output_dir.mkdir(parents=True)
+    (output_dir / "connectivity_report.html").write_text("<html>report</html>")
+    (output_dir / "connectivity_matrix.csv").write_text(",A,B\nA,1,0.1\nB,0.1,1\n")
+    (output_dir / "connectivity_heatmap.png").write_bytes(b"PNG")
+    (output_dir / "connectivity_matrix.npy").write_bytes(b"NUMPY")
+    (output_dir / "timeseries.tsv").write_text("A\tB\n0.1\t0.2\n")
+    (output_dir / "connectivity_metadata.json").write_text(json.dumps({"n_rois": 2}))
+    run = Run(
+        dataset_id=dataset.id,
+        pipeline_id=pipeline.id,
+        pipeline_version="0.1.0",
+        status="success",
+        output_dir=str(output_dir),
+    )
+    db_session.add(run)
+    db_session.commit()
+
+    resp = api_client.get(f"/api/runs/{run.id}/results")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["reports"][0]["path"] == "connectivity_report.html"
+    assert body["connectivity_matrices"][0]["path"] == "connectivity_matrix.csv"
+    assert body["images"][0]["path"] == "connectivity_heatmap.png"
+    assert body["timeseries"][0]["path"] == "timeseries.tsv"
+    assert body["connectivity_metadata"][0]["path"] == "connectivity_metadata.json"
+
+
 def test_serve_nifti_derivative(api_client, run_with_output):
     """Serving a NIfTI derivative returns 200 with binary content."""
     run, _ = run_with_output

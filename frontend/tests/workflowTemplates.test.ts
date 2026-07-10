@@ -37,6 +37,22 @@ const MANIFESTS: Record<string, ManifestSlim> = {
     ],
     produces: [{ type: "fmriprep_derivatives" }],
   },
+  "import-fmriprep-derivatives": {
+    id: "import-fmriprep-derivatives",
+    accepts: [{ type: "bids_dataset", dataset_slot: true }],
+    produces: [{ type: "fmriprep_derivatives" }],
+  },
+  "functional-connectivity": {
+    id: "functional-connectivity",
+    accepts: [{ type: "fmriprep_derivatives", param: "fmriprep-dir" }],
+    produces: [
+      { type: "connectivity_matrix_csv" },
+      { type: "connectivity_matrix_png" },
+      { type: "connectivity_matrix_npy" },
+      { type: "timeseries_tsv" },
+      { type: "connectivity_report_html" },
+    ],
+  },
   fastsurfer: {
     id: "fastsurfer",
     accepts: [
@@ -238,6 +254,8 @@ const PRODUCES_CACHE: Record<string, string[]> = {
   "synthstrip":     ["nifti_skull_stripped", "brain_mask"],
   "mriqc":          ["mriqc_report"],
   "mriqc-group":    ["mriqc_group_report"],
+  "import-fmriprep-derivatives": ["fmriprep_derivatives"],
+  "functional-connectivity": ["connectivity_matrix_csv", "connectivity_matrix_png"],
   "bids-validator": ["bids_dataset_validated"],
   // Hypothetical future pipeline — not dcm2niix, but also produces nifti_raw
   "dicom-custom":   ["nifti_raw", "nifti_defaced"],
@@ -249,6 +267,7 @@ const RUNS = [
   { id: 3, pipeline_manifest_id: "bids-validator" },
   { id: 4, pipeline_manifest_id: "brainchop" },
   { id: 5, pipeline_manifest_id: "dicom-custom" },
+  { id: 6, pipeline_manifest_id: "import-fmriprep-derivatives" },
 ];
 
 describe("filterRunsByArtifact", () => {

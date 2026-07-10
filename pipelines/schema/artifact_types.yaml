@@ -53,3 +53,28 @@ artifact_types:
     label: "fMRIPrep Derivatives"
     description: "fMRIPrep output derivatives directory with preprocessed NIfTI and confounds"
     extensions: []
+
+  connectivity_matrix_csv:
+    label: "Connectivity Matrix CSV"
+    description: "ROI-by-ROI Pearson correlation matrix as a CSV file"
+    extensions: [".csv"]
+
+  connectivity_matrix_png:
+    label: "Connectivity Heatmap"
+    description: "PNG heatmap visualization of the functional connectivity matrix"
+    extensions: [".png"]
+
+  connectivity_matrix_npy:
+    label: "Connectivity Matrix NPY"
+    description: "NumPy binary array containing the ROI-by-ROI connectivity matrix"
+    extensions: [".npy"]
+
+  timeseries_tsv:
+    label: "Atlas Time Series"
+    description: "Extracted ROI time series used to compute the connectivity matrix"
+    extensions: [".tsv"]
+
+  connectivity_report_html:
+    label: "Connectivity Report"
+    description: "HTML report summarizing atlas, method, matrix statistics, and outputs"
+    extensions: [".html"]

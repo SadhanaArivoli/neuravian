@@ -147,6 +147,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   segmentation: "Segmentation",
   preprocessing: "Preprocessing",
   deidentification: "De-identification",
+  connectivity: "Connectivity",
 };
 
 // ── Static pipeline data ──────────────────────────────────────────────────────
@@ -201,6 +202,13 @@ const PIPELINES = [
     category: "deidentification",
     profile: "local-unsafe" as const,
     blurb: "Removes facial features from T1w images to protect participant identity.",
+  },
+  {
+    id: "functional-connectivity",
+    name: "Functional Connectivity",
+    category: "connectivity",
+    profile: "local-ok" as const,
+    blurb: "Computes Schaefer atlas Pearson connectivity matrices from fMRIPrep outputs.",
   },
 ] as const;
 

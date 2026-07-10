@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { fetchRunTextFile } from "../../api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchRunFile, fetchRunTextFile } from "../../api/client";
 import { useRunFile, useRunResults, useRuns } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
 import { findVerifiedSibling } from "../../lib/comparisonEligibility";
+import { parseConnectivityMatrixCsv, type ConnectivityMatrixData } from "../../lib/connectivityMatrix";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -241,6 +242,191 @@ function MriqcGroupSummary({ runId, tablePath }: { runId: number; tablePath: str
   );
 }
 
+interface ConnectivityMetadata {
+  atlas?: string;
+  atlas_id?: string;
+  correlation_method?: string;
+  nilearn_version?: string;
+  n_rois?: number;
+  n_volumes?: number;
+  correlation_min?: number;
+  correlation_max?: number;
+  correlation_mean?: number;
+  roi_labels?: string[];
+}
+
+function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][] }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState<{ row: number; col: number; value: number } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const size = matrix.length;
+    const cell = Math.max(3, Math.floor(520 / Math.max(1, size)));
+    canvas.width = size * cell;
+    canvas.height = size * cell;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const value = Math.max(-1, Math.min(1, matrix[y][x] ?? 0));
+        const t = (value + 1) / 2;
+        const r = Math.round(37 + t * 210);
+        const g = Math.round(99 + (1 - Math.abs(t - 0.5) * 2) * 90);
+        const b = Math.round(235 - t * 190);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+  }, [matrix]);
+
+  function handleMove(event: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor(((event.clientX - rect.left) / rect.width) * matrix.length);
+    const row = Math.floor(((event.clientY - rect.top) / rect.height) * matrix.length);
+    if (row >= 0 && col >= 0 && row < matrix.length && col < matrix.length) {
+      setHover({ row, col, value: matrix[row][col] });
+    }
+  }
+
+  function exportPng() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = "connectivity_matrix_view.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">
+          {hover
+            ? `${labels[hover.row] ?? `ROI ${hover.row + 1}`} × ${labels[hover.col] ?? `ROI ${hover.col + 1}`} = ${hover.value.toFixed(3)}`
+            : "Hover matrix cells to inspect ROI pairs."}
+        </p>
+        <button
+          type="button"
+          onClick={exportPng}
+          className="rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+        >
+          Export PNG
+        </button>
+      </div>
+      <div className="mt-3 max-h-[560px] overflow-auto rounded border border-gray-200 bg-gray-50 p-3">
+        <canvas
+          ref={canvasRef}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHover(null)}
+          className="block max-w-none"
+          style={{ imageRendering: "pixelated" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ConnectivitySummary({
+  runId,
+  matrixPath,
+  metadataPath,
+  imagePath,
+}: {
+  runId: number;
+  matrixPath: string;
+  metadataPath?: string;
+  imagePath?: string;
+}) {
+  const [matrixData, setMatrixData] = useState<ConnectivityMatrixData | null>(null);
+  const [metadata, setMetadata] = useState<ConnectivityMetadata | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    fetchRunTextFile(runId, matrixPath)
+      .then((text) => {
+        if (!cancelled) setMatrixData(parseConnectivityMatrixCsv(text));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load connectivity matrix.");
+      });
+    if (metadataPath) {
+      fetchRunFile<ConnectivityMetadata>(runId, metadataPath)
+        .then((json) => {
+          if (!cancelled) setMetadata(json);
+        })
+        .catch(() => {
+          if (!cancelled) setMetadata(null);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, matrixPath, metadataPath]);
+
+  if (error) {
+    return (
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        Connectivity outputs are available, but the matrix preview could not load: {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Connectivity Matrix</h3>
+          <p className="text-xs text-gray-500">
+            {metadata?.atlas ?? "Atlas-based"} · {metadata?.correlation_method ?? "Pearson correlation"}
+          </p>
+        </div>
+        <a
+          href={`/api/runs/${runId}/files/${matrixPath}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Open CSV
+        </a>
+      </div>
+      {metadata && (
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ["ROIs", metadata.n_rois ?? "—"],
+            ["Volumes", metadata.n_volumes ?? "—"],
+            ["Min r", metadata.correlation_min?.toFixed(3) ?? "—"],
+            ["Max r", metadata.correlation_max?.toFixed(3) ?? "—"],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded bg-gray-50 p-2">
+              <div className="text-xs text-gray-500">{label}</div>
+              <div className="font-mono text-sm font-semibold text-gray-900">{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {matrixData ? (
+        <MatrixCanvas labels={matrixData.labels} matrix={matrixData.values} />
+      ) : imagePath ? (
+        <img
+          src={`/api/runs/${runId}/files/${imagePath}`}
+          alt="Connectivity heatmap"
+          className="max-h-[560px] rounded border border-gray-200 object-contain"
+        />
+      ) : (
+        <div className="rounded border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+          Loading connectivity matrix…
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface RunResultFile {
   name: string;
   path: string;
@@ -348,7 +534,18 @@ export default function RunResults({ runId }: Props) {
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
   const groupTables = results.group_tables ?? [];
-  const hasFiles = results.reports.length > 0 || results.metrics.length > 0 || groupTables.length > 0 || niftis.length > 0;
+  const images = results.images ?? [];
+  const connectivityMatrices = results.connectivity_matrices ?? [];
+  const timeseries = results.timeseries ?? [];
+  const connectivityMetadata = results.connectivity_metadata ?? [];
+  const hasFiles =
+    results.reports.length > 0 ||
+    results.metrics.length > 0 ||
+    groupTables.length > 0 ||
+    images.length > 0 ||
+    connectivityMatrices.length > 0 ||
+    timeseries.length > 0 ||
+    niftis.length > 0;
   // Show Download All when any surfaced file or resolved artifact exists.
   // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
   // even when they aren't classified as report/metric/nifti.
@@ -420,6 +617,15 @@ export default function RunResults({ runId }: Props) {
       {/* MRIQC group TSV summary */}
       {groupTables.length > 0 && (
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
+      )}
+
+      {connectivityMatrices.length > 0 && (
+        <ConnectivitySummary
+          runId={runId}
+          matrixPath={connectivityMatrices[0].path}
+          metadataPath={connectivityMetadata[0]?.path}
+          imagePath={images[0]?.path}
+        />
       )}
 
       {/* Report tabs (multiple subjects / group report) */}
@@ -509,6 +715,28 @@ export default function RunResults({ runId }: Props) {
                   className="font-mono text-xs text-blue-600 hover:underline"
                 >
                   {table.path}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {(connectivityMatrices.length > 0 || timeseries.length > 0 || images.length > 0 || connectivityMetadata.length > 0) && (
+        <details className="mt-3">
+          <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
+            Connectivity files ({connectivityMatrices.length + timeseries.length + images.length + connectivityMetadata.length})
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {[...connectivityMatrices, ...timeseries, ...images, ...connectivityMetadata].map((file) => (
+              <li key={file.path}>
+                <a
+                  href={`/api/runs/${runId}/files/${file.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-blue-600 hover:underline"
+                >
+                  {file.path}
                 </a>
               </li>
             ))}

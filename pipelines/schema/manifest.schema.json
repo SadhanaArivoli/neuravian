@@ -123,7 +123,7 @@
     },
     "category": {
       "type": "string",
-      "enum": ["conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification"],
+      "enum": ["conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity"],
       "description": "Functional category for UI grouping and filtering. Choose the primary purpose of the tool."
     },
     "input_type": {

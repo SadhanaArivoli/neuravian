@@ -18,7 +18,7 @@ import { useSearchParams } from "react-router-dom";
 import type { Niivue } from "@niivue/niivue";
 import { useRuns } from "../hooks/useRuns";
 import { useRunResults } from "../hooks/useRuns";
-import { fetchPipeline } from "../api/client";
+import { fetchPipeline, fetchRunTextFile } from "../api/client";
 import type { RunMetadata, RunResults, RunSummary } from "../api/client";
 import NiivuePanel from "../components/domain/NiivuePanel";
 import type { NiivueLayer } from "../components/domain/NiivuePanel";
@@ -29,6 +29,12 @@ import {
   type DiceStats,
   type NiftiGeometry,
 } from "../lib/comparisonEligibility";
+import {
+  connectivityMatrixDifference,
+  connectivityMatrixRange,
+  parseConnectivityMatrixCsv,
+  type ConnectivityMatrixData,
+} from "../lib/connectivityMatrix";
 import { parseNiftiHeader, DATATYPE_LABELS } from "../lib/niftiHeader";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -44,6 +50,16 @@ interface DiceState {
   status: "idle" | "loading" | "done" | "incompatible" | "error";
   stats?: DiceStats;
   message?: string;
+}
+
+interface ConnectivityCompareState {
+  status: "idle" | "loading" | "done" | "error";
+  message?: string;
+  a?: ConnectivityMatrixData;
+  b?: ConnectivityMatrixData;
+  frobenius?: number;
+  minDiff?: number;
+  maxDiff?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,6 +80,7 @@ const PROFILE_LABEL: Record<string, { label: string; cls: string }> = {
   "local-slow":   { label: "Slow locally",      cls: "bg-amber-100 text-amber-700 border border-amber-200" },
   "local-unsafe": { label: "Cloud recommended", cls: "bg-red-100 text-red-700 border border-red-200" },
 };
+
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -367,6 +384,94 @@ function DicePanel({ diceState }: { diceState: DiceState }) {
   );
 }
 
+function MatrixPreview({ matrix, mode }: { matrix: ConnectivityMatrixData; mode: "matrix" | "diff" }) {
+  const size = matrix.values.length;
+  const cells = matrix.values.slice(0, 40).map((row, y) =>
+    row.slice(0, 40).map((value, x) => {
+      const scaled = mode === "diff" ? Math.max(-1, Math.min(1, value)) : Math.max(-1, Math.min(1, value));
+      const t = (scaled + 1) / 2;
+      const color = `rgb(${Math.round(40 + t * 200)}, ${Math.round(90 + (1 - Math.abs(t - 0.5) * 2) * 80)}, ${Math.round(220 - t * 170)})`;
+      return <div key={`${y}-${x}`} title={`${matrix.labels[y] ?? y + 1} x ${matrix.labels[x] ?? x + 1}: ${value.toFixed(3)}`} style={{ backgroundColor: color }} />;
+    }),
+  );
+  return (
+    <div
+      className="grid h-48 w-48 overflow-hidden rounded border border-white/10"
+      style={{ gridTemplateColumns: `repeat(${Math.min(size, 40)}, minmax(0, 1fr))` }}
+    >
+      {cells}
+    </div>
+  );
+}
+
+function ConnectivityComparisonPanel({
+  state,
+  labelA,
+  labelB,
+}: {
+  state: ConnectivityCompareState;
+  labelA: string;
+  labelB: string;
+}) {
+  if (state.status === "idle") return null;
+  if (state.status === "loading") {
+    return (
+      <div className="rounded-lg border border-white/10 bg-surface-raised px-4 py-3 text-xs text-gray-400">
+        Loading connectivity matrices…
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
+        Connectivity comparison unavailable: {state.message}
+      </div>
+    );
+  }
+  if (!state.a || !state.b) return null;
+
+  const rangeA = connectivityMatrixRange(state.a);
+  const rangeB = connectivityMatrixRange(state.b);
+  const diffValues: ConnectivityMatrixData = {
+    labels: state.a.labels,
+    values: state.a.values.map((row, y) => row.map((value, x) => value - (state.b!.values[y]?.[x] ?? 0))),
+  };
+
+  return (
+    <div>
+      <SectionHeading>Connectivity matrix comparison</SectionHeading>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
+          <p className="mb-2 text-xs font-medium text-gray-300">{labelA}</p>
+          <MatrixPreview matrix={state.a} mode="matrix" />
+        </div>
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
+          <p className="mb-2 text-xs font-medium text-gray-300">{labelB}</p>
+          <MatrixPreview matrix={state.b} mode="matrix" />
+        </div>
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
+          <p className="mb-2 text-xs font-medium text-gray-300">Difference</p>
+          <MatrixPreview matrix={diffValues} mode="diff" />
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          ["A dimensions", `${rangeA.rows} x ${rangeA.cols}`],
+          ["B dimensions", `${rangeB.rows} x ${rangeB.cols}`],
+          ["A range", `${rangeA.min.toFixed(3)} to ${rangeA.max.toFixed(3)}`],
+          ["B range", `${rangeB.min.toFixed(3)} to ${rangeB.max.toFixed(3)}`],
+          ["Frobenius diff", state.frobenius?.toFixed(4) ?? "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded border border-white/10 bg-white/5 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+            <div className="font-mono text-xs font-semibold text-gray-200">{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -569,6 +674,7 @@ export default function ComparisonStudio() {
   // Geometry + Dice state
   const [geomState, setGeomState] = useState<GeomState>({ status: "idle" });
   const [diceState, setDiceState] = useState<DiceState>({ status: "idle" });
+  const [connectivityState, setConnectivityState] = useState<ConnectivityCompareState>({ status: "idle" });
   const workerRef = useRef<Worker | null>(null);
 
   const { data: allRuns, isLoading: runsLoading } = useRuns();
@@ -592,11 +698,11 @@ export default function ComparisonStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRuns]);
 
-  // Build run options: only successful runs with nifti/brain/mask outputs
+  // Build run options: successful volumetric or connectivity outputs
   const runOptions: RunOption[] = (allRuns ?? [])
     .filter((r) => r.status === "success")
     .map((r) => ({ run: r, producedTypes: producesCache[r.pipeline_manifest_id] ?? [] }))
-    .filter((o) => o.producedTypes.some((t) => t.includes("nifti") || t.includes("brain") || t.includes("mask")));
+    .filter((o) => o.producedTypes.some((t) => t.includes("nifti") || t.includes("brain") || t.includes("mask") || t.startsWith("connectivity_")));
 
   const runAOption = runOptions.find((o) => o.run.id === runAId);
   const runBOption = runOptions.find((o) => o.run.id === runBId);
@@ -633,6 +739,7 @@ export default function ComparisonStudio() {
     setSearchParams(p);
     setGeomState({ status: "idle" });
     setDiceState({ status: "idle" });
+    setConnectivityState({ status: "idle" });
   }
 
   function setRunB(id: number | null) {
@@ -641,6 +748,7 @@ export default function ComparisonStudio() {
     setSearchParams(p);
     setGeomState({ status: "idle" });
     setDiceState({ status: "idle" });
+    setConnectivityState({ status: "idle" });
   }
 
   // Auto-suggest: when A is selected and B is empty, pick first verified-or-only compatible B
@@ -683,6 +791,35 @@ export default function ComparisonStudio() {
       })
       .catch((err: unknown) => {
         setGeomState({ status: "error", error: err instanceof Error ? err.message : String(err) });
+      });
+  }, [resultsA, resultsB, runAId, runBId]);
+
+  useEffect(() => {
+    if (!resultsA || !resultsB || !runAId || !runBId) {
+      setConnectivityState({ status: "idle" });
+      return;
+    }
+    const matrixA = resultsA.connectivity_matrices?.[0];
+    const matrixB = resultsB.connectivity_matrices?.[0];
+    if (!matrixA || !matrixB) {
+      setConnectivityState({ status: "idle" });
+      return;
+    }
+    setConnectivityState({ status: "loading" });
+    Promise.all([
+      fetchRunTextFile(runAId, matrixA.path),
+      fetchRunTextFile(runBId, matrixB.path),
+    ])
+      .then(([textA, textB]) => {
+        const a = parseConnectivityMatrixCsv(textA);
+        const b = parseConnectivityMatrixCsv(textB);
+        if (a.values.length !== b.values.length || (a.values[0]?.length ?? 0) !== (b.values[0]?.length ?? 0)) {
+          throw new Error("Connectivity matrices have different dimensions.");
+        }
+        setConnectivityState({ status: "done", a, b, ...connectivityMatrixDifference(a, b) });
+      })
+      .catch((err: unknown) => {
+        setConnectivityState({ status: "error", message: err instanceof Error ? err.message : String(err) });
       });
   }, [resultsA, resultsB, runAId, runBId]);
 
@@ -919,7 +1056,7 @@ export default function ComparisonStudio() {
         {/* No runs with nifti outputs yet */}
         {!runsLoading && runOptions.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-surface-raised px-5 py-4 text-sm text-gray-400 max-w-xl">
-            No completed runs with volumetric outputs found yet. Run BrainChop or SynthStrip on a dcm2niix output first.
+            No completed runs with comparable volumetric or connectivity outputs found yet.
           </div>
         )}
 
@@ -953,6 +1090,13 @@ export default function ComparisonStudio() {
                 )}
               </div>
             </div>
+
+            {/* Viewer panels */}
+            <ConnectivityComparisonPanel
+              state={connectivityState}
+              labelA={labelA}
+              labelB={labelB}
+            />
 
             {/* Viewer panels */}
             {(layersA.length > 0 || layersB.length > 0) && (

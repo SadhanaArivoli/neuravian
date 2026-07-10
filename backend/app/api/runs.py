@@ -195,14 +195,18 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
 
     if not run.output_dir:
         return {
-            "reports": [], "metrics": [], "group_tables": [], "niftis": [], "artifacts": [],
+            "reports": [], "metrics": [], "group_tables": [], "images": [],
+            "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
+            "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
     output_root = Path(run.output_dir)
     if not output_root.exists():
         return {
-            "reports": [], "metrics": [], "group_tables": [], "niftis": [], "artifacts": [],
+            "reports": [], "metrics": [], "group_tables": [], "images": [],
+            "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
+            "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -217,6 +221,22 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     group_tables = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("group_*.tsv"))
+    ]
+    images = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*.png"))
+    ]
+    connectivity_matrices = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*connectivity_matrix*.csv"))
+    ]
+    timeseries = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*timeseries*.tsv"))
+    ]
+    connectivity_metadata = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*connectivity_metadata*.json"))
     ]
     # Volumetric files: NIfTI (.nii/.nii.gz) and FreeSurfer MGZ (.mgz).
     # MRIQC produces none; fMRIPrep and FastSurfer produce many.
@@ -262,6 +282,10 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "reports": reports,
         "metrics": metrics,
         "group_tables": group_tables,
+        "images": images,
+        "connectivity_matrices": connectivity_matrices,
+        "timeseries": timeseries,
+        "connectivity_metadata": connectivity_metadata,
         "niftis": niftis,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),

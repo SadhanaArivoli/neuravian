@@ -1650,13 +1650,16 @@ def test_dcm2niix_manifest_loads_and_validates():
 
 
 def test_compute_profile_in_all_manifests():
-    """All seven manifests must declare a compute_profile value."""
+    """Core manifests must declare a compute_profile value."""
     schema = _load_schema()
     expected = {
         "dcm2niix": "local-ok",
         "mriqc": "local-ok",
+        "mriqc-group": "local-ok",
         "fastsurfer": "local-slow",
         "fmriprep": "local-unsafe",
+        "import-fmriprep-derivatives": "local-ok",
+        "functional-connectivity": "local-ok",
         "bids-validator": "local-ok",
         "pydeface": "local-unsafe",
         "brainchop": "local-ok",
@@ -1670,18 +1673,21 @@ def test_compute_profile_in_all_manifests():
 
 
 def test_category_and_input_type_in_all_manifests():
-    """All seven manifests must declare category and input_type."""
+    """Core manifests must declare category and input_type."""
     schema = _load_schema()
     expected = {
         "dcm2niix":      ("conversion",       "dicom"),
         "mriqc":         ("quality_control",   "bids_dataset"),
+        "mriqc-group":   ("quality_control",   "bids_dataset"),
         "fastsurfer":    ("segmentation",      "nifti"),
         "fmriprep":      ("preprocessing",     "bids_dataset"),
+        "import-fmriprep-derivatives": ("preprocessing", "bids_dataset"),
+        "functional-connectivity": ("connectivity", "bids_dataset"),
         "bids-validator":("validation",        "bids_dataset"),
         "pydeface":      ("deidentification",  "nifti"),
         "brainchop":     ("segmentation",      "nifti"),
     }
-    valid_categories = {"conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification"}
+    valid_categories = {"conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity"}
     valid_input_types = {"dicom", "nifti", "bids_dataset"}
     for fname, (exp_cat, exp_in) in expected.items():
         manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
@@ -1786,10 +1792,70 @@ def test_brainchop_no_container_block():
     )
 
 
+def test_functional_connectivity_manifest_loads_and_validates():
+    """Functional Connectivity must be a native Nilearn pipeline."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "functional-connectivity.yaml", schema)
+    assert manifest["id"] == "functional-connectivity"
+    assert manifest["category"] == "connectivity"
+    assert manifest["compute_profile"] == "local-ok"
+    assert manifest["execution"]["type"] == "native"
+    assert manifest["execution"]["command"] == "neuroforge-functional-connectivity"
+    assert manifest["accepts"][0]["type"] == "fmriprep_derivatives"
+    produced = {slot["type"] for slot in manifest["produces"]}
+    assert {
+        "connectivity_matrix_csv",
+        "connectivity_matrix_png",
+        "connectivity_matrix_npy",
+        "timeseries_tsv",
+        "connectivity_report_html",
+    }.issubset(produced)
+
+
+def test_import_fmriprep_derivatives_manifest_loads_and_validates():
+    """Imported fMRIPrep derivatives must be represented as a native pipeline."""
+    schema = _load_schema()
+    manifest = _load_manifest(
+        PIPELINES_DIR / "import-fmriprep-derivatives.yaml",
+        schema,
+    )
+    assert manifest["id"] == "import-fmriprep-derivatives"
+    assert manifest["category"] == "preprocessing"
+    assert manifest["compute_profile"] == "local-ok"
+    assert manifest["execution"]["type"] == "native"
+    assert manifest["execution"]["command"] == "neuroforge-import-fmriprep-derivatives"
+    assert manifest["accepts"][0]["type"] == "bids_dataset"
+    assert manifest["accepts"][0]["dataset_slot"] is True
+    assert manifest["produces"][0]["type"] == "fmriprep_derivatives"
+    assert manifest["produces"][0]["source_param"] == "fmriprep-dir"
+
+
+def test_fmriprep_derivatives_compatible_pipeline_includes_connectivity(api_client):
+    resp = api_client.get("/api/pipelines/compatible?artifact_type=fmriprep_derivatives")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(
+        item["pipeline_id"] == "functional-connectivity"
+        and item["accept_param"] == "fmriprep-dir"
+        for item in data
+    )
+
+
+def test_bids_dataset_compatible_pipeline_includes_fmriprep_import(api_client):
+    resp = api_client.get("/api/pipelines/compatible?artifact_type=bids_dataset")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(
+        item["pipeline_id"] == "import-fmriprep-derivatives"
+        and item["accept_dataset_slot"] is True
+        for item in data
+    )
+
+
 def test_docker_manifests_have_container_not_execution():
     """All Docker-based manifests must have container block, not execution block."""
     schema = _load_schema()
-    docker_manifests = ["mriqc", "fmriprep", "fastsurfer", "dcm2niix", "bids-validator", "pydeface"]
+    docker_manifests = ["mriqc", "mriqc-group", "fmriprep", "fastsurfer", "dcm2niix", "bids-validator", "pydeface"]
     for name in docker_manifests:
         manifest = _load_manifest(PIPELINES_DIR / f"{name}.yaml", schema)
         assert "container" in manifest, f"{name}.yaml missing container block"

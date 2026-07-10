@@ -1,0 +1,74 @@
+id: import-fmriprep-derivatives
+display_name: Import fMRIPrep Derivatives
+description: >
+  Registers an existing precomputed fMRIPrep derivatives directory so downstream
+  NeuroForge pipelines can use its preprocessed BOLD outputs without launching
+  fMRIPrep locally.
+homepage: https://fmriprep.org/en/stable/outputs.html
+category: preprocessing
+input_type: bids_dataset
+
+execution:
+  type: native
+  command: neuroforge-import-fmriprep-derivatives
+
+dataset_positional: false
+compute_profile: local-ok
+
+inputs:
+  - bids_dataset
+
+outputs:
+  - fmriprep_derivatives
+
+parameters:
+  - name: fmriprep-dir
+    type: directory_path
+    required: true
+    help: >
+      Existing fMRIPrep derivatives directory containing
+      sub-*/func/*desc-preproc_bold.nii.gz files and matching confounds when
+      available. This command validates and registers the directory; it does
+      not run fMRIPrep.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: >
+      NeuroForge metadata output directory for the import record.
+
+accepts:
+  - type: bids_dataset
+    dataset_slot: true
+    label: "Associated BIDS Dataset"
+    description: >
+      Dataset record used as the project anchor for these precomputed
+      fMRIPrep derivatives.
+    required: true
+
+produces:
+  - type: fmriprep_derivatives
+    source_param: fmriprep-dir
+    label: "Imported fMRIPrep Derivatives"
+    description: "Existing fMRIPrep derivatives directory validated for chaining"
+
+max_runtime_hours: 0.25
+
+known_errors:
+  - pattern: "No fMRIPrep preprocessed BOLD files were found|Preprocessed BOLD is not 4D"
+    explanation: >
+      NeuroForge could not confirm that the selected directory contains usable
+      fMRIPrep preprocessed BOLD derivatives.
+    fix_hint: >
+      Select the fMRIPrep derivatives root containing sub-*/func/
+      desc-preproc_bold.nii.gz files, not the raw BIDS dataset or a partial
+      failed fMRIPrep work directory.
+
+  - pattern: "does not exist|not a directory"
+    explanation: >
+      The selected fMRIPrep derivatives path could not be read.
+    fix_hint: >
+      Confirm the path exists on this machine or is mounted into the backend
+      environment.

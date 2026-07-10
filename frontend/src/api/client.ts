@@ -147,7 +147,7 @@ export interface PipelineKnownError {
 }
 
 export type ComputeProfile = "local-ok" | "local-slow" | "local-unsafe";
-export type PipelineCategory = "conversion" | "validation" | "quality_control" | "segmentation" | "preprocessing" | "deidentification";
+export type PipelineCategory = "conversion" | "validation" | "quality_control" | "segmentation" | "preprocessing" | "deidentification" | "connectivity";
 export type PipelineInputType = "dicom" | "nifti" | "bids_dataset";
 
 export interface PipelineSummary {
@@ -316,6 +316,10 @@ export interface RunResults {
   reports: RunResultFile[];
   metrics: RunResultFile[];
   group_tables?: RunResultFile[];
+  images?: RunResultFile[];
+  connectivity_matrices?: RunResultFile[];
+  timeseries?: RunResultFile[];
+  connectivity_metadata?: RunResultFile[];
   niftis?: RunResultFile[];
   artifacts: RunArtifact[];
   metadata?: RunMetadata;

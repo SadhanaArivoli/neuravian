@@ -34,6 +34,7 @@ const CATEGORY_LABEL: Record<PipelineCategory, string> = {
   segmentation: "Segmentation",
   preprocessing: "Preprocessing",
   deidentification: "De-identification",
+  connectivity: "Connectivity",
 };
 
 const INPUT_TYPE_LABEL: Record<PipelineInputType, { label: string; className: string }> = {
