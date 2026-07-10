@@ -587,7 +587,7 @@ export default function RunResults({ runId }: Props) {
               </a>
               <a
                 href={`/datasets/${results.metadata.dataset_id}/graph?highlight=${runId}`}
-                className="flex items-center gap-1.5 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:text-accent transition-colors"
+                className="flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
               >
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
                   <circle cx="8" cy="3" r="1.5" />
@@ -597,6 +597,15 @@ export default function RunResults({ runId }: Props) {
                   <line x1="8" y1="4.5" x2="11.5" y2="11.5" />
                 </svg>
                 Graph
+              </a>
+              <a
+                href={`/datasets/${results.metadata.dataset_id}/methods?run=${runId}`}
+                className="flex items-center gap-1.5 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:border-accent/60 hover:text-accent transition-colors"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                  <path d="M2 4h12M2 8h9M2 12h6" strokeLinecap="round" />
+                </svg>
+                Methods
               </a>
             </>
           )}

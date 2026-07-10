@@ -63,7 +63,7 @@ export default function DatasetDetail() {
           </Link>
           <Link
             to={`/datasets/${datasetId}/graph`}
-            className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:border-accent/60 hover:bg-accent/15 transition-colors"
+            className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
               <circle cx="8" cy="3" r="2" />
@@ -73,6 +73,15 @@ export default function DatasetDetail() {
               <line x1="8" y1="5" x2="11" y2="11" />
             </svg>
             Analysis Graph
+          </Link>
+          <Link
+            to={`/datasets/${datasetId}/methods`}
+            className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:border-accent/60 hover:bg-accent/15 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
+              <path d="M2 4h12M2 8h9M2 12h6" strokeLinecap="round" />
+            </svg>
+            Methods
           </Link>
         </nav>
       </div>

@@ -491,6 +491,15 @@ export default function DatasetDashboard() {
             Analysis Graph
           </Link>
           <Link
+            to={`/datasets/${datasetId}/methods`}
+            className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+              <path d="M2 4h12M2 8h9M2 12h6" strokeLinecap="round" />
+            </svg>
+            Methods Studio
+          </Link>
+          <Link
             to="/compare"
             className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
           >

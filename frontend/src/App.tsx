@@ -8,6 +8,7 @@ import RemoteHosts from "./pages/RemoteHosts";
 import RunDetail from "./pages/RunDetail";
 import ArtifactExplorer from "./pages/ArtifactExplorer";
 import DatasetDashboard from "./pages/DatasetDashboard";
+import MethodsStudio from "./pages/MethodsStudio";
 import WorkflowGraph from "./pages/WorkflowGraph";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/datasets/:id/graph" element={<WorkflowGraph />} />
           <Route path="/datasets/:id/dashboard" element={<DatasetDashboard />} />
           <Route path="/datasets/:id/artifacts" element={<ArtifactExplorer />} />
+          <Route path="/datasets/:id/methods" element={<MethodsStudio />} />
         </Routes>
       </main>
     </div>
