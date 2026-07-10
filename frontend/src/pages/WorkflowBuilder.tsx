@@ -8,6 +8,7 @@ import {
   type CompatiblePipeline,
   type ComputeProfile,
   type DatasetSummary,
+  type PipelineCategory,
   type PipelineParameter,
   type PipelineProduceSlot,
   type Run,
@@ -39,6 +40,7 @@ interface WorkflowNode {
   id: string;
   pipelineId: string;
   displayName: string;
+  category: PipelineCategory | null;
   computeProfile: ComputeProfile | null;
   inputArtifactType: string;
   produced: PipelineProduceSlot[];
@@ -48,6 +50,7 @@ interface WorkflowNode {
   status: WorkflowNodeStatus;
   runId?: number;
   error?: string;
+  resolvedOutputs?: RunArtifact[];
 }
 
 interface SourceArtifacts {
@@ -59,24 +62,102 @@ interface SourceArtifacts {
 const COMPUTE_PROFILE_BADGE: Record<ComputeProfile, { label: string; className: string }> = {
   "local-ok": {
     label: "Local OK",
-    className: "bg-green-100 text-green-700 border border-green-200",
+    className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
   },
   "local-slow": {
     label: "Slow locally",
-    className: "bg-amber-100 text-amber-700 border border-amber-200",
+    className: "border-amber-400/30 bg-amber-400/10 text-amber-200",
   },
   "local-unsafe": {
     label: "Cloud recommended",
-    className: "bg-red-100 text-red-700 border border-red-200",
+    className: "border-rose-400/30 bg-rose-400/10 text-rose-200",
   },
 };
 
-const STATUS_BADGE: Record<WorkflowNodeStatus, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-gray-100 text-gray-600 border border-gray-200" },
-  ready: { label: "Ready", className: "bg-blue-50 text-blue-700 border border-blue-200" },
-  running: { label: "Running", className: "bg-amber-50 text-amber-700 border border-amber-200" },
-  success: { label: "Success", className: "bg-green-50 text-green-700 border border-green-200" },
-  failed: { label: "Failed", className: "bg-red-50 text-red-700 border border-red-200" },
+const STATUS_BADGE: Record<WorkflowNodeStatus, { label: string; className: string; icon: string }> = {
+  draft: { label: "Draft", className: "border-slate-400/30 bg-slate-400/10 text-slate-200", icon: "D" },
+  ready: { label: "Ready", className: "border-sky-400/30 bg-sky-400/10 text-sky-200", icon: "R" },
+  running: { label: "Running", className: "border-amber-400/30 bg-amber-400/10 text-amber-200", icon: "..." },
+  success: { label: "Complete", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200", icon: "OK" },
+  failed: { label: "Failed", className: "border-rose-400/30 bg-rose-400/10 text-rose-200", icon: "!" },
+};
+
+const CATEGORY_META: Record<
+  PipelineCategory | "dataset" | "run" | "unknown",
+  { label: string; icon: string; ring: string; tint: string; line: string }
+> = {
+  dataset: {
+    label: "Dataset",
+    icon: "DS",
+    ring: "border-sky-300/40 text-sky-100",
+    tint: "from-sky-500/20 to-cyan-400/10",
+    line: "from-sky-400/80 to-cyan-300/80",
+  },
+  run: {
+    label: "Run",
+    icon: "RN",
+    ring: "border-indigo-300/40 text-indigo-100",
+    tint: "from-indigo-500/20 to-sky-400/10",
+    line: "from-indigo-400/80 to-sky-300/80",
+  },
+  conversion: {
+    label: "Conversion",
+    icon: "CV",
+    ring: "border-cyan-300/40 text-cyan-100",
+    tint: "from-cyan-500/20 to-sky-400/10",
+    line: "from-cyan-400/80 to-sky-300/80",
+  },
+  validation: {
+    label: "Validation",
+    icon: "VA",
+    ring: "border-emerald-300/40 text-emerald-100",
+    tint: "from-emerald-500/20 to-teal-400/10",
+    line: "from-emerald-400/80 to-teal-300/80",
+  },
+  quality_control: {
+    label: "Quality control",
+    icon: "QC",
+    ring: "border-yellow-300/40 text-yellow-100",
+    tint: "from-yellow-500/20 to-amber-400/10",
+    line: "from-yellow-400/80 to-amber-300/80",
+  },
+  segmentation: {
+    label: "Segmentation",
+    icon: "SG",
+    ring: "border-violet-300/40 text-violet-100",
+    tint: "from-violet-500/20 to-fuchsia-400/10",
+    line: "from-violet-400/80 to-fuchsia-300/80",
+  },
+  preprocessing: {
+    label: "Preprocessing",
+    icon: "PR",
+    ring: "border-orange-300/40 text-orange-100",
+    tint: "from-orange-500/20 to-amber-400/10",
+    line: "from-orange-400/80 to-amber-300/80",
+  },
+  deidentification: {
+    label: "De-identification",
+    icon: "DI",
+    ring: "border-red-300/40 text-red-100",
+    tint: "from-red-500/20 to-rose-400/10",
+    line: "from-red-400/80 to-rose-300/80",
+  },
+  unknown: {
+    label: "Pipeline",
+    icon: "PL",
+    ring: "border-slate-300/40 text-slate-100",
+    tint: "from-slate-500/20 to-zinc-400/10",
+    line: "from-slate-400/80 to-zinc-300/80",
+  },
+};
+
+const RUNTIME_HINT_BY_CATEGORY: Partial<Record<PipelineCategory, string>> = {
+  conversion: "usually seconds-minutes",
+  validation: "usually seconds",
+  quality_control: "often minutes",
+  segmentation: "varies by tool",
+  preprocessing: "long running",
+  deidentification: "varies locally",
 };
 
 function buildDefaults(params: PipelineParameter[]): Record<string, unknown> {
@@ -118,11 +199,31 @@ function firstArtifactPath(artifact: RunArtifact | undefined): string | null {
   return artifact?.host_paths?.[0] ?? artifact?.paths?.[0] ?? null;
 }
 
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+function categoryMeta(category: PipelineCategory | null | undefined) {
+  return CATEGORY_META[category ?? "unknown"];
+}
+
+function runtimeHint(category: PipelineCategory | null, profile: ComputeProfile | null) {
+  if (profile === "local-unsafe") return "not laptop-safe";
+  if (profile === "local-slow") return "long local run";
+  return category ? RUNTIME_HINT_BY_CATEGORY[category] ?? "runtime varies" : "runtime varies";
+}
+
+function compactPath(value: string) {
+  const parts = value.split("/");
+  if (parts.length <= 3) return value;
+  return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+}
+
 function ProfileBadge({ profile }: { profile: ComputeProfile | null }) {
   if (!profile) return null;
   const badge = COMPUTE_PROFILE_BADGE[profile];
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
       {badge.label}
     </span>
   );
@@ -131,13 +232,51 @@ function ProfileBadge({ profile }: { profile: ComputeProfile | null }) {
 function StatusPill({ status }: { status: WorkflowNodeStatus }) {
   const badge = STATUS_BADGE[status];
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
+      {status === "running" ? (
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.85)]" />
+      ) : (
+        <span>{badge.icon}</span>
+      )}
       {badge.label}
     </span>
   );
 }
 
-function SourceCard({
+function CategoryIcon({ category, size = "md" }: { category: PipelineCategory | "dataset" | "run" | null; size?: "sm" | "md" | "lg" }) {
+  const meta = CATEGORY_META[category ?? "unknown"];
+  return (
+    <span
+      className={classNames(
+        "grid shrink-0 place-items-center rounded-2xl border bg-gradient-to-br font-bold shadow-inner",
+        meta.ring,
+        meta.tint,
+        size === "sm" && "h-9 w-9 text-[11px]",
+        size === "md" && "h-12 w-12 text-sm",
+        size === "lg" && "h-14 w-14 text-base",
+      )}
+    >
+      {meta.icon}
+    </span>
+  );
+}
+
+function ArtifactChip({ type, muted = false }: { type: string; muted?: boolean }) {
+  return (
+    <span
+      className={classNames(
+        "max-w-full break-all rounded-full border px-2.5 py-1 font-mono text-[11px]",
+        muted
+          ? "border-white/10 bg-white/[0.04] text-slate-400"
+          : "border-white/10 bg-white/[0.07] text-slate-200",
+      )}
+    >
+      {type}
+    </span>
+  );
+}
+
+function SourceNode({
   source,
   datasets,
   completedRuns,
@@ -150,120 +289,159 @@ function SourceCard({
 }) {
   const selectedDataset = datasets.find((d) => d.id === source.datasetId);
   const selectedRun = completedRuns.find((r) => r.id === source.runId);
+  const sourceCategory = source.kind === "dataset" ? "dataset" : "run";
   const artifacts =
     source.kind === "dataset" && selectedDataset
       ? ["bids_dataset"]
       : source.kind === "run"
         ? resolvedArtifactTypes(sourceRunResults?.artifacts ?? [])
         : [];
-  const emptyArtifactText =
+  const title =
     source.kind === "dataset"
-      ? "Select a dataset to expose bids_dataset"
-      : "Select a successful run with resolved artifacts";
+      ? selectedDataset?.name ?? (selectedDataset ? compactPath(selectedDataset.path) : "Choose a dataset")
+      : selectedRun
+        ? `Run #${selectedRun.id}`
+        : "Choose a completed run";
+  const subtitle =
+    source.kind === "dataset"
+      ? selectedDataset?.path ?? "Start from a registered BIDS dataset."
+      : selectedRun
+        ? selectedRun.pipeline_manifest_id
+        : "Start from a successful run with resolved artifacts.";
 
   return (
-    <section className="w-72 shrink-0 rounded-lg border border-white/10 bg-surface-raised p-4 sm:w-80">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Start</p>
-          <h2 className="mt-1 text-base font-semibold text-gray-100">
-            {source.kind === "dataset" ? "Dataset" : "Completed run"}
-          </h2>
+    <article className="group relative w-[19rem] shrink-0 rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-2xl shadow-black/20 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-sky-300/35 hover:bg-white/[0.075]">
+      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/50 to-transparent" />
+      <div className="flex items-start gap-4">
+        <CategoryIcon category={sourceCategory} size="lg" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-200/70">Start</p>
+          <h2 className="mt-2 truncate text-xl font-semibold text-white">{title}</h2>
+          <p className="mt-1 line-clamp-2 break-all text-xs leading-5 text-slate-400">{subtitle}</p>
         </div>
-        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-          Source
-        </span>
       </div>
 
-      <p className="mt-3 text-sm text-gray-300">
-        {source.kind === "dataset"
-          ? selectedDataset?.name ?? selectedDataset?.path ?? "Choose a dataset"
-          : selectedRun
-            ? `Run #${selectedRun.id} · ${selectedRun.pipeline_manifest_id}`
-            : "Choose a completed run"}
-      </p>
-
-      <div className="mt-4 space-y-2">
-        <p className="text-xs font-medium text-gray-500">Produced artifacts</p>
-        <div className="flex flex-wrap gap-1.5">
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Available artifacts</p>
+        <div className="mt-2 flex flex-wrap gap-2">
           {artifacts.length > 0 ? (
-            artifacts.map((type) => (
-              <span key={type} className="rounded bg-white/10 px-2 py-1 font-mono text-xs text-gray-200">
-                {type}
-              </span>
-            ))
+            artifacts.map((type) => <ArtifactChip key={type} type={type} />)
           ) : (
-            <span className="text-xs text-gray-500">{emptyArtifactText}</span>
+            <span className="text-sm text-slate-500">
+              {source.kind === "dataset" ? "Select a dataset to expose BIDS artifacts." : "Select a successful run."}
+            </span>
           )}
         </div>
       </div>
-    </section>
+    </article>
   );
 }
 
-function NodeCard({
+function ConnectionEdge({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div className="flex w-28 shrink-0 flex-col items-center justify-center px-2 sm:w-36">
+      <div className="relative h-10 w-full">
+        <div className="absolute left-0 right-3 top-1/2 h-px -translate-y-1/2 overflow-hidden rounded-full bg-white/15">
+          <div
+            className={classNames(
+              "h-full w-full bg-gradient-to-r from-sky-300 via-cyan-200 to-emerald-300",
+              active && "workflow-edge-flow",
+            )}
+          />
+        </div>
+        <div className="absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 border-r border-t border-cyan-200/80" />
+      </div>
+      <span className="max-w-full break-all rounded-full border border-white/10 bg-surface/80 px-2 py-1 font-mono text-[10px] text-slate-300 shadow-lg">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function PipelineNode({
   node,
   selected,
+  disabled,
   onSelect,
 }: {
   node: WorkflowNode;
   selected: boolean;
+  disabled: boolean;
   onSelect: () => void;
 }) {
+  const meta = categoryMeta(node.category);
+  const declaredOutputs = artifactTypesFromProduces(node.produced);
+  const resolvedOutputs = resolvedArtifactTypes(node.resolvedOutputs ?? []);
+  const visibleOutputs = resolvedOutputs.length > 0 ? resolvedOutputs : declaredOutputs;
+
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`w-72 shrink-0 rounded-lg border p-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 sm:w-80 ${
-        selected
-          ? "border-blue-400 bg-blue-500/10"
-          : "border-white/10 bg-surface-raised hover:border-white/20"
-      }`}
+      className={classNames(
+        "group relative w-[20rem] shrink-0 rounded-3xl border p-5 text-left shadow-2xl shadow-black/25 backdrop-blur transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/70",
+        selected ? "border-cyan-300/60 bg-cyan-400/[0.10]" : "border-white/10 bg-white/[0.06] hover:-translate-y-1 hover:border-white/25 hover:bg-white/[0.085]",
+        disabled && "opacity-55",
+        node.status === "running" && "workflow-node-running border-amber-300/60",
+        node.status === "success" && "border-emerald-300/45",
+        node.status === "failed" && "border-rose-300/55",
+      )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pipeline</p>
-          <h3 className="mt-1 truncate text-base font-semibold text-gray-100">{node.displayName}</h3>
+      <div className={`absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent ${meta.line} to-transparent opacity-80`} />
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-4">
+          <CategoryIcon category={node.category} size="lg" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{meta.label}</p>
+            <h3 className="mt-2 truncate text-xl font-semibold text-white">{node.displayName}</h3>
+            <p className="mt-1 text-xs text-slate-400">Runtime: {runtimeHint(node.category, node.computeProfile)}</p>
+          </div>
         </div>
         <StatusPill status={node.status} />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         <ProfileBadge profile={node.computeProfile} />
         {node.runId && (
           <a
             href={`/runs/${node.runId}`}
             onClick={(e) => e.stopPropagation()}
-            className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-blue-300 hover:text-blue-200"
+            className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/60 hover:bg-cyan-300/20"
           >
             Run #{node.runId}
           </a>
         )}
       </div>
 
-      <dl className="mt-4 space-y-3 text-xs">
+      <div className="mt-5 grid gap-4 text-xs">
         <div>
-          <dt className="text-gray-500">Input artifact</dt>
-          <dd className="mt-1 break-all font-mono text-gray-200">{node.inputArtifactType}</dd>
+          <p className="font-semibold uppercase tracking-[0.18em] text-slate-500">Input</p>
+          <div className="mt-2">
+            <ArtifactChip type={node.inputArtifactType} />
+          </div>
         </div>
         <div>
-          <dt className="text-gray-500">Produced artifacts</dt>
-          <dd className="mt-1 flex flex-wrap gap-1.5">
-            {node.produced.length > 0 ? (
-              node.produced.map((p) => (
-                <span key={`${node.id}-${p.type}`} className="break-all rounded bg-white/10 px-2 py-1 font-mono text-gray-200">
-                  {p.type}
-                </span>
-              ))
+          <p className="font-semibold uppercase tracking-[0.18em] text-slate-500">
+            {resolvedOutputs.length > 0 ? "Outputs" : "Produces"}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {visibleOutputs.length > 0 ? (
+              visibleOutputs.map((type) => <ArtifactChip key={`${node.id}-${type}`} type={type} />)
             ) : (
-              <span className="text-gray-500">None declared</span>
+              <span className="text-slate-500">No artifacts declared</span>
             )}
-          </dd>
+          </div>
         </div>
-      </dl>
+      </div>
+
+      {node.status === "running" && (
+        <div className="mt-5 h-1 overflow-hidden rounded-full bg-white/10">
+          <div className="workflow-progress h-full w-2/3 rounded-full bg-gradient-to-r from-amber-300 via-cyan-200 to-emerald-300" />
+        </div>
+      )}
 
       {node.error && (
-        <p className="mt-3 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-200">
+        <p className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100">
           {node.error}
         </p>
       )}
@@ -271,14 +449,84 @@ function NodeCard({
   );
 }
 
-function Arrow({ label }: { label: string }) {
+function EmptyCanvas({ sourceReady }: { sourceReady: boolean }) {
   return (
-    <div className="flex w-20 shrink-0 flex-col items-center justify-center text-center sm:w-28">
-      <div className="h-px w-full bg-white/20" />
-      <span className="mt-2 max-w-full break-all rounded bg-surface-overlay px-2 py-1 font-mono text-[11px] text-gray-300">
-        {label}
-      </span>
+    <div className="flex min-w-[18rem] max-w-md shrink-0 items-center pl-4">
+      <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.035] p-6 text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl border border-cyan-300/20 bg-cyan-300/10 text-lg font-bold text-cyan-100">
+          +
+        </div>
+        <h3 className="mt-4 text-base font-semibold text-white">
+          {sourceReady ? "Add the next compatible tool" : "Choose a starting point"}
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          {sourceReady
+            ? "Recommendations appear in the right rail from the artifacts currently on the canvas."
+            : "Start with a registered dataset or a completed run, then NeuroForge will suggest what can run next."}
+        </p>
+      </div>
     </div>
+  );
+}
+
+function RecommendationCard({
+  option,
+  index,
+  onAdd,
+}: {
+  option: CompatiblePipeline;
+  index: number;
+  onAdd: () => void;
+}) {
+  const category = option.category as PipelineCategory | null;
+  const meta = categoryMeta(category);
+  const recommended = option.compute_profile === "local-ok" && index === 0;
+
+  return (
+    <article className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-lg shadow-black/15 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-white/[0.075]">
+      <div className="flex items-start gap-3">
+        <CategoryIcon category={category} size="sm" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {recommended && (
+              <span className="rounded-full border border-yellow-300/25 bg-yellow-300/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-yellow-100">
+                Recommended
+              </span>
+            )}
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.ring} bg-white/[0.03]`}>
+              {meta.label}
+            </span>
+          </div>
+          <h3 className="mt-3 truncate text-base font-semibold text-white">{option.display_name}</h3>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
+            {option.pipeline_description ?? "Compatible with the current artifact endpoint."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/10 p-3 text-xs text-slate-300">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Accepts</span>
+          <span className="break-all font-mono text-slate-200">{option.accept_type}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Profile</span>
+          <ProfileBadge profile={option.compute_profile} />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Runtime</span>
+          <span className="text-slate-200">{runtimeHint(category, option.compute_profile)}</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onAdd}
+        className="mt-4 w-full rounded-2xl bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 transition-all hover:-translate-y-0.5 hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+      >
+        Add Step
+      </button>
+    </article>
   );
 }
 
@@ -297,6 +545,7 @@ export default function WorkflowBuilder() {
   const [isLoadingCompat, setIsLoadingCompat] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [showRules, setShowRules] = useState(false);
 
   const completedRuns = useMemo(
     () => runs.filter((r) => r.status === "success"),
@@ -311,6 +560,8 @@ export default function WorkflowBuilder() {
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const readyCount = nodes.filter((node) => node.status === "ready").length;
+  const completeCount = nodes.filter((node) => node.status === "success").length;
 
   function resetWorkflow(nextSource: Partial<WorkflowSource>) {
     setSource((prev) => ({ ...prev, ...nextSource }));
@@ -366,6 +617,7 @@ export default function WorkflowBuilder() {
       id,
       pipelineId: pipeline.id,
       displayName: pipeline.display_name,
+      category: pipeline.category ?? null,
       computeProfile: pipeline.compute_profile ?? null,
       inputArtifactType: option.accept_type ?? "",
       produced: pipeline.produces ?? [],
@@ -495,15 +747,22 @@ export default function WorkflowBuilder() {
         updateNode(node.id, { runId: created.id });
 
         const finished = await waitForRun(created.id);
+        const results = await fetchRunResults(created.id).catch(() => null);
         if (finished.status === "failed") {
           updateNode(node.id, {
             status: "failed",
+            runId: finished.id,
+            resolvedOutputs: results?.artifacts ?? [],
             error: finished.error_message ?? `Run #${finished.id} failed.`,
           });
           setRunMessage(`Stopped at ${node.displayName}.`);
           return;
         }
-        updateNode(node.id, { status: "success", runId: finished.id });
+        updateNode(node.id, {
+          status: "success",
+          runId: finished.id,
+          resolvedOutputs: results?.artifacts ?? [],
+        });
       }
       setRunMessage("Workflow completed.");
     } catch (err) {
@@ -522,16 +781,16 @@ export default function WorkflowBuilder() {
   }
 
   function addNextHelpText() {
-    if (isRunning) return "Wait for the current workflow run to finish.";
+    if (isRunning) return "Workflow is running. Future nodes stay dimmed until their turn.";
     if (!sourceReady()) {
       return source.kind === "dataset"
-        ? "Select a starting dataset to find compatible pipelines."
-        : "Select a successful run before loading compatible pipelines.";
+        ? "Select a starting dataset to unlock recommendations."
+        : "Select a successful run with resolved artifacts.";
     }
     if (currentArtifactTypes().length === 0) {
       return "The current endpoint has no resolved artifact types.";
     }
-    return "Compatibility is checked against manifest-declared artifact types.";
+    return "Recommendations come from manifest-declared artifact compatibility.";
   }
 
   const runButtonText =
@@ -540,205 +799,245 @@ export default function WorkflowBuilder() {
       : `Run ${nodes.length}-step workflow`;
 
   return (
-    <div className="min-h-full bg-surface p-4 sm:p-6">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-100">Workflow Builder</h1>
-          <p className="mt-1 max-w-3xl text-sm text-gray-400">
-            Build a linear manifest-driven pipeline chain from datasets or completed runs.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={runWorkflow}
-          disabled={isRunning || nodes.length === 0}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isRunning ? "Running workflow..." : runButtonText}
-        </button>
-      </header>
-
-      <section className="mb-5 rounded-lg border border-white/10 bg-surface-raised p-4">
-        <div className="grid gap-4 lg:grid-cols-[12rem_1fr_1fr]">
-          <div>
-            <label className="block text-xs font-medium text-gray-500">Start from</label>
-            <select
-              value={source.kind}
-              onChange={(e) =>
-                resetWorkflow({
-                  kind: e.target.value as SourceKind,
-                  datasetId: "",
-                  runId: "",
-                })
-              }
-              className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800"
-            >
-              <option value="dataset">Existing Dataset</option>
-              <option value="run">Completed Run</option>
-            </select>
-          </div>
-
-          {source.kind === "dataset" ? (
-            <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-gray-500">Starting dataset</label>
-              <select
-                value={source.datasetId}
-                onChange={(e) => resetWorkflow({ datasetId: e.target.value ? Number(e.target.value) : "" })}
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800"
-              >
-                <option value="">Choose a dataset</option>
-                {datasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.name ?? dataset.path} ({dataset.subject_count} subjects · {dataset.validation_status})
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-gray-500">Starting completed run</label>
-              <select
-                value={source.runId}
-                onChange={(e) => resetWorkflow({ runId: e.target.value ? Number(e.target.value) : "" })}
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800"
-              >
-                <option value="">Choose a successful run</option>
-                {completedRuns.map((run) => (
-                  <option key={run.id} value={run.id}>
-                    Run #{run.id} · {run.pipeline_manifest_id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <div className="grid gap-5 xl:grid-cols-[1fr_22rem]">
-        <section className="overflow-hidden rounded-lg border border-white/10 bg-surface-overlay">
-          <div className="border-b border-white/10 px-4 py-3">
-            <h2 className="text-sm font-semibold text-gray-100">Canvas</h2>
-          </div>
-          <div className="overflow-x-auto p-5">
-            <div className="flex min-h-72 items-stretch">
-              <SourceCard
-                source={source}
-                datasets={datasets}
-                completedRuns={completedRuns}
-                sourceRunResults={sourceRunResults}
-              />
-              {nodes.map((node) => (
-                <div key={node.id} className="flex items-stretch">
-                  <Arrow label={node.edge.artifactType} />
-                  <NodeCard
-                    node={node}
-                    selected={selectedNodeId === node.id}
-                    onSelect={() => setSelectedNodeId(node.id)}
-                  />
-                </div>
-              ))}
-              {nodes.length === 0 && (
-                <div className="flex max-w-xs items-center pl-6 text-sm text-gray-500">
-                  {sourceReady()
-                    ? "Find a compatible next step from the controls panel."
-                    : "Choose a starting dataset or completed run first."}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <aside className="rounded-lg border border-white/10 bg-surface-raised p-4">
-          <h2 className="text-sm font-semibold text-gray-100">Builder Controls</h2>
-          <button
-            type="button"
-            onClick={loadCompatibleNext}
-            disabled={!sourceReady() || isLoadingCompat || isRunning}
-            className="mt-4 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoadingCompat ? "Checking manifests..." : "Find compatible next step"}
-          </button>
-          <p className="mt-2 text-xs leading-relaxed text-gray-400">{addNextHelpText()}</p>
-
-          {compatError && (
-            <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              {compatError}
-            </p>
-          )}
-
-          {compatibles.length > 0 && (
-            <div className="mt-4 space-y-2">
-              {compatibles.map((option) => (
+    <div className="min-h-full overflow-hidden bg-[#11131f] text-slate-100">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.13),transparent_28%),radial-gradient(circle_at_86%_12%,rgba(168,85,247,0.10),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_40%)]" />
+      <div className="relative flex min-h-full flex-col p-4 sm:p-6">
+        <header className="mb-5 rounded-[2rem] border border-white/10 bg-white/[0.055] px-5 py-4 shadow-2xl shadow-black/20 backdrop-blur">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                  Workflow Studio
+                </span>
                 <button
-                  key={`${option.pipeline_id}-${option.accept_type}-${option.accept_param ?? "dataset"}`}
                   type="button"
-                  onClick={() => void addPipelineNode(option)}
-                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-left transition-colors hover:border-blue-400/40 hover:bg-blue-500/10"
+                  onClick={() => setShowRules((value) => !value)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-300 transition-colors hover:border-white/25 hover:text-white"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-gray-100">{option.display_name}</span>
-                    <ProfileBadge profile={option.compute_profile} />
-                  </div>
-                  <p className="mt-1 font-mono text-xs text-gray-400">
-                    accepts {option.accept_type}
-                    {option.accept_param ? ` -> ${option.accept_param}` : " -> dataset"}
-                  </p>
-                  <p className="mt-2 text-xs font-medium text-blue-300">Add this step</p>
+                  {showRules ? "Hide rules" : "How chaining works"}
                 </button>
-              ))}
+              </div>
+              <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                Build a neuroimaging workflow visually.
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                Choose a source, follow compatible recommendations, then run the chain one verified step at a time.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="min-w-40">
+                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Start from</span>
+                <select
+                  value={source.kind}
+                  onChange={(e) =>
+                    resetWorkflow({
+                      kind: e.target.value as SourceKind,
+                      datasetId: "",
+                      runId: "",
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                >
+                  <option value="dataset">Existing Dataset</option>
+                  <option value="run">Completed Run</option>
+                </select>
+              </label>
+
+              {source.kind === "dataset" ? (
+                <label className="min-w-0 flex-1 sm:w-[26rem]">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dataset</span>
+                  <select
+                    value={source.datasetId}
+                    onChange={(e) => resetWorkflow({ datasetId: e.target.value ? Number(e.target.value) : "" })}
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                  >
+                    <option value="">Choose a dataset</option>
+                    {datasets.map((dataset) => (
+                      <option key={dataset.id} value={dataset.id}>
+                        {dataset.name ?? dataset.path} ({dataset.subject_count} subjects - {dataset.validation_status})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="min-w-0 flex-1 sm:w-[26rem]">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Completed run</span>
+                  <select
+                    value={source.runId}
+                    onChange={(e) => resetWorkflow({ runId: e.target.value ? Number(e.target.value) : "" })}
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                  >
+                    <option value="">Choose a successful run</option>
+                    {completedRuns.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        Run #{run.id} - {run.pipeline_manifest_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <button
+                type="button"
+                onClick={runWorkflow}
+                disabled={isRunning || nodes.length === 0}
+                className="rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-xl shadow-cyan-950/25 transition-all hover:-translate-y-0.5 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                {isRunning ? "Running..." : runButtonText}
+              </button>
+            </div>
+          </div>
+
+          {showRules && (
+            <div className="mt-4 grid gap-3 rounded-3xl border border-white/10 bg-black/15 p-4 text-sm text-slate-400 md:grid-cols-3">
+              <p>Connections are created only from declared artifact types.</p>
+              <p>Compatible recommendations come from `/api/pipelines/compatible`.</p>
+              <p>Lineage is attached when a node starts from an upstream run.</p>
             </div>
           )}
+        </header>
 
-          {selectedNode && (
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <h3 className="text-sm font-semibold text-gray-100">{selectedNode.displayName}</h3>
-              <label className="mt-4 block text-xs font-medium text-gray-500">
-                Dataset for this step
-              </label>
-              <select
-                value={selectedNode.datasetId}
-                onChange={(e) =>
-                  updateNode(selectedNode.id, {
-                    datasetId: e.target.value ? Number(e.target.value) : "",
-                  })
-                }
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800"
-              >
-                <option value="">Use upstream/starting dataset when possible</option>
-                {datasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.name ?? dataset.path}
-                  </option>
+        <main className="grid flex-1 min-h-[34rem] gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/35 shadow-2xl shadow-black/25">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Canvas</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {nodes.length === 0
+                    ? "A clean slate for your chain."
+                    : `${nodes.length} node${nodes.length === 1 ? "" : "s"} - ${completeCount} complete - ${readyCount} ready`}
+                </p>
+              </div>
+              <div className="hidden rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400 sm:block">
+                Sequential V1
+              </div>
+            </div>
+
+            <div className="workflow-canvas-grid h-full min-h-[29rem] overflow-x-auto p-5 sm:p-7">
+              <div className="flex min-w-max items-stretch py-4">
+                <SourceNode
+                  source={source}
+                  datasets={datasets}
+                  completedRuns={completedRuns}
+                  sourceRunResults={sourceRunResults}
+                />
+                {nodes.map((node, index) => (
+                  <div key={node.id} className="flex items-stretch">
+                    <ConnectionEdge
+                      label={node.edge.artifactType}
+                      active={isRunning || node.status === "running" || node.status === "success"}
+                    />
+                    <PipelineNode
+                      node={node}
+                      selected={selectedNodeId === node.id}
+                      disabled={isRunning && node.status === "ready" && index > nodes.findIndex((n) => n.status === "running")}
+                      onSelect={() => setSelectedNodeId(node.id)}
+                    />
+                  </div>
                 ))}
-              </select>
-              {selectedNode.edge.acceptDatasetSlot && (
-                <p className="mt-2 text-xs text-gray-400">
-                  Dataset-slot steps use the registered upstream dataset first; select one only if that is missing.
+                {nodes.length === 0 && <EmptyCanvas sourceReady={sourceReady()} />}
+              </div>
+            </div>
+          </section>
+
+          <aside className="flex min-h-0 flex-col rounded-[2rem] border border-white/10 bg-white/[0.055] shadow-2xl shadow-black/20 backdrop-blur">
+            <div className="border-b border-white/10 p-5">
+              <h2 className="text-lg font-semibold text-white">Next recommendations</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{addNextHelpText()}</p>
+              <button
+                type="button"
+                onClick={loadCompatibleNext}
+                disabled={!sourceReady() || isLoadingCompat || isRunning}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-all hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                {isLoadingCompat ? "Finding matches..." : "Find compatible steps"}
+              </button>
+
+              {compatError && (
+                <p className="mt-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                  {compatError}
                 </p>
               )}
             </div>
-          )}
 
-          {runMessage && (
-            <p className="mt-4 rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200">
-              {runMessage}
-            </p>
-          )}
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+              {compatibles.length > 0 ? (
+                compatibles.map((option, index) => (
+                  <RecommendationCard
+                    key={`${option.pipeline_id}-${option.accept_type}-${option.accept_param ?? "dataset"}`}
+                    option={option}
+                    index={index}
+                    onAdd={() => void addPipelineNode(option)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/15 bg-black/10 p-5 text-center">
+                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-300">
+                    REC
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold text-white">
+                    {sourceReady() ? "Ready to recommend" : "Waiting for a source"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    {sourceReady()
+                      ? "Click Find compatible steps to see pipelines that accept the current artifact."
+                      : "Pick a dataset or completed run first."}
+                  </p>
+                </div>
+              )}
+            </div>
 
-          <div className="mt-6 rounded border border-white/10 bg-white/5 px-3 py-2 text-xs leading-relaxed text-gray-400">
-            Review compute profile badges before running. Cloud recommended steps may be slow or unsafe locally.
-          </div>
-        </aside>
+            <div className="border-t border-white/10 p-5">
+              {selectedNode ? (
+                <div>
+                  <div className="flex items-center gap-3">
+                    <CategoryIcon category={selectedNode.category} size="sm" />
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">{selectedNode.displayName}</h3>
+                      <p className="text-xs text-slate-500">Node settings</p>
+                    </div>
+                  </div>
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Dataset for this step
+                  </label>
+                  <select
+                    value={selectedNode.datasetId}
+                    onChange={(e) =>
+                      updateNode(selectedNode.id, {
+                        datasetId: e.target.value ? Number(e.target.value) : "",
+                      })
+                    }
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-colors focus:border-cyan-300/60"
+                  >
+                    <option value="">Use upstream/starting dataset when possible</option>
+                    {datasets.map((dataset) => (
+                      <option key={dataset.id} value={dataset.id}>
+                        {dataset.name ?? dataset.path}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedNode.edge.acceptDatasetSlot && (
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Dataset-slot steps use the registered upstream dataset first.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm leading-6 text-slate-400">
+                  Select a node to inspect its dataset handoff and run link.
+                </p>
+              )}
+
+              {runMessage && (
+                <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-slate-200">
+                  {runMessage}
+                </p>
+              )}
+            </div>
+          </aside>
+        </main>
       </div>
-
-      <section className="mt-5 rounded-lg border border-white/10 bg-surface-raised p-4">
-        <h2 className="text-sm font-semibold text-gray-100">Manifest-driven rules</h2>
-        <div className="mt-3 grid gap-3 text-sm text-gray-400 md:grid-cols-3">
-          <p>Connections are created only from declared artifact types.</p>
-          <p>Compatible next steps come from the backend compatibility endpoint.</p>
-          <p>Lineage is passed to created runs when the upstream node is a run.</p>
-        </div>
-      </section>
     </div>
   );
 }

@@ -5,3 +5,54 @@
 body {
   @apply bg-surface text-gray-100 font-sans;
 }
+
+.workflow-canvas-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.workflow-edge-flow {
+  animation: workflow-edge-flow 1.8s linear infinite;
+  background-size: 220% 100%;
+}
+
+.workflow-progress {
+  animation: workflow-progress 1.4s ease-in-out infinite;
+}
+
+.workflow-node-running {
+  animation: workflow-node-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes workflow-edge-flow {
+  from {
+    background-position: 220% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@keyframes workflow-progress {
+  0% {
+    transform: translateX(-80%);
+  }
+  50% {
+    transform: translateX(35%);
+  }
+  100% {
+    transform: translateX(140%);
+  }
+}
+
+@keyframes workflow-node-pulse {
+  0%,
+  100% {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  }
+  50% {
+    box-shadow: 0 25px 70px -20px rgba(251, 191, 36, 0.45);
+  }
+}
