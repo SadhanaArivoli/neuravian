@@ -134,7 +134,7 @@ describe("serializeWorkflowState", () => {
       resolvedOutputs: [{ type: "x", label: "x", description: "", resolved: true, multiple: false, resolution_source: "", paths: [], host_paths: [] }],
     };
     const state = serializeWorkflowState(makeSource(), [nodeWithRuntime], null);
-    const serialized = state.nodes[0] as Record<string, unknown>;
+    const serialized = state.nodes[0] as unknown as Record<string, unknown>;
     expect(serialized.status).toBeUndefined();
     expect(serialized.runId).toBeUndefined();
     expect(serialized.error).toBeUndefined();

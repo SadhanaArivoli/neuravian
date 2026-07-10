@@ -1,15 +1,20 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { cancelRun, deleteRun, fetchQueue, retryRun, rerunRun } from "../api/client";
+import type { RunSummary, RunStatus } from "../api/client";
 import { useRuns } from "../hooks/useRuns";
-import type { RunSummary } from "../api/client";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
-  pending:  { dot: "bg-yellow-400",  bg: "bg-yellow-400/10",  text: "text-yellow-300" },
-  running:  { dot: "bg-blue-400 animate-pulse", bg: "bg-blue-400/10", text: "text-blue-300" },
-  success:  { dot: "bg-green-400",   bg: "bg-green-400/10",   text: "text-green-300" },
-  failed:   { dot: "bg-red-400",     bg: "bg-red-400/10",     text: "text-red-300" },
+  queued:      { dot: "bg-gray-400",   bg: "bg-gray-400/10",   text: "text-gray-300" },
+  pending:     { dot: "bg-yellow-400", bg: "bg-yellow-400/10", text: "text-yellow-300" },
+  running:     { dot: "bg-blue-400 animate-pulse", bg: "bg-blue-400/10", text: "text-blue-300" },
+  success:     { dot: "bg-green-400",  bg: "bg-green-400/10",  text: "text-green-300" },
+  failed:      { dot: "bg-red-400",    bg: "bg-red-400/10",    text: "text-red-300" },
+  cancelled:   { dot: "bg-orange-400", bg: "bg-orange-400/10", text: "text-orange-300" },
+  interrupted: { dot: "bg-amber-400",  bg: "bg-amber-400/10",  text: "text-amber-300" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -60,16 +65,164 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
+// ── Confirmation dialog ───────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  dangerous,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  dangerous?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-white/10 bg-surface-raised p-6 shadow-2xl">
+        <h3 className="text-base font-semibold text-gray-100">{title}</h3>
+        <p className="mt-2 text-sm text-gray-400">{message}</p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 transition-colors focus:outline-none"
+          >
+            Keep running
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none ${
+              dangerous
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "bg-accent text-white hover:bg-accent-hover"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Queue banner ──────────────────────────────────────────────────────────────
+
+function QueueBanner({ runningRunId, queuedCount }: { runningRunId: number | null; queuedCount: number }) {
+  if (runningRunId === null && queuedCount === 0) return null;
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm">
+      <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
+      <span className="text-blue-200">
+        {runningRunId !== null && (
+          <>
+            Run{" "}
+            <Link to={`/runs/${runningRunId}`} className="font-semibold text-blue-300 hover:underline">
+              #{runningRunId}
+            </Link>{" "}
+            is executing.
+          </>
+        )}
+        {queuedCount > 0 && (
+          <span className={runningRunId !== null ? " " : ""}>
+            {queuedCount} run{queuedCount !== 1 ? "s" : ""} waiting in queue.
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// ── Action buttons ────────────────────────────────────────────────────────────
+
+function RunActions({
+  run,
+  onCancel,
+  onRetry,
+  onRerun,
+  onDelete,
+}: {
+  run: RunSummary;
+  onCancel: (id: number) => void;
+  onRetry: (id: number) => void;
+  onRerun: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  const active = run.status === "queued" || run.status === "running" || run.status === "pending";
+  const canRetry = run.status === "failed" || run.status === "cancelled" || run.status === "interrupted";
+  const canRerun = run.status === "success";
+  const canDelete = run.status === "success" || run.status === "failed" || run.status === "cancelled" || run.status === "interrupted";
+
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      {active && (
+        <button
+          type="button"
+          onClick={() => onCancel(run.id)}
+          className="rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-300 hover:bg-red-500/20 transition-colors focus:outline-none"
+        >
+          Cancel
+        </button>
+      )}
+      {canRetry && (
+        <button
+          type="button"
+          onClick={() => onRetry(run.id)}
+          className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300 hover:bg-amber-500/20 transition-colors focus:outline-none"
+        >
+          Retry
+        </button>
+      )}
+      {canRerun && (
+        <button
+          type="button"
+          onClick={() => onRerun(run.id)}
+          className="rounded border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent hover:bg-accent/20 transition-colors focus:outline-none"
+        >
+          Re-run
+        </button>
+      )}
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(run.id)}
+          className="rounded border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-gray-500 hover:bg-white/10 hover:text-gray-300 transition-colors focus:outline-none"
+          title="Delete run record"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = ["success", "failed", "running", "pending"] as const;
+const STATUS_OPTIONS: RunStatus[] = ["success", "failed", "running", "queued", "cancelled", "interrupted"];
 
 export default function Runs() {
   const { data: runs, isLoading, error } = useRuns();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const { data: queue } = useQuery({
+    queryKey: ["run-queue"],
+    queryFn: fetchQueue,
+    refetchInterval: 3000,
+  });
 
   const [search, setSearch] = useState("");
   const [activeStatuses, setActiveStatuses] = useState<Set<string>>(new Set());
   const [newestFirst, setNewestFirst] = useState(true);
+  const [pendingCancel, setPendingCancel] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function toggleStatus(s: string) {
     setActiveStatuses((prev) => {
@@ -93,8 +246,79 @@ export default function Runs() {
 
   const filtersActive = search.trim() !== "" || activeStatuses.size > 0;
 
+  async function handleCancel(runId: number) {
+    setActionError(null);
+    try {
+      await cancelRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      await queryClient.invalidateQueries({ queryKey: ["run-queue"] });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setPendingCancel(null);
+    }
+  }
+
+  async function handleRetry(runId: number) {
+    setActionError(null);
+    try {
+      const newRun = await retryRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      await queryClient.invalidateQueries({ queryKey: ["run-queue"] });
+      navigate(`/runs/${newRun.id}`);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Retry failed");
+    }
+  }
+
+  async function handleRerun(runId: number) {
+    setActionError(null);
+    try {
+      const newRun = await rerunRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      await queryClient.invalidateQueries({ queryKey: ["run-queue"] });
+      navigate(`/runs/${newRun.id}`);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Re-run failed");
+    }
+  }
+
+  async function handleDelete(runId: number) {
+    setActionError(null);
+    try {
+      await deleteRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setPendingDelete(null);
+    }
+  }
+
   return (
     <div className="p-6 sm:p-8 max-w-screen-xl mx-auto">
+      {/* Confirm dialogs */}
+      {pendingCancel !== null && (
+        <ConfirmDialog
+          title="Cancel run?"
+          message={`Stop run #${pendingCancel}? Logs and any partial output will be preserved.`}
+          confirmLabel="Cancel run"
+          dangerous
+          onConfirm={() => handleCancel(pendingCancel)}
+          onCancel={() => setPendingCancel(null)}
+        />
+      )}
+      {pendingDelete !== null && (
+        <ConfirmDialog
+          title="Delete run record?"
+          message={`Remove run #${pendingDelete} from the database? Output files on disk will not be deleted.`}
+          confirmLabel="Delete record"
+          dangerous
+          onConfirm={() => handleDelete(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div>
@@ -113,9 +337,22 @@ export default function Runs() {
         </Link>
       </div>
 
+      {/* Queue banner */}
+      <QueueBanner
+        runningRunId={queue?.running_run_id ?? null}
+        queuedCount={queue?.queued.length ?? 0}
+      />
+
+      {/* Action error */}
+      {actionError && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex items-center justify-between">
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)} className="text-red-400 hover:text-red-200 ml-4 text-lg leading-none">×</button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="mb-4 space-y-3">
-        {/* Search */}
         <div className="relative max-w-sm">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -134,7 +371,6 @@ export default function Runs() {
           />
         </div>
 
-        {/* Status chips + sort */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-500 shrink-0">Status:</span>
           {STATUS_OPTIONS.map((s) => (
@@ -207,51 +443,69 @@ export default function Runs() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-16">#</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Pipeline</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Dataset</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Duration</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-44">Started</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">Started</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filtered.map((run) => (
-                  <tr key={run.id} className="group hover:bg-white/5 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/runs/${run.id}`}
-                        className="font-mono text-sm font-semibold text-accent hover:text-accent-hover"
-                      >
-                        #{run.id}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link to={`/runs/${run.id}`} className="block min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-gray-200 group-hover:text-gray-100 truncate max-w-xs">
-                            {run.pipeline_manifest_id}
-                          </span>
-                          {run.remote_host_id && (
-                            <span className="shrink-0 rounded bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-xs text-violet-300 font-mono">
-                              remote
+                {filtered.map((run) => {
+                  const queueEntry = queue?.queued.find((q) => q.run_id === run.id);
+                  return (
+                    <tr key={run.id} className="group hover:bg-white/5 transition-colors">
+                      <td className="px-4 py-3">
+                        <Link
+                          to={`/runs/${run.id}`}
+                          className="font-mono text-sm font-semibold text-accent hover:text-accent-hover"
+                        >
+                          #{run.id}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link to={`/runs/${run.id}`} className="block min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-gray-200 group-hover:text-gray-100 truncate max-w-xs">
+                              {run.pipeline_manifest_id}
                             </span>
+                            {run.remote_host_id && (
+                              <span className="shrink-0 rounded bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-xs text-violet-300 font-mono">
+                                remote
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-600 font-mono">{run.pipeline_version}</span>
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 font-mono">
+                        ds #{run.dataset_id}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <StatusBadge status={run.status} />
+                          {queueEntry && (
+                            <span className="text-xs text-gray-500">position {queueEntry.position}</span>
                           )}
                         </div>
-                        <span className="text-xs text-gray-600 font-mono">{run.pipeline_version}</span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 font-mono">
-                      ds #{run.dataset_id}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={run.status} />
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 font-mono">
-                      {duration(run.started_at, run.finished_at)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
-                      {formatDate(run.started_at ?? run.created_at)}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 font-mono">
+                        {duration(run.started_at, run.finished_at)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {formatDate(run.started_at ?? run.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <RunActions
+                          run={run}
+                          onCancel={(id) => setPendingCancel(id)}
+                          onRetry={handleRetry}
+                          onRerun={handleRerun}
+                          onDelete={(id) => setPendingDelete(id)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -259,28 +513,39 @@ export default function Runs() {
           {/* Mobile card list */}
           <div className="sm:hidden divide-y divide-white/5">
             {filtered.map((run) => (
-              <Link
-                key={run.id}
-                to={`/runs/${run.id}`}
-                className="flex items-start gap-3 px-4 py-3.5 hover:bg-white/5 transition-colors"
-              >
-                <span className="font-mono text-xs text-gray-500 pt-0.5 shrink-0">#{run.id}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm text-gray-200 truncate">
-                      {run.pipeline_manifest_id}
-                    </span>
-                    <StatusBadge status={run.status} />
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
-                    <span>ds #{run.dataset_id}</span>
-                    <span>·</span>
-                    <span>{duration(run.started_at, run.finished_at)}</span>
-                    <span>·</span>
-                    <span>{formatDate(run.started_at ?? run.created_at)}</span>
+              <div key={run.id} className="px-4 py-3.5 hover:bg-white/5 transition-colors">
+                <div className="flex items-start gap-3">
+                  <Link to={`/runs/${run.id}`} className="font-mono text-xs text-gray-500 pt-0.5 shrink-0">
+                    #{run.id}
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link to={`/runs/${run.id}`} className="block">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-gray-200 truncate">
+                          {run.pipeline_manifest_id}
+                        </span>
+                        <StatusBadge status={run.status} />
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                        <span>ds #{run.dataset_id}</span>
+                        <span>·</span>
+                        <span>{duration(run.started_at, run.finished_at)}</span>
+                        <span>·</span>
+                        <span>{formatDate(run.started_at ?? run.created_at)}</span>
+                      </div>
+                    </Link>
+                    <div className="mt-2">
+                      <RunActions
+                        run={run}
+                        onCancel={(id) => setPendingCancel(id)}
+                        onRetry={handleRetry}
+                        onRerun={handleRerun}
+                        onDelete={(id) => setPendingDelete(id)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchRunFile, fetchRunTextFile } from "../../api/client";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { cancelRun, fetchRunFile, fetchRunTextFile, retryRun, rerunRun } from "../../api/client";
 import { useRunFile, useRunResults, useRuns } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 import RunMetadataPanel from "./RunMetadataPanel";
@@ -507,6 +509,10 @@ export default function RunResults({ runId }: Props) {
   const { data: allRuns } = useRuns();
   const [activeReport, setActiveReport] = useState(0);
   const [viewerLayers, setViewerLayers] = useState<NiivueLayer[] | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Smart Compare button: detect sibling for this run
   const thisRun = allRuns?.find((r) => r.id === runId) ?? null;
@@ -559,10 +565,90 @@ export default function RunResults({ runId }: Props) {
     ? `/api/runs/${runId}/files/${currentReport.path}`
     : null;
 
+  const thisRunStatus = allRuns?.find((r) => r.id === runId)?.status ?? results.metadata?.status ?? null;
+
+  async function handleCancel() {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await cancelRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleRetry() {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const newRun = await retryRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      navigate(`/runs/${newRun.id}`);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Retry failed");
+      setActionBusy(false);
+    }
+  }
+
+  async function handleRerun() {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const newRun = await rerunRun(runId);
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      navigate(`/runs/${newRun.id}`);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Re-run failed");
+      setActionBusy(false);
+    }
+  }
+
   return (
     <div className="mt-4">
+      {actionError && (
+        <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300 flex items-center justify-between">
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)} className="ml-3 text-red-400 hover:text-red-200">×</button>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 className="text-base font-semibold text-gray-100">Results</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-100">Results</h2>
+          {/* Run action buttons */}
+          {(thisRunStatus === "queued" || thisRunStatus === "running" || thisRunStatus === "pending") && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={handleCancel}
+              className="rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/20 disabled:opacity-50 transition-colors focus:outline-none"
+            >
+              {actionBusy ? "…" : "Cancel"}
+            </button>
+          )}
+          {(thisRunStatus === "failed" || thisRunStatus === "cancelled" || thisRunStatus === "interrupted") && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={handleRetry}
+              className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 transition-colors focus:outline-none"
+            >
+              {actionBusy ? "…" : "Retry"}
+            </button>
+          )}
+          {thisRunStatus === "success" && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={handleRerun}
+              className="rounded border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20 disabled:opacity-50 transition-colors focus:outline-none"
+            >
+              {actionBusy ? "…" : "Re-run"}
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {results.metadata?.dataset_id && (
             <>
