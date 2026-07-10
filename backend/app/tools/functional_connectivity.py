@@ -125,7 +125,7 @@ ATLAS_REGISTRY: dict[str, AtlasSpec] = {
     "aal": AtlasSpec(
         id="aal",
         display_name="AAL 3v2",
-        expected_roi_count=167,
+        expected_roi_count=166,
         fetcher_name="fetch_atlas_aal",
         atlas_type="deterministic label atlas",
         space="MNI",
@@ -277,7 +277,7 @@ def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
         return LoadedAtlas(
             spec=spec,
             labels_img=atlas.maps,
-            roi_labels=labels,
+            roi_labels=_labels_without_background(labels),
             lut=lut,
             version="3v2",
             template=getattr(atlas, "template", None),
@@ -440,7 +440,7 @@ def run(argv: list[str] | None = None) -> int:
         lut=loaded_atlas.lut,
         standardize="zscore_sample",
         detrend=True,
-        resampling_target="data",
+        resampling_target="labels",
         reports=False,
     )
     timeseries = masker.fit_transform(str(selection.bold_path), confounds=confounds)

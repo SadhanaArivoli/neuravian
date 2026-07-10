@@ -1835,7 +1835,7 @@ def test_functional_connectivity_atlas_registry_expected_counts():
     }
     assert ATLAS_REGISTRY["schaefer100_7"].expected_roi_count == 100
     assert ATLAS_REGISTRY["schaefer200_7"].expected_roi_count == 200
-    assert ATLAS_REGISTRY["aal"].expected_roi_count == 167
+    assert ATLAS_REGISTRY["aal"].expected_roi_count == 166
     assert ATLAS_REGISTRY["harvard_oxford_cortical"].expected_roi_count == 48
 
 
