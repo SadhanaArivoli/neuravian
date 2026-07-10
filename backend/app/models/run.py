@@ -23,6 +23,8 @@ class Run(Base):
     # Workflow lineage — set when this run was launched from a Run Next recommendation
     source_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("runs.id"), nullable=True)
     source_artifacts_json: Mapped[str | None] = mapped_column(Text)  # JSON lineage blob
+    # Remote execution — null means local Docker/native
+    remote_host_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

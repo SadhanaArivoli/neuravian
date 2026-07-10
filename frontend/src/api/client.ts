@@ -195,6 +195,7 @@ export interface RunSummary {
   dataset_id: number;
   status: "pending" | "running" | "success" | "failed";
   source_run_id: number | null;
+  remote_host_id: number | null;
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
@@ -225,6 +226,7 @@ export interface RunCreate {
   dataset_id: number;
   params: Record<string, unknown>;
   lineage?: RunLineage | null;
+  remote_host_id?: number | null;
 }
 
 export function createRun(body: RunCreate): Promise<Run> {
@@ -380,6 +382,79 @@ export interface RunProvenance {
 
 export function fetchRunProvenance(runId: number): Promise<RunProvenance> {
   return apiFetch<RunProvenance>(`/runs/${runId}/provenance`);
+}
+
+// ------------------------------------------------------------------ //
+// Remote Hosts                                                         //
+// ------------------------------------------------------------------ //
+
+export interface RemoteHost {
+  id: number;
+  display_name: string;
+  hostname: string;
+  ssh_port: number;
+  username: string;
+  key_path: string;
+  remote_work_root: string;
+  docker_host: string | null;
+  enabled: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RemoteHostCreate {
+  display_name: string;
+  hostname: string;
+  ssh_port?: number;
+  username: string;
+  key_path: string;
+  remote_work_root: string;
+  docker_host?: string | null;
+  enabled?: boolean;
+  notes?: string | null;
+}
+
+export interface PreflightCheck {
+  name: string;
+  passed: boolean;
+  value: string | null;
+  detail: string | null;
+}
+
+export interface PreflightResult {
+  connected: boolean;
+  checks: PreflightCheck[];
+  errors: string[];
+  warnings: string[];
+}
+
+export function fetchRemoteHosts(): Promise<RemoteHost[]> {
+  return apiFetch<RemoteHost[]>("/remote-hosts");
+}
+
+export function createRemoteHost(body: RemoteHostCreate): Promise<RemoteHost> {
+  return apiFetch<RemoteHost>("/remote-hosts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateRemoteHost(id: number, body: Partial<RemoteHostCreate>): Promise<RemoteHost> {
+  return apiFetch<RemoteHost>(`/remote-hosts/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteRemoteHost(id: number): Promise<void> {
+  return apiFetch<void>(`/remote-hosts/${id}`, { method: "DELETE" });
+}
+
+export function testRemoteHostConnection(id: number): Promise<PreflightResult> {
+  return apiFetch<PreflightResult>(`/remote-hosts/${id}/preflight`, { method: "POST" });
 }
 
 // ------------------------------------------------------------------ //

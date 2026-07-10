@@ -21,6 +21,7 @@ class RunCreate(BaseModel):
     dataset_id: int
     params: dict[str, Any] = {}
     lineage: LineageCreate | None = None
+    remote_host_id: int | None = None
 
 
 class ResourceWarningSchema(BaseModel):
@@ -35,6 +36,7 @@ class RunRead(BaseModel):
     dataset_id: int
     status: str
     source_run_id: int | None = None
+    remote_host_id: int | None = None
     params: dict[str, Any]
     command_preview: str | None
     output_dir: str | None
@@ -55,6 +57,7 @@ class RunSummary(BaseModel):
     dataset_id: int
     status: str
     source_run_id: int | None = None
+    remote_host_id: int | None = None
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime

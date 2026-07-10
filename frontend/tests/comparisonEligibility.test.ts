@@ -20,6 +20,7 @@ function makeRun(overrides: Partial<RunSummary> & { id: number }): RunSummary {
     dataset_id: 7,
     status: "success",
     source_run_id: null,
+    remote_host_id: null,
     started_at: null,
     finished_at: null,
     created_at: "2025-01-01T00:00:00Z",

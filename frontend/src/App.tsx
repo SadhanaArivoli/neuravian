@@ -4,6 +4,7 @@ import ComparisonStudio from "./pages/ComparisonStudio";
 import DatasetDetail from "./pages/DatasetDetail";
 import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
+import RemoteHosts from "./pages/RemoteHosts";
 import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
 import Welcome from "./pages/Welcome";
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/workflows/new" element={<WorkflowBuilder />} />
           <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
           <Route path="/compare" element={<ComparisonStudio />} />
+          <Route path="/settings/remote-hosts" element={<RemoteHosts />} />
         </Routes>
       </main>
     </div>

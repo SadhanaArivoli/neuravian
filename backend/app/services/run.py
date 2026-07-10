@@ -322,8 +322,11 @@ def seed_pipeline_registry(db: Session) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _get_executor(manifest: dict) -> Executor:
+def _get_executor(manifest: dict, remote_host_cfg: dict | None = None) -> Executor:
     """Return the appropriate Executor for the manifest's execution type."""
+    if remote_host_cfg:
+        from app.execution.ssh_executor import SSHExecutor
+        return SSHExecutor(remote_host_cfg)
     exec_type = manifest.get("execution", {}).get("type", "docker")
     if exec_type == "native":
         return NativeExecutor()
@@ -384,7 +387,7 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     Runs the pipeline in the background. Opens its own DB session
     so it can outlive the HTTP request that created the run record.
     """
-    executor = _get_executor(ctx.manifest)
+    executor = _get_executor(ctx.manifest, ctx.remote_host_cfg)
     loop = asyncio.get_event_loop()
 
     def _log(line: str) -> None:
@@ -620,6 +623,7 @@ class RunService:
             dataset_id=run.dataset_id,
             status=run.status,
             source_run_id=run.source_run_id,
+            remote_host_id=run.remote_host_id,
             params=params,
             command_preview=run.command_preview,
             output_dir=run.output_dir,
@@ -728,6 +732,24 @@ class RunService:
 
         lineage_seed_source = _lineage_seed_source(manifest, body.lineage)
 
+        # Resolve remote host config when caller requested remote execution
+        remote_host_cfg: dict | None = None
+        if body.remote_host_id is not None:
+            from app.models.remote_host import RemoteHost
+            rh = self.db.get(RemoteHost, body.remote_host_id)
+            if not rh:
+                raise ValueError(f"Remote host {body.remote_host_id} not found")
+            if not rh.enabled:
+                raise ValueError(f"Remote host '{rh.display_name}' is disabled")
+            remote_host_cfg = {
+                "hostname": rh.hostname,
+                "ssh_port": rh.ssh_port,
+                "username": rh.username,
+                "key_path": rh.key_path,
+                "remote_work_root": rh.remote_work_root,
+                "docker_host": rh.docker_host,
+            }
+
         # Create the DB record. params_json records effective_params (including
         # the auto-injected work-dir) so the provenance record is accurate.
         run = Run(
@@ -738,6 +760,7 @@ class RunService:
             status="pending",
             source_run_id=body.lineage.upstream_run_id if body.lineage else None,
             source_artifacts_json=json.dumps(body.lineage.model_dump()) if body.lineage else None,
+            remote_host_id=body.remote_host_id,
         )
         self.db.add(run)
         self.db.commit()
@@ -768,10 +791,11 @@ class RunService:
             params=effective_params,
             dataset_path=dataset.path,
             output_dir=str(output_dir),
+            remote_host_cfg=remote_host_cfg,
         )
 
         # Resource pre-check (warnings only — never block the run)
-        executor = _get_executor(manifest)
+        executor = _get_executor(manifest, remote_host_cfg)
         raw_warnings = executor.check_resources(ctx)
         resource_warnings = [
             ResourceWarningSchema(level=w.level, message=w.message)
@@ -819,6 +843,8 @@ class RunService:
                 pipeline_version=r.pipeline_version,
                 dataset_id=r.dataset_id,
                 status=r.status,
+                source_run_id=r.source_run_id,
+                remote_host_id=r.remote_host_id,
                 started_at=r.started_at,
                 finished_at=r.finished_at,
                 created_at=r.created_at,

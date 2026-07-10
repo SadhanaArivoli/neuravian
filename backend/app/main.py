@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
 from app.api.pipelines import router as pipelines_router
+from app.api.remote_hosts import router as remote_hosts_router
 from app.api.runs import router as runs_router
 from app.api.wizard import router as wizard_router
 from app.core.config import settings
@@ -34,5 +35,6 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api")
 app.include_router(datasets_router, prefix="/api")
 app.include_router(pipelines_router, prefix="/api")
+app.include_router(remote_hosts_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
 app.include_router(wizard_router, prefix="/api")

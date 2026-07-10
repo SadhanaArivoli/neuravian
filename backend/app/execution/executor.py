@@ -20,6 +20,9 @@ class RunContext:
     params: dict[str, Any]
     dataset_path: str   # container-internal path (e.g. /host-data/bids-examples/ds001)
     output_dir: str     # container-internal path (e.g. /app/data/derivatives/mriqc/1)
+    # When set, SSHExecutor runs the job on this remote host instead of locally.
+    # Keys: hostname, ssh_port, username, key_path, remote_work_root, docker_host (optional)
+    remote_host_cfg: dict[str, Any] | None = field(default=None)
 
 
 @dataclass

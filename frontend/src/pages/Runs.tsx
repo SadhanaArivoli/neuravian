@@ -225,9 +225,16 @@ export default function Runs() {
                     </td>
                     <td className="px-4 py-3">
                       <Link to={`/runs/${run.id}`} className="block min-w-0">
-                        <span className="font-medium text-gray-200 group-hover:text-gray-100 truncate block max-w-xs">
-                          {run.pipeline_manifest_id}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-200 group-hover:text-gray-100 truncate max-w-xs">
+                            {run.pipeline_manifest_id}
+                          </span>
+                          {run.remote_host_id && (
+                            <span className="shrink-0 rounded bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-xs text-violet-300 font-mono">
+                              remote
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-gray-600 font-mono">{run.pipeline_version}</span>
                       </Link>
                     </td>

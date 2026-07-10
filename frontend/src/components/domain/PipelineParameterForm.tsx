@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ComputeProfile, Pipeline, PipelineParameter, PrefillContext } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
+import { useRemoteHosts } from "../../hooks/useRemoteHosts";
 import { useCreateRun } from "../../hooks/useRuns";
 
 interface Props {
@@ -405,7 +406,11 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   const basicParams = visibleParams.filter((p) => !p.advanced);
   const advancedParams = visibleParams.filter((p) => p.advanced);
 
+  const { data: remoteHosts = [] } = useRemoteHosts();
+  const enabledHosts = remoteHosts.filter((h) => h.enabled);
+
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | "">("");
+  const [remoteHostId, setRemoteHostId] = useState<number | null>(null);
   const [values, setValues] = useState<FormValues>(() => {
     const defaults = buildDefaults(pipeline.parameters);
     // Pre-populate the prefilled parameter from the upstream run artifact.
@@ -468,6 +473,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
               injected_path: prefill.path ?? null,
             }
           : null,
+        remote_host_id: remoteHostId,
       });
       navigate(`/runs/${run.id}`);
     } catch (err) {
@@ -486,8 +492,9 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       return;
     }
 
+    // Skip the local performance warning when running on a remote host
     const profile = pipeline.compute_profile as ComputeProfile | undefined;
-    if (profile === "local-slow" || profile === "local-unsafe") {
+    if (!remoteHostId && (profile === "local-slow" || profile === "local-unsafe")) {
       setShowPreflightDialog(true);
       return;
     }
@@ -546,6 +553,35 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
             Suggested from run #{prefill.runId} ({prefill.sourceDisplayName} · {prefill.artifactLabel}).
             Select the appropriate BIDS dataset in the selector above.
           </span>
+        </div>
+      )}
+
+      {/* Execution target — only shown for Docker pipelines when remote hosts exist */}
+      {pipeline.container && enabledHosts.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-200 mb-1">
+            Execution target
+          </label>
+          <p className="text-xs text-gray-400 mb-1.5">
+            Run locally in Docker or offload to a configured remote host via SSH.
+          </p>
+          <select
+            value={remoteHostId ?? ""}
+            onChange={(e) => setRemoteHostId(e.target.value ? Number(e.target.value) : null)}
+            className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Local (this machine)</option>
+            {enabledHosts.map((h) => (
+              <option key={h.id} value={h.id}>
+                Remote: {h.display_name} ({h.hostname})
+              </option>
+            ))}
+          </select>
+          {remoteHostId && (pipeline.compute_profile === "local-slow" || pipeline.compute_profile === "local-unsafe") && (
+            <p className="mt-1 text-xs text-green-400">
+              Remote execution recommended for this pipeline.
+            </p>
+          )}
         </div>
       )}
 
