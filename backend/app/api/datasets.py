@@ -348,7 +348,11 @@ def list_dataset_artifacts(
                     size_bytes = 0
 
                 atlas_metadata = None
-                if a.type.startswith("connectivity_") or a.type == "timeseries_tsv":
+                if (
+                    a.type.startswith("connectivity_")
+                    or a.type == "timeseries_tsv"
+                    or a.type.startswith("roi_statistics")
+                ):
                     meta_path = Path(r.output_dir) / "connectivity_metadata.json"
                     if meta_path.is_file():
                         try:

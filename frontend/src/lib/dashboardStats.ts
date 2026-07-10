@@ -293,6 +293,7 @@ export type PreviewKind =
   | "html"
   | "connectivity_matrix"
   | "image"
+  | "csv"
   | "tsv"
   | "json"
   | "none";
@@ -310,6 +311,7 @@ export function resolvePreviewKind(artifact: DatasetArtifact): PreviewKind {
     (p.includes("connectivity_matrix") && p.endsWith(".csv"))
   )
     return "connectivity_matrix";
+  if (artifact.type === "roi_statistics_csv" || p.endsWith(".csv")) return "csv";
   if (p.endsWith(".tsv")) return "tsv";
   if (p.endsWith(".json")) return "json";
   return "none";

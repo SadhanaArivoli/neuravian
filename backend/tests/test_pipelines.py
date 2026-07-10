@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+import nibabel as nib
+import numpy as np
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -18,6 +20,8 @@ from app.execution.executor import RunContext
 from app.tools.functional_connectivity import (
     ATLAS_REGISTRY,
     DEFAULT_ATLAS_ID,
+    LoadedAtlas,
+    build_roi_statistics,
     normalize_atlas_id,
 )
 from app.main import app
@@ -1821,6 +1825,8 @@ def test_functional_connectivity_manifest_loads_and_validates():
         "connectivity_matrix_png",
         "connectivity_matrix_npy",
         "timeseries_tsv",
+        "roi_statistics_csv",
+        "roi_statistics_json",
         "connectivity_report_html",
     }.issubset(produced)
 
@@ -1845,6 +1851,52 @@ def test_functional_connectivity_atlas_alias_preserves_old_runs():
     assert normalize_atlas_id("schaefer_100_7") == "schaefer100_7"
     with pytest.raises(ValueError, match="Unknown atlas"):
         normalize_atlas_id("not-an-atlas")
+
+
+def test_functional_connectivity_builds_roi_statistics_from_atlas(tmp_path):
+    labels_img = tmp_path / "atlas.nii.gz"
+    data = np.array(
+        [
+            [[1, 1], [2, 0]],
+            [[2, 2], [0, 0]],
+        ],
+        dtype=np.int16,
+    )
+    nib.save(nib.Nifti1Image(data, affine=np.eye(4)), labels_img)
+    atlas = LoadedAtlas(
+        spec=ATLAS_REGISTRY["schaefer100_7"],
+        labels_img=str(labels_img),
+        roi_labels=[
+            "7Networks_LH_Vis_1",
+            "7Networks_LH_Default_1",
+        ],
+        label_values=[1, 2],
+    )
+    timeseries = np.array(
+        [
+            [1.0, 2.0],
+            [3.0, 4.0],
+            [5.0, 8.0],
+        ],
+    )
+
+    rows = build_roi_statistics(
+        atlas=atlas,
+        timeseries=timeseries,
+        labels=atlas.roi_labels,
+    )
+
+    assert rows[0]["roi_number"] == 1
+    assert rows[0]["roi_label"] == "7Networks_LH_Vis_1"
+    assert rows[0]["network"] == "Vis"
+    assert rows[0]["voxel_count"] == 2
+    assert rows[0]["mean_signal"] == pytest.approx(3.0)
+    assert rows[0]["std_signal"] == pytest.approx(2.0)
+    assert rows[0]["min_signal"] == pytest.approx(1.0)
+    assert rows[0]["max_signal"] == pytest.approx(5.0)
+    assert rows[0]["median_signal"] == pytest.approx(3.0)
+    assert rows[1]["network"] == "Default"
+    assert rows[1]["voxel_count"] == 3
 
 
 def test_import_fmriprep_derivatives_manifest_loads_and_validates():

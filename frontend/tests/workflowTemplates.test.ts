@@ -50,6 +50,8 @@ const MANIFESTS: Record<string, ManifestSlim> = {
       { type: "connectivity_matrix_png" },
       { type: "connectivity_matrix_npy" },
       { type: "timeseries_tsv" },
+      { type: "roi_statistics_csv" },
+      { type: "roi_statistics_json" },
       { type: "connectivity_report_html" },
     ],
   },

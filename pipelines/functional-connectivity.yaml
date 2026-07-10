@@ -26,6 +26,8 @@ outputs:
   - connectivity_matrix_png
   - connectivity_matrix_npy
   - timeseries_tsv
+  - roi_statistics_csv
+  - roi_statistics_json
   - connectivity_report_html
 
 parameters:
@@ -121,6 +123,16 @@ produces:
     path_hint: "timeseries.tsv"
     label: "Atlas Time Series"
     description: "Extracted atlas ROI time series"
+
+  - type: roi_statistics_csv
+    path_hint: "roi_statistics.csv"
+    label: "ROI Statistics CSV"
+    description: "Per-ROI atlas voxel counts and time-series summary statistics"
+
+  - type: roi_statistics_json
+    path_hint: "roi_statistics.json"
+    label: "ROI Statistics JSON"
+    description: "Machine-readable per-ROI atlas statistics"
 
   - type: connectivity_report_html
     path_hint: "connectivity_report.html"

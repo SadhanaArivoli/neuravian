@@ -79,6 +79,7 @@ class LoadedAtlas:
     spec: AtlasSpec
     labels_img: str
     roi_labels: list[str]
+    label_values: list[int]
     masker_labels: list[str] | None = None
     lut: Any | None = None
     version: str | None = None
@@ -242,6 +243,18 @@ def _labels_without_background(labels: list[str]) -> list[str]:
     return labels
 
 
+def _label_values_without_background(values: list[int], labels: list[str]) -> list[int]:
+    if labels and labels[0].strip().lower() in {"background", "bg", "0"}:
+        return values[1:]
+    return values
+
+
+def _consecutive_label_values(labels: list[str]) -> list[int]:
+    if labels and labels[0].strip().lower() in {"background", "bg", "0"}:
+        return list(range(len(labels)))
+    return list(range(1, len(labels) + 1))
+
+
 def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
     normalized_id = normalize_atlas_id(atlas_id)
     spec = ATLAS_REGISTRY[normalized_id]
@@ -256,10 +269,12 @@ def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
             verbose=1,
         )
         labels = [_decode_label(label) for label in atlas.labels]
+        label_values = _consecutive_label_values(labels)
         return LoadedAtlas(
             spec=spec,
             labels_img=atlas.maps,
             roi_labels=_labels_without_background(labels),
+            label_values=_label_values_without_background(label_values, labels),
             masker_labels=labels,
             lut=None,
             version=None,
@@ -278,6 +293,7 @@ def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
             spec=spec,
             labels_img=atlas.maps,
             roi_labels=_labels_without_background(labels),
+            label_values=_label_values_without_background(indices, labels),
             lut=lut,
             version="3v2",
             template=getattr(atlas, "template", None),
@@ -292,10 +308,12 @@ def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
             verbose=1,
         )
         labels = [_decode_label(label) for label in atlas.labels]
+        label_values = _consecutive_label_values(labels)
         return LoadedAtlas(
             spec=spec,
             labels_img=atlas.maps,
             roi_labels=_labels_without_background(labels),
+            label_values=_label_values_without_background(label_values, labels),
             masker_labels=labels,
             lut=None,
             version="cort-maxprob-thr25-2mm",
@@ -312,6 +330,47 @@ def _write_matrix_csv(path: Path, matrix: np.ndarray, labels: list[str]) -> None
 
 def _write_timeseries(path: Path, timeseries: np.ndarray, labels: list[str]) -> None:
     pd.DataFrame(timeseries, columns=labels).to_csv(path, sep="\t", index=False)
+
+
+def _network_from_label(label: str) -> str | None:
+    parts = label.split("_")
+    if len(parts) >= 3 and parts[0].endswith("Networks"):
+        return parts[2]
+    return None
+
+
+def _voxel_counts(labels_img: str, label_values: list[int]) -> list[int]:
+    data = np.asanyarray(nib.load(labels_img).dataobj)
+    return [int(np.count_nonzero(data == value)) for value in label_values]
+
+
+def build_roi_statistics(
+    *,
+    atlas: LoadedAtlas,
+    timeseries: np.ndarray,
+    labels: list[str],
+) -> list[dict[str, Any]]:
+    voxel_counts = _voxel_counts(atlas.labels_img, atlas.label_values[: len(labels)])
+    rows: list[dict[str, Any]] = []
+    for index, label in enumerate(labels):
+        series = timeseries[:, index]
+        rows.append({
+            "roi_number": index + 1,
+            "roi_label": label,
+            "network": _network_from_label(label),
+            "voxel_count": voxel_counts[index] if index < len(voxel_counts) else 0,
+            "mean_signal": float(np.mean(series)),
+            "std_signal": float(np.std(series, ddof=1)) if series.size > 1 else 0.0,
+            "min_signal": float(np.min(series)),
+            "max_signal": float(np.max(series)),
+            "median_signal": float(np.median(series)),
+        })
+    return rows
+
+
+def _write_roi_statistics(csv_path: Path, json_path: Path, rows: list[dict[str, Any]]) -> None:
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    json_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
 
 def _write_heatmap(path: Path, matrix: np.ndarray, labels: list[str]) -> None:
@@ -463,13 +522,21 @@ def run(argv: list[str] | None = None) -> int:
     npy_path = output_dir / "connectivity_matrix.npy"
     png_path = output_dir / "connectivity_heatmap.png"
     ts_path = output_dir / "timeseries.tsv"
+    roi_stats_csv_path = output_dir / "roi_statistics.csv"
+    roi_stats_json_path = output_dir / "roi_statistics.json"
     meta_path = output_dir / "connectivity_metadata.json"
     html_path = output_dir / "connectivity_report.html"
 
+    roi_statistics = build_roi_statistics(
+        atlas=loaded_atlas,
+        timeseries=timeseries,
+        labels=roi_labels,
+    )
     _write_matrix_csv(csv_path, matrix, roi_labels)
     np.save(npy_path, matrix)
     _write_heatmap(png_path, matrix, roi_labels)
     _write_timeseries(ts_path, timeseries, roi_labels)
+    _write_roi_statistics(roi_stats_csv_path, roi_stats_json_path, roi_statistics)
 
     off_diag = matrix[~np.eye(matrix.shape[0], dtype=bool)]
     metadata: dict[str, Any] = {
@@ -496,6 +563,11 @@ def run(argv: list[str] | None = None) -> int:
         "n_volumes": int(timeseries.shape[0]),
         "n_rois": int(timeseries.shape[1]),
         "roi_count": int(timeseries.shape[1]),
+        "roi_statistics_generated": True,
+        "roi_statistics_files": {
+            "csv": roi_stats_csv_path.name,
+            "json": roi_stats_json_path.name,
+        },
         "matrix_shape": list(matrix.shape),
         "correlation_min": float(off_diag.min()) if off_diag.size else 1.0,
         "correlation_max": float(off_diag.max()) if off_diag.size else 1.0,
@@ -513,11 +585,14 @@ def run(argv: list[str] | None = None) -> int:
             "Connectivity Matrix NPY": npy_path.name,
             "Heatmap PNG": png_path.name,
             "ROI Time Series TSV": ts_path.name,
+            "ROI Statistics CSV": roi_stats_csv_path.name,
+            "ROI Statistics JSON": roi_stats_json_path.name,
             "Metadata JSON": meta_path.name,
         },
     )
 
     print(f"[neuroforge] Wrote matrix: {csv_path}")
+    print(f"[neuroforge] Wrote ROI statistics: {roi_stats_csv_path}")
     print(f"[neuroforge] Wrote heatmap: {png_path}")
     print(f"[neuroforge] Wrote report: {html_path}")
     print(f"[neuroforge] Completed in {metadata['runtime_seconds']}s")

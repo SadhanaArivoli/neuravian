@@ -324,6 +324,7 @@ export interface RunResults {
   connectivity_matrices?: RunResultFile[];
   timeseries?: RunResultFile[];
   connectivity_metadata?: RunResultFile[];
+  roi_statistics?: RunResultFile[];
   niftis?: RunResultFile[];
   artifacts: RunArtifact[];
   metadata?: RunMetadata;

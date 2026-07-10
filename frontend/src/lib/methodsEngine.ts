@@ -281,7 +281,10 @@ const PROSE_TEMPLATES: Record<
       `A ${measure} matrix was constructed using the ${atlas} atlas` +
       (n !== NOT_RECORDED ? ` (${n} ROIs${networkText})` : "") +
       `. Time-series were extracted from the fMRIPrep-preprocessed BOLD data ` +
-      `and connectivity was estimated as pairwise ${measure} coefficients.`
+      `and connectivity was estimated as pairwise ${measure} coefficients. ` +
+      `Per-ROI descriptive statistics were generated for the selected atlas` +
+      (n !== NOT_RECORDED ? ` (${n} ROIs)` : "") +
+      `.`
     );
   },
 };

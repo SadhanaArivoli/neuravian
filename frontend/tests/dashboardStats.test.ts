@@ -302,6 +302,12 @@ describe("resolvePreviewKind", () => {
     ).toBe("image");
   });
 
+  it("detects ROI statistics csv", () => {
+    expect(
+      resolvePreviewKind({ ...base, type: "roi_statistics_csv", path: "/out/roi_statistics.csv" }),
+    ).toBe("csv");
+  });
+
   it("detects tsv", () => {
     expect(resolvePreviewKind({ ...base, path: "/out/data.tsv" })).toBe("tsv");
   });

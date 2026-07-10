@@ -234,6 +234,8 @@ def test_results_includes_connectivity_outputs(api_client, db_session, tmp_path)
     (output_dir / "connectivity_heatmap.png").write_bytes(b"PNG")
     (output_dir / "connectivity_matrix.npy").write_bytes(b"NUMPY")
     (output_dir / "timeseries.tsv").write_text("A\tB\n0.1\t0.2\n")
+    (output_dir / "roi_statistics.csv").write_text("roi_number,roi_label\n1,A\n2,B\n")
+    (output_dir / "roi_statistics.json").write_text(json.dumps([{"roi_number": 1, "roi_label": "A"}]))
     (output_dir / "connectivity_metadata.json").write_text(json.dumps({"n_rois": 2}))
     run = Run(
         dataset_id=dataset.id,
@@ -253,6 +255,13 @@ def test_results_includes_connectivity_outputs(api_client, db_session, tmp_path)
     assert body["images"][0]["path"] == "connectivity_heatmap.png"
     assert body["timeseries"][0]["path"] == "timeseries.tsv"
     assert body["connectivity_metadata"][0]["path"] == "connectivity_metadata.json"
+    assert {item["path"] for item in body["roi_statistics"]} == {
+        "roi_statistics.csv",
+        "roi_statistics.json",
+    }
+    artifact_types = {artifact["type"] for artifact in body["artifacts"]}
+    assert "roi_statistics_csv" in artifact_types
+    assert "roi_statistics_json" in artifact_types
 
 
 def test_serve_nifti_derivative(api_client, run_with_output):

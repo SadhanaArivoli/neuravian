@@ -8,6 +8,16 @@ import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
 import { detectRunFamily, findCompatibleConnectivityRun, findVerifiedSibling } from "../../lib/comparisonEligibility";
 import { parseConnectivityMatrixCsv, type ConnectivityMatrixData } from "../../lib/connectivityMatrix";
+import {
+  filterRoiStatistics,
+  normalizeRoiStatisticsJson,
+  parseRoiStatisticsCsv,
+  roiStatisticsToCsv,
+  sortRoiStatistics,
+  type RoiSortKey,
+  type RoiStatistic,
+  type SortDirection,
+} from "../../lib/roiStatistics";
 
 // Key T1w IQMs with friendly labels and descriptions.
 // Shown in the summary card; the full set is in the MRIQC HTML report.
@@ -468,6 +478,305 @@ function ConnectivitySummary({
   );
 }
 
+const ROI_SORT_OPTIONS: Array<{ key: RoiSortKey; label: string }> = [
+  { key: "roi_number", label: "ROI #" },
+  { key: "roi_label", label: "Label" },
+  { key: "network", label: "Network" },
+  { key: "voxel_count", label: "Voxels" },
+  { key: "mean_signal", label: "Mean" },
+  { key: "std_signal", label: "Std" },
+  { key: "min_signal", label: "Min" },
+  { key: "max_signal", label: "Max" },
+  { key: "median_signal", label: "Median" },
+];
+
+function formatStat(value: number): string {
+  return Math.abs(value) >= 100 ? value.toFixed(1) : value.toFixed(4);
+}
+
+function RoiStatisticsPanel({
+  runId,
+  roiFiles,
+  metadataPath,
+  matrixPath,
+}: {
+  runId: number;
+  roiFiles: RunResultFile[];
+  metadataPath?: string;
+  matrixPath?: string;
+}) {
+  const jsonFile = roiFiles.find((file) => file.path.endsWith(".json"));
+  const csvFile = roiFiles.find((file) => file.path.endsWith(".csv"));
+  const [rows, setRows] = useState<RoiStatistic[]>([]);
+  const [metadata, setMetadata] = useState<ConnectivityMetadata | null>(null);
+  const [matrixData, setMatrixData] = useState<ConnectivityMatrixData | null>(null);
+  const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [network, setNetwork] = useState("");
+  const [sortKey, setSortKey] = useState<RoiSortKey>("roi_number");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    setRows([]);
+    const loadRows = jsonFile
+      ? fetchRunFile<unknown>(runId, jsonFile.path).then(normalizeRoiStatisticsJson)
+      : csvFile
+        ? fetchRunTextFile(runId, csvFile.path).then(parseRoiStatisticsCsv)
+        : Promise.resolve([]);
+    loadRows
+      .then((loaded) => {
+        if (!cancelled) {
+          setRows(loaded);
+          setSelectedNumber(loaded[0]?.roi_number ?? null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load ROI statistics.");
+      });
+    if (metadataPath) {
+      fetchRunFile<ConnectivityMetadata>(runId, metadataPath)
+        .then((json) => {
+          if (!cancelled) setMetadata(json);
+        })
+        .catch(() => {
+          if (!cancelled) setMetadata(null);
+        });
+    }
+    if (matrixPath) {
+      fetchRunTextFile(runId, matrixPath)
+        .then((text) => {
+          if (!cancelled) setMatrixData(parseConnectivityMatrixCsv(text));
+        })
+        .catch(() => {
+          if (!cancelled) setMatrixData(null);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, jsonFile?.path, csvFile?.path, metadataPath, matrixPath]);
+
+  const networks = useMemo(
+    () => [...new Set(rows.map((row) => row.network ?? "Unassigned"))].sort(),
+    [rows],
+  );
+  const visibleRows = useMemo(
+    () => sortRoiStatistics(filterRoiStatistics(rows, query, network), sortKey, sortDirection),
+    [rows, query, network, sortKey, sortDirection],
+  );
+  const selected = visibleRows.find((row) => row.roi_number === selectedNumber) ?? visibleRows[0] ?? null;
+  const selectedIndex = selected ? rows.findIndex((row) => row.roi_number === selected.roi_number) : -1;
+  const associatedConnectivity = useMemo(() => {
+    if (!matrixData || selectedIndex < 0) return [];
+    return matrixData.values[selectedIndex]
+      ?.map((value, index) => ({
+        label: matrixData.labels[index] ?? `ROI ${index + 1}`,
+        value,
+      }))
+      .filter((_, index) => index !== selectedIndex)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+      .slice(0, 6) ?? [];
+  }, [matrixData, selectedIndex]);
+
+  function handleSort(nextKey: RoiSortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(nextKey);
+      setSortDirection(nextKey === "roi_label" || nextKey === "network" ? "asc" : "desc");
+    }
+  }
+
+  function exportCsv() {
+    const blob = new Blob([roiStatisticsToCsv(visibleRows)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "roi_statistics_filtered.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (error) {
+    return (
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        ROI statistics are available, but the preview could not load: {error}
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500">
+        Loading ROI statistics…
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">ROI Statistics</h3>
+          <p className="text-xs text-gray-500">
+            {metadata?.atlas ?? "Atlas"} · {rows.length} ROIs · descriptive time-series summaries
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {csvFile && (
+            <a
+              href={`/api/runs/${runId}/files/${csvFile.path}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Open CSV
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+          >
+            Export filtered CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-3 grid gap-2 md:grid-cols-[1fr_180px_180px]">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search ROI label, number, or network"
+          className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+        />
+        <select
+          value={network}
+          onChange={(event) => setNetwork(event.target.value)}
+          className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+        >
+          <option value="">All networks</option>
+          {networks.map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
+        <select
+          value={`${sortKey}:${sortDirection}`}
+          onChange={(event) => {
+            const [key, direction] = event.target.value.split(":") as [RoiSortKey, SortDirection];
+            setSortKey(key);
+            setSortDirection(direction);
+          }}
+          className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+        >
+          {ROI_SORT_OPTIONS.flatMap(({ key, label }) => [
+            <option key={`${key}:asc`} value={`${key}:asc`}>{label} ↑</option>,
+            <option key={`${key}:desc`} value={`${key}:desc`}>{label} ↓</option>,
+          ])}
+        </select>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="max-h-[520px] overflow-auto rounded border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
+            <thead className="sticky top-0 bg-gray-50 text-gray-500">
+              <tr>
+                {ROI_SORT_OPTIONS.map(({ key, label }) => (
+                  <th key={key} className="whitespace-nowrap px-3 py-2 font-medium">
+                    <button
+                      type="button"
+                      onClick={() => handleSort(key)}
+                      className="flex items-center gap-1 hover:text-gray-900"
+                    >
+                      {label}
+                      {sortKey === key && <span>{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700">
+              {visibleRows.map((row) => (
+                <tr
+                  key={row.roi_number}
+                  onClick={() => setSelectedNumber(row.roi_number)}
+                  className={`cursor-pointer transition-colors hover:bg-blue-50 ${
+                    selected?.roi_number === row.roi_number ? "bg-blue-50" : ""
+                  }`}
+                >
+                  <td className="px-3 py-2 font-mono">{row.roi_number}</td>
+                  <td className="max-w-[280px] truncate px-3 py-2" title={row.roi_label}>{row.roi_label}</td>
+                  <td className="px-3 py-2">{row.network ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono">{row.voxel_count}</td>
+                  <td className="px-3 py-2 font-mono">{formatStat(row.mean_signal)}</td>
+                  <td className="px-3 py-2 font-mono">{formatStat(row.std_signal)}</td>
+                  <td className="px-3 py-2 font-mono">{formatStat(row.min_signal)}</td>
+                  <td className="px-3 py-2 font-mono">{formatStat(row.max_signal)}</td>
+                  <td className="px-3 py-2 font-mono">{formatStat(row.median_signal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibleRows.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-gray-500">No ROIs match the current search.</div>
+          )}
+        </div>
+
+        <aside className="rounded border border-gray-200 bg-gray-50 p-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Region Explorer</h4>
+          {selected ? (
+            <div className="mt-3 space-y-3 text-xs text-gray-700">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">{selected.roi_label}</div>
+                <div className="text-gray-500">
+                  ROI {selected.roi_number} · {metadata?.atlas ?? metadata?.atlas_id ?? "Atlas"}
+                </div>
+              </div>
+              <dl className="grid grid-cols-2 gap-2">
+                {[
+                  ["Network", selected.network ?? "—"],
+                  ["Voxels", String(selected.voxel_count)],
+                  ["Mean", formatStat(selected.mean_signal)],
+                  ["Std", formatStat(selected.std_signal)],
+                  ["Min", formatStat(selected.min_signal)],
+                  ["Max", formatStat(selected.max_signal)],
+                  ["Median", formatStat(selected.median_signal)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded bg-white px-2 py-1.5">
+                    <dt className="text-[10px] uppercase tracking-wide text-gray-400">{label}</dt>
+                    <dd className="font-mono text-gray-800">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {associatedConnectivity.length > 0 && (
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-400">
+                    Strongest connectivity row values
+                  </div>
+                  <ul className="space-y-1">
+                    {associatedConnectivity.map((entry) => (
+                      <li key={entry.label} className="flex justify-between gap-2 rounded bg-white px-2 py-1">
+                        <span className="truncate" title={entry.label}>{entry.label}</span>
+                        <span className="font-mono">{entry.value.toFixed(4)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-gray-500">Select an ROI row to inspect region details.</p>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 interface RunResultFile {
   name: string;
   path: string;
@@ -586,6 +895,7 @@ export default function RunResults({ runId }: Props) {
   const connectivityMatrices = results.connectivity_matrices ?? [];
   const timeseries = results.timeseries ?? [];
   const connectivityMetadata = results.connectivity_metadata ?? [];
+  const roiStatistics = results.roi_statistics ?? [];
   const hasFiles =
     results.reports.length > 0 ||
     results.metrics.length > 0 ||
@@ -593,6 +903,7 @@ export default function RunResults({ runId }: Props) {
     images.length > 0 ||
     connectivityMatrices.length > 0 ||
     timeseries.length > 0 ||
+    roiStatistics.length > 0 ||
     niftis.length > 0;
   // Show Download All when any surfaced file or resolved artifact exists.
   // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
@@ -815,6 +1126,15 @@ export default function RunResults({ runId }: Props) {
         />
       )}
 
+      {roiStatistics.length > 0 && (
+        <RoiStatisticsPanel
+          runId={runId}
+          roiFiles={roiStatistics}
+          metadataPath={connectivityMetadata[0]?.path}
+          matrixPath={connectivityMatrices[0]?.path}
+        />
+      )}
+
       {/* Report tabs (multiple subjects / group report) */}
       {results.reports.length > 0 && (
         <div className="rounded-lg border border-gray-200 overflow-hidden">
@@ -909,13 +1229,13 @@ export default function RunResults({ runId }: Props) {
         </details>
       )}
 
-      {(connectivityMatrices.length > 0 || timeseries.length > 0 || images.length > 0 || connectivityMetadata.length > 0) && (
+      {(connectivityMatrices.length > 0 || timeseries.length > 0 || images.length > 0 || connectivityMetadata.length > 0 || roiStatistics.length > 0) && (
         <details className="mt-3">
           <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
-            Connectivity files ({connectivityMatrices.length + timeseries.length + images.length + connectivityMetadata.length})
+            Connectivity files ({connectivityMatrices.length + timeseries.length + images.length + connectivityMetadata.length + roiStatistics.length})
           </summary>
           <ul className="mt-2 space-y-1">
-            {[...connectivityMatrices, ...timeseries, ...images, ...connectivityMetadata].map((file) => (
+            {[...connectivityMatrices, ...timeseries, ...images, ...connectivityMetadata, ...roiStatistics].map((file) => (
               <li key={file.path}>
                 <a
                   href={`/api/runs/${runId}/files/${file.path}`}

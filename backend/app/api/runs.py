@@ -290,6 +290,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
+            "roi_statistics": [],
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
@@ -299,6 +300,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
+            "roi_statistics": [],
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
@@ -330,6 +332,11 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     connectivity_metadata = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("*connectivity_metadata*.json"))
+    ]
+    roi_statistics = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*roi_statistics*"))
+        if f.suffix in {".csv", ".json"}
     ]
     # Volumetric files: NIfTI (.nii/.nii.gz) and FreeSurfer MGZ (.mgz).
     # MRIQC produces none; fMRIPrep and FastSurfer produce many.
@@ -379,6 +386,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "connectivity_matrices": connectivity_matrices,
         "timeseries": timeseries,
         "connectivity_metadata": connectivity_metadata,
+        "roi_statistics": roi_statistics,
         "niftis": niftis,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),

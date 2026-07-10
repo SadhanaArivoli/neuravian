@@ -35,6 +35,8 @@ const TYPE_ICON: Record<string, string> = {
   connectivity_matrix_csv: "CN",
   connectivity_matrix_png: "CN",
   connectivity_matrix_npy: "CN",
+  roi_statistics_csv: "ROI",
+  roi_statistics_json: "ROI",
   bids_dataset_validated: "BD",
   skull_stripped_brain: "SS",
   brain_mask: "BM",
@@ -156,7 +158,7 @@ function PreviewPanel({
             className="max-w-full rounded border border-white/10"
           />
         )}
-        {(kind === "tsv" || kind === "json") && (
+        {(kind === "tsv" || kind === "csv" || kind === "json") && (
           <TextPreview url={fileUrl} kind={kind} />
         )}
         {kind === "none" && (
@@ -176,7 +178,7 @@ function PreviewPanel({
   );
 }
 
-function TextPreview({ url, kind }: { url: string; kind: "tsv" | "json" }) {
+function TextPreview({ url, kind }: { url: string; kind: "csv" | "tsv" | "json" }) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     fetch(url)

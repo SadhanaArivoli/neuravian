@@ -42,6 +42,12 @@ import {
   type ConnectivityMetadata,
   type MatrixCompatibilityResult,
 } from "../lib/connectivityMatrix";
+import {
+  compareRoiStatistics,
+  normalizeRoiStatisticsJson,
+  parseRoiStatisticsCsv,
+  type RoiStatisticsComparison,
+} from "../lib/roiStatistics";
 import { parseNiftiHeader, DATATYPE_LABELS } from "../lib/niftiHeader";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -72,12 +78,25 @@ interface ConnectivityCompareState {
   minDiff?: number;
   maxDiff?: number;
   largestAbsDiff?: number;
+  roiComparison?: RoiStatisticsComparison;
 }
 
 function formatAtlasBadge(meta: ConnectivityMetadata | undefined, fallback: string): string {
   if (!meta) return fallback;
   const roi = meta.n_rois ? ` · ${meta.n_rois} ROIs` : "";
   return `${meta.atlas ?? meta.atlas_id ?? fallback}${roi}`;
+}
+
+async function loadRoiStatistics(runId: number, results: RunResults) {
+  const jsonFile = results.roi_statistics?.find((file) => file.path.endsWith(".json"));
+  if (jsonFile) {
+    return normalizeRoiStatisticsJson(await fetchRunFile<unknown>(runId, jsonFile.path));
+  }
+  const csvFile = results.roi_statistics?.find((file) => file.path.endsWith(".csv"));
+  if (csvFile) {
+    return parseRoiStatisticsCsv(await fetchRunTextFile(runId, csvFile.path));
+  }
+  return [];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -634,6 +653,62 @@ function ConnectivityComparisonPanel({
         </div>
       )}
 
+      {state.roiComparison && (
+        <div className="rounded-lg border border-white/10 bg-surface-raised p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-100">ROI statistics comparison</h3>
+              <p className="text-xs text-gray-500">
+                Mean signal differences only; no statistical hypothesis testing is performed.
+              </p>
+            </div>
+            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-300">
+              {state.roiComparison.count} matched ROIs
+            </span>
+          </div>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded border border-white/10 bg-white/5 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Mean Δ signal</div>
+              <div className="font-mono text-sm font-semibold text-gray-200">
+                {state.roiComparison.meanDifference.toFixed(4)}
+              </div>
+            </div>
+            <div className="rounded border border-white/10 bg-white/5 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Mean |Δ| signal</div>
+              <div className="font-mono text-sm font-semibold text-amber-300">
+                {state.roiComparison.meanAbsoluteDifference.toFixed(4)}
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded border border-white/10">
+            <table className="min-w-full text-left text-xs">
+              <thead className="bg-white/5 text-gray-400">
+                <tr>
+                  <th className="px-3 py-2 font-medium">ROI</th>
+                  <th className="px-3 py-2 font-medium">Network</th>
+                  <th className="px-3 py-2 font-medium">{labelA} mean</th>
+                  <th className="px-3 py-2 font-medium">{labelB} mean</th>
+                  <th className="px-3 py-2 font-medium">Δ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-gray-300">
+                {state.roiComparison.largestDifferences.slice(0, 6).map((row) => (
+                  <tr key={`${row.roi_number}-${row.roi_label}`}>
+                    <td className="max-w-[280px] truncate px-3 py-2" title={row.roi_label}>
+                      {row.roi_number}. {row.roi_label}
+                    </td>
+                    <td className="px-3 py-2">{row.network ?? "—"}</td>
+                    <td className="px-3 py-2 font-mono">{row.mean_a.toFixed(4)}</td>
+                    <td className="px-3 py-2 font-mono">{row.mean_b.toFixed(4)}</td>
+                    <td className="px-3 py-2 font-mono text-amber-300">{row.difference.toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Summary panel */}
       {matrixViewMode === "summary" && (
         <div className="rounded-lg border border-white/10 bg-surface-raised p-4 space-y-4">
@@ -1081,8 +1156,10 @@ export default function ComparisonStudio() {
       fetchRunTextFile(runBId, matrixB.path),
       metaFileA ? fetchRunFile<ConnectivityMetadata>(runAId, metaFileA.path).catch(() => null) : Promise.resolve(null),
       metaFileB ? fetchRunFile<ConnectivityMetadata>(runBId, metaFileB.path).catch(() => null) : Promise.resolve(null),
+      loadRoiStatistics(runAId, resultsA).catch(() => []),
+      loadRoiStatistics(runBId, resultsB).catch(() => []),
     ])
-      .then(([textA, textB, metaA, metaB]) => {
+      .then(([textA, textB, metaA, metaB, roiA, roiB]) => {
         const a = parseConnectivityMatrixCsv(textA);
         const b = parseConnectivityMatrixCsv(textB);
         const sameDimensions =
@@ -1097,6 +1174,10 @@ export default function ComparisonStudio() {
         const diffStats = sameDimensions && canDiff
           ? connectivityMatrixDifference(a, b)
           : {};
+        const roiComparison =
+          roiA.length > 0 && roiB.length > 0 && canDiff
+            ? compareRoiStatistics(roiA, roiB)
+            : undefined;
         setConnectivityState({
           status: "done",
           a,
@@ -1104,6 +1185,7 @@ export default function ComparisonStudio() {
           metaA: metaA ?? undefined,
           metaB: metaB ?? undefined,
           compatibility,
+          roiComparison,
           ...diffStats,
         });
       })
