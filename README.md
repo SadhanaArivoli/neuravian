@@ -1,129 +1,155 @@
 # NeuroForge
 
-NeuroForge is a local-first neuroimaging workflow workbench that wraps established tools — dcm2bids, BIDS Validator, MRIQC, FastSurfer, fMRIPrep, and others — with a guided web UI, reproducible run records, artifact-based pipeline chaining, and beginner-friendly error explanations.
+A local-first neuroimaging workflow platform that wraps established tools — dcm2bids, BIDS Validator, MRIQC, FastSurfer, BrainChop, SynthStrip, and Nilearn — into a guided web interface with reproducible run records, artifact-based pipeline chaining, and plain-English error explanations.
+
+---
 
 ## Why NeuroForge Exists
 
-Neuroimaging tools are individually powerful but collectively difficult: each has its own installation path, command-line interface, input expectations, and failure mode. NeuroForge does not replace these tools. It wraps them with:
+Neuroimaging research depends on a collection of powerful but difficult tools. Each one has its own installation path, command-line interface, input conventions, and failure modes. Getting from raw DICOM files to a connectivity matrix means knowing how to install FSL, set up a FreeSurfer license, format a dataset into BIDS, run fMRIPrep on a cluster, copy output files to the right place, and then run Nilearn with the right atlas parameters — none of which communicates with any other step.
 
-- a consistent local interface for launching and monitoring runs
-- manifest-driven pipeline metadata that expresses what each tool accepts, produces, and requires
-- artifact-based chaining so outputs from one tool flow cleanly into the next
-- provenance records that log every command, parameter, version, input, and output
-- beginner-friendly error summaries that explain what failed and what to try next
+Researchers — especially students and those new to neuroimaging — spend substantial time on this coordination work rather than on the scientific questions they are trying to answer.
 
-The current focus is local execution for research workflows on macOS with Apple Silicon, with Docker Compose as the delivery mechanism.
+NeuroForge addresses this by acting as a coordination layer above the existing tools. It does not replace fMRIPrep, MRIQC, or Nilearn. It:
 
-## Architecture
+- provides a consistent local interface for launching and monitoring runs
+- expresses what each tool accepts, produces, and requires in machine-readable manifests
+- chains outputs from one tool directly into the inputs of the next
+- logs every command, parameter, version, input, and output in a provenance record
+- classifies errors and provides plain-English explanations of what failed and what to try
 
-```
-Docker Compose
-├── nginx  (port 3000)  — reverse-proxy; serves frontend build, proxies /api
-├── frontend            — React + TypeScript + Vite, Tailwind CSS
-└── backend             — FastAPI + SQLAlchemy + SQLite + Alembic
-```
+The current version runs locally on macOS with Docker Compose and targets small research datasets and individual researchers. Remote execution and HPC scheduling are planned but not yet implemented.
 
-**Manifest-driven pipeline registry** — every pipeline is defined by a YAML manifest in `pipelines/`. Manifests declare typed parameters, accepted artifact types, produced artifact types, compute profiles, container images or native commands, and known errors. The backend loads manifests at startup; no hardcoded pipeline logic lives in application code.
+---
 
-**Artifact registry** — runs emit typed artifacts (e.g. `bids_dataset_validated`, `skull_stripped_t1`, `connectivity_matrix_csv`). The compatibility API (`/api/pipelines/compatible`) queries artifact types to surface valid next steps without hardcoded pipeline relationships.
+## What Problems It Solves
 
-**Workflow chaining** — the Workflow Builder constructs a linear node graph from compatible artifact types. Each node references a pipeline ID and parameters; the executor runs nodes sequentially and stops on failure.
+**Coordination overhead.** Running BIDS Validator before MRIQC before fMRIPrep requires manually tracking which output goes where, which dataset was validated, and which preprocessing settings were used. NeuroForge handles this with artifact-typed outputs that are automatically surfaced as valid inputs for compatible next steps.
 
-**Provenance and lineage** — every run records pipeline ID, version, command, parameters, container image (if any), input artifacts, output artifacts, start time, end time, status, and warnings. The `source_run_id` field links downstream runs back to their upstream source, enabling the Pipeline Comparison Studio to classify comparisons as verified (shared source) or unverified (same dataset, unknown lineage).
+**Reproducibility gaps.** Most neuroimaging workflows are conducted by running commands in a terminal with no persistent record. NeuroForge records every run with its pipeline version, full command, parameters, container image digest, input artifacts, output artifacts, start time, end time, and status — and keeps this audit trail in a local SQLite database.
 
-**Local storage** — SQLite database managed by Alembic migrations. No cloud database or external service required.
+**Opaque errors.** Neuroimaging tools produce errors that require substantial experience to interpret. A raw `recon-all exited with code 1` is unhelpful to a student. NeuroForge translates known error patterns into plain-English explanations with suggested remediation steps.
+
+**Workflow tracking.** Research workflows accumulate dozens of runs across multiple tools and datasets. NeuroForge provides a unified run list, status tracking, queue management, and the ability to cancel, retry, re-run, or delete runs without leaving the interface.
+
+**Comparison difficulty.** Comparing BrainChop and SynthStrip skull-strips, or comparing connectivity matrices across subjects or preprocessing parameters, normally requires custom Python scripts. NeuroForge's Comparison Studio provides side-by-side visualization, Dice coefficients, Frobenius norms, and difference heatmaps without any additional code.
+
+---
+
+## What Makes It Different
+
+NeuroForge is not a pipeline runner that happens to have a web UI. Several design decisions distinguish it from existing tools:
+
+**Manifest-driven, not hardcoded.** Every pipeline is defined entirely in a YAML manifest in `pipelines/`. The backend has no hardcoded knowledge of what MRIQC accepts or what fMRIPrep produces. Manifests declare typed parameters, accepted artifact types, produced artifact types, compute profiles, container images or native entry points, and known error patterns. Adding a new tool means writing a manifest, not modifying application code.
+
+**Artifact-typed chaining.** Runs emit typed artifacts (`bids_dataset_validated`, `skull_stripped_t1`, `fmriprep_derivatives`, `connectivity_matrix_csv`). The compatibility API queries artifact types to surface valid next steps without any hardcoded pipeline relationships. A Functional Connectivity run knows it needs `fmriprep_derivatives` input; an MRIQC Group run knows it needs `mriqc_report` input — because the manifests say so.
+
+**Lineage-aware comparison.** Every run carries a `source_run_id` that links it to the upstream run it was derived from. The Comparison Studio uses this lineage to classify comparisons as *same-source* (shared upstream BOLD file — a true methodological comparison) or *unverified* (same dataset, no shared lineage — possibly different subjects or sessions). This distinction matters scientifically and is surfaced clearly in the UI.
+
+**Execution queue with recovery.** A lightweight in-process queue runs one heavy job at a time. Queued runs can be cancelled before they start. Running jobs can be cancelled by stopping the Docker container or native process. If the backend restarts during a run, orphaned jobs are detected at startup and marked *interrupted* rather than *failed*, with a Retry button available immediately.
+
+**Methods Studio.** Completed runs can be assembled into a draft methods paragraph that names tools, versions, atlases, and parameters in the format expected by a methods section. This is not AI-generated — it uses the provenance records directly to fill a structured template.
+
+**Analysis Graph.** Every dataset has an analysis graph that visualizes all runs and their artifact dependencies as a directed graph. Clicking any node opens its run detail. This makes the full history of a dataset's processing visible without navigating individual run pages.
+
+**Local-first.** NeuroForge is designed to run on a researcher's laptop without any cloud account, API key, or internet connection (after initial Docker image pulls). Data never leaves the machine unless the user explicitly chooses to send it somewhere.
+
+---
 
 ## Current Capabilities
 
-### DICOM Wizard
-Interactive multi-step wizard at `/dicom-wizard`. Scouts DICOM series, previews suggested BIDS mappings, generates a `dcm2bids` configuration, launches dcm2bids, and auto-registers successful outputs as a new BIDS dataset.
+### Conversion
 
-### dcm2bids
-Converts mapped DICOM series into a BIDS dataset. Integrated with the DICOM Wizard; also runnable standalone via the Pipelines page.
+| Tool | What it does | Execution | Compute profile | Status |
+|------|-------------|-----------|-----------------|--------|
+| dcm2niix | DICOM → NIfTI conversion | Docker (`local-ok`) | `local-ok` | ✓ Verified |
+| dcm2bids | DICOM → BIDS dataset via dcm2niix | Docker (`local-ok`) | `local-ok` | ✓ Verified |
 
-### BIDS Validator
-Validates BIDS folder structure and metadata. Run before MRIQC or fMRIPrep. A failed status means the dataset has BIDS issues — the error summary explains which files are affected.
+The DICOM Wizard provides a guided multi-step interface: scout DICOM series → preview BIDS entity mappings → generate a dcm2bids configuration → launch conversion → auto-register the BIDS output as a new dataset.
 
-### MRIQC
-Generates MRI quality-control metrics and HTML reports for T1w, T2w, and BOLD images. Intended as the recommended local QC step after BIDS validation.
+### Validation
 
-### MRIQC Group Report
-Aggregates individual MRIQC metrics across subjects into a group-level HTML report. Accepts a completed MRIQC run as input.
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| BIDS Validator | Validates BIDS folder structure and metadata | Docker (`local-ok`) | ✓ Verified |
 
-### BrainChop (MindGrab skull-strip)
-Skull-strips structural NIfTI images using a browser-side neural network via native subprocess. Runs without Docker. Fast on Apple Silicon (~21 s on M-series hardware with no emulation).
+Validation results appear inline with file-level error and warning detail.
 
-### SynthStrip
-FreeSurfer-team skull-stripping CNN that works on any-contrast MRI (T1w, T2w, FLAIR, DWI b0). Runs via Docker with the linux/amd64 image. Slow on Apple Silicon via Rosetta 2 (5–15 min); marked `local-slow`.
+### Quality Control
 
-### FastSurfer
-Deep-learning cortical segmentation and surface reconstruction. Runs via Docker. Marked `local-slow`; may require substantial runtime plus `HOST_UID`/`HOST_GID` environment variables for correct file ownership.
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| MRIQC | Per-subject IQM metrics and HTML reports for T1w, T2w, BOLD | Docker (`local-ok`) | ✓ Verified |
+| MRIQC Group | Aggregates MRIQC metrics across subjects | Docker (`local-ok`) | ✓ Verified |
 
-### pydeface
-Defacing for structural MRI to support data sharing. Runs via Docker; marked `local-unsafe` and not recommended for ordinary laptop execution due to resource requirements.
+### Skull Stripping
 
-### fMRIPrep
-Full fMRI preprocessing pipeline. Manifest exists; marked `local-unsafe`. Not recommended for local laptop use. Does not run safely or quickly on a development machine. Import fMRIPrep derivatives instead (see below).
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| BrainChop (MindGrab) | CNN skull-strip; ~21 s on Apple Silicon M-series | Native subprocess | ✓ Verified |
+| SynthStrip | FreeSurfer-team skull-strip; any-contrast MRI | Docker (`linux/amd64`) | ⚠ Implemented, slow on Apple Silicon (5–15 min via Rosetta 2) |
 
-### Import fMRIPrep Derivatives
-Imports pre-computed fMRIPrep derivatives into NeuroForge's artifact registry without re-running the pipeline. This is the supported local path for accessing preprocessed BOLD data when fMRIPrep was run elsewhere.
+### Segmentation
 
-### Functional Connectivity
-Computes Pearson correlation matrices from fMRIPrep-preprocessed BOLD data. Requires an Import fMRIPrep Derivatives run as its source. Outputs a connectivity matrix (`.npy`, `.csv`, heatmap `.png`) and an HTML report. Uses the Schaefer 2018 atlas (100 ROIs, 7 networks) by default.
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| FastSurfer | Deep-learning cortical segmentation and surface reconstruction | Docker (`linux/amd64`) | ⚠ Implemented, slow on Apple Silicon; requires `HOST_UID`/`HOST_GID` |
 
-**Important:** Functional Connectivity cannot run without precomputed fMRIPrep derivatives. It reads pre-processed BOLD files from an fMRIPrep output directory.
+### Preprocessing
 
-### Workflow Builder
-Visual linear pipeline builder at `/workflows/new`. Starts from a registered dataset or a completed run. Adds compatible next steps based on artifact types. Runs nodes sequentially; stops on failure. Links completed and failed nodes to their run detail pages.
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| Import fMRIPrep Derivatives | Registers pre-computed fMRIPrep output without re-running | Native | ✓ Verified |
+| fMRIPrep | Full fMRI preprocessing pipeline | Docker (`linux/amd64`) | ✗ Manifest exists; not locally safe; use Import instead |
 
-V1 does not support DAGs, parallel execution, saved templates, backend workflow storage, drag-and-drop editing, or cloud/HPC scheduling.
+fMRIPrep is not expected to run safely or quickly on a development laptop. The supported local path is to run fMRIPrep on a server or cluster and then import the output directory using the Import fMRIPrep Derivatives pipeline.
 
-### Workflow Templates
-Pre-defined linear workflow templates available in the Workflow Builder. Current templates:
+### Connectivity
 
-| Template | Steps |
-|---|---|
-| BIDS Validation + QC | BIDS Validator → MRIQC → MRIQC Group Report |
-| fMRI Preprocessing | BIDS Validator → fMRIPrep |
-| Functional Connectivity Analysis | Import fMRIPrep Derivatives → Functional Connectivity |
-| NIfTI De-identification | dcm2niix → pydeface |
-| Skull Strip + Segmentation | BrainChop → FastSurfer |
-| SynthStrip + Segmentation | SynthStrip → FastSurfer |
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| Functional Connectivity | Atlas-based Pearson correlation matrix from fMRIPrep BOLD | Native (Nilearn) | ✓ Verified |
 
-### Pipeline Comparison Studio
-Side-by-side comparison of two pipeline runs at `/compare`. Supports two comparison families:
+Functional Connectivity requires an Import fMRIPrep Derivatives run as its source. It cannot run fMRIPrep itself. Outputs: connectivity matrix (CSV, NPY), heatmap (PNG), per-ROI statistics (CSV, JSON), time series (TSV), metadata (JSON), and an HTML report.
 
-- **Anatomical** — compares skull-stripped masks from different pipelines (e.g. BrainChop vs SynthStrip). Shows linked NIfTI viewers, geometry table, Dice coefficient, and artifact metadata diff.
-- **Connectivity** — compares functional connectivity matrices from two runs. Shows side-by-side heatmaps, difference heatmap, Frobenius norm, and per-run metadata. Classifies comparisons as same-source (identical upstream BOLD file) or cross-subject.
+**Supported atlases:** Schaefer 2018 100-parcel 7-network (default), Schaefer 2018 200-parcel 7-network, AAL 3v2, Harvard-Oxford cortical.
 
-Eligibility is classified as verified (shared `source_run_id`), unverified (same dataset, no lineage), or ineligible (different datasets).
+### De-identification
 
-## Pipeline Status
+| Tool | What it does | Execution | Status |
+|------|-------------|-----------|--------|
+| pydeface | Removes facial features from structural NIfTI | Docker (`local-unsafe`) | ✗ Not locally safe; resource-intensive |
 
-| Pipeline | Category | Compute profile | Local verification | Notes |
-|---|---|---|---|---|
-| dcm2bids | Conversion | `local-ok` | ✓ Verified | Integrated with DICOM Wizard; auto-registers BIDS output |
-| dcm2niix | Conversion | `local-ok` | ✓ Verified | Lightweight DICOM → NIfTI conversion |
-| BIDS Validator | Validation | `local-ok` | ✓ Verified | Recommended before MRIQC or fMRIPrep |
-| MRIQC | Quality control | `local-ok` | ✓ Verified | Individual-subject QC; produces IQM metrics and HTML reports |
-| MRIQC Group Report | Quality control | `local-ok` | ✓ Verified | Aggregates MRIQC metrics across subjects |
-| BrainChop | Segmentation | `local-ok` | ✓ Verified | Native; ~21 s on Apple Silicon; no Docker required |
-| Import fMRIPrep Derivatives | Preprocessing | `local-ok` | ✓ Verified | Registers pre-computed fMRIPrep output; required for Functional Connectivity |
-| Functional Connectivity | Connectivity | `local-ok` | ✓ Verified | Requires fMRIPrep derivatives; Schaefer 100-ROI atlas; ~4–6 s |
-| SynthStrip | Segmentation | `local-slow` | ⚠ Implemented | linux/amd64 image; 5–15 min via Rosetta 2 on Apple Silicon |
-| FastSurfer | Segmentation | `local-slow` | ⚠ Implemented | Heavy runtime; requires `HOST_UID`/`HOST_GID` setup |
-| pydeface | De-identification | `local-unsafe` | ✗ Not locally safe | Manifest exists; not recommended for laptop use |
-| fMRIPrep | Preprocessing | `local-unsafe` | ✗ Not locally safe | Manifest exists; not recommended for laptop use; use Import instead |
+### Workflow Management
 
-### Compute profiles
+| Feature | Description |
+|---------|-------------|
+| Workflow Builder | Visual linear pipeline builder; chains compatible tools based on artifact types |
+| Workflow Library | Save, load, export, and import named workflows as JSON |
+| Workflow Templates | Pre-defined starting templates (BIDS+QC, fMRI preprocessing, connectivity, skull-strip+segment) |
+| Execution Queue | Lightweight in-process queue; one heavy job at a time; position displayed in UI |
+| Run Actions | Cancel, Retry, Re-run, Duplicate, Delete from the Runs page and Run Results view |
 
-| Profile | Meaning |
-|---|---|
-| `local-ok` | Expected to run on a local development machine for small test datasets |
-| `local-slow` | Runs locally but may be very slow or require extra resource setup |
-| `local-unsafe` | Manifest exists; not recommended for local execution; may be too heavy or fragile for a laptop |
+### Analysis and Visualization
 
-These labels are UI guidance only. They do not provide scheduling, resource limiting, or cloud execution.
+| Feature | Description |
+|---------|-------------|
+| Analysis Graph | Directed graph of all runs and artifact dependencies for a dataset |
+| Artifact Explorer | Browse, preview, and download all artifacts produced by runs on a dataset |
+| Comparison Studio | Side-by-side run comparison: skull-strip masks (Dice) or connectivity matrices (Frobenius norm, difference heatmap) |
+| ROI Statistics Explorer | Per-ROI voxel counts and time-series statistics from Functional Connectivity runs; searchable, sortable, filterable by network |
+| Region Explorer | Sidebar panel showing per-ROI summary stats and strongest connectivity partners |
+| Dataset Dashboard | Subject/session/modality overview, run history, and quick-launch links |
+
+### Documentation and Reproducibility
+
+| Feature | Description |
+|---------|-------------|
+| Methods Studio | Assembles a draft methods paragraph from provenance records; names tools, versions, atlases, parameters |
+| Provenance records | Every run records pipeline ID, version, command, parameters, container image, inputs, outputs, timestamps |
+| Run lineage | `source_run_id` links downstream runs to their upstream source for verified comparison |
+
+---
 
 ## Workflow Examples
 
@@ -139,12 +165,12 @@ DICOM folder
 
 1. Register a DICOM source folder as a dataset.
 2. Open the DICOM Wizard → scout series → generate config → launch dcm2bids.
-3. Auto-register the BIDS output.
-4. Run BIDS Validator on the registered dataset.
+3. The BIDS output is auto-registered as a new dataset.
+4. Run BIDS Validator on the new dataset.
 5. Run MRIQC when the dataset is valid.
-6. Run MRIQC Group Report to aggregate metrics across subjects.
+6. Run MRIQC Group Report to aggregate IQM metrics across subjects.
 
-### Structural skull-stripping and segmentation
+### Skull-strip and segmentation comparison
 
 ```
 NIfTI (from dcm2niix or existing)
@@ -152,35 +178,96 @@ NIfTI (from dcm2niix or existing)
   └─ SynthStrip →  FastSurfer
 ```
 
-Use the Pipeline Comparison Studio to compare BrainChop and SynthStrip outputs side-by-side with Dice coefficient.
+Use the Comparison Studio to compare BrainChop and SynthStrip outputs side-by-side with a Dice coefficient and NIfTI viewer.
 
 ### Functional connectivity from fMRIPrep derivatives
 
 ```
 fMRIPrep output directory (pre-computed)
   └─ Import fMRIPrep Derivatives
-       └─ Functional Connectivity
+       └─ Functional Connectivity (Schaefer 100-ROI)
+       └─ Functional Connectivity (AAL 166-ROI)
 ```
 
-Run Functional Connectivity multiple times (different subjects, tasks, or atlas settings) and use the Comparison Studio to compare connectivity matrices with Frobenius norm and difference heatmaps.
+Run Functional Connectivity with different atlas settings. Use the Comparison Studio to compare connectivity matrices with a Frobenius norm and difference heatmap. Use the ROI Statistics Explorer to inspect per-ROI voxel counts and signal statistics.
 
-## Apple Silicon Limitations
+---
 
-NeuroForge is developed on Apple Silicon (M-series) and most `local-ok` pipelines run natively or through ARM Docker images without emulation.
+## Architecture
 
-The following pipelines use linux/amd64 images and run through Rosetta 2 emulation on Apple Silicon, which is significantly slower:
+```
+Docker Compose
+├── nginx  (port 3000)   — serves React build; proxies /api to backend
+└── backend (port 8000)  — FastAPI + SQLAlchemy + SQLite + Alembic
+     ├── Pipeline registry  — loads YAML manifests from /pipelines at startup
+     ├── Artifact registry  — resolves artifact types from manifest produces[] declarations
+     ├── Execution queue    — asyncio in-process queue; one heavy job at a time
+     ├── Native executor    — subprocess-based execution for Python tools
+     ├── Docker executor    — Docker SDK-based execution for containerized tools
+     └── Stalled-run detector — periodic check; marks orphaned runs as interrupted
+```
 
-- **SynthStrip** — 5–15 min per volume (vs. < 1 min on x86)
-- **FastSurfer** — substantially slower; plan for extended runtimes
-- **pydeface** and **fMRIPrep** — not locally safe regardless of architecture
+### Pipeline registry
 
-There is no multi-user mode, HPC scheduler, or cloud execution path in the current version.
+Every pipeline is defined by a YAML manifest in `pipelines/`. Manifests declare:
+
+- `id` — stable identifier used in all run records
+- `execution.type` — `native` (subprocess) or `docker` (Docker SDK)
+- `execution.command` or `container` — the command or image to run
+- `compute_profile` — `local-ok`, `local-slow`, or `local-unsafe`
+- `accepts[]` — artifact types this pipeline accepts as input, with parameter mapping
+- `produces[]` — artifact types this pipeline emits, with filename hints
+- `parameters[]` — typed parameter declarations with defaults and validation
+- `known_errors[]` — regex patterns matched against stderr for error translation
+
+The backend reads all manifests at startup. No pipeline logic is hardcoded in application code.
+
+### Artifact registry
+
+Artifact types are defined in `pipelines/schema/artifact_types.yaml`. Each type has a stable slug, label, description, and expected file extensions. The compatibility API (`GET /api/pipelines/compatible?artifact_type=X`) queries this registry to return pipelines that accept a given artifact type, enabling the UI to surface valid next steps without any hardcoded relationships.
+
+### Execution queue
+
+A module-level asyncio queue (`backend/app/services/execution_queue.py`) processes runs sequentially. One heavy job runs at a time. New runs are appended; the processor pops from the front. Cancel requests set a `cancel_requested` flag on the database row, which the processor checks before dispatch and the executor checks before writing the final status.
+
+A separate stalled-run checker runs every two minutes. If the database shows `status=running` for a run that the processor is not currently executing, the run is marked `interrupted` with a Retry option — distinguishing an uncontrolled shutdown from an intentional failure.
+
+### Provenance and lineage
+
+Every run record stores: pipeline ID and version, full command, parameters JSON, container image digest (when applicable), input artifact paths, output directory, start and end timestamps, exit code, status, resource warnings, and a structured audit trail of `ProvenanceEvent` rows. The `source_run_id` field links a run to the upstream run it was derived from, enabling the Analysis Graph and Comparison Studio to reconstruct processing histories.
+
+---
+
+## Known Limitations
+
+**Apple Silicon.** Pipelines that use `linux/amd64` Docker images (SynthStrip, FastSurfer, pydeface, fMRIPrep) run through Rosetta 2 emulation on Apple Silicon. This is significantly slower than native execution. `local-ok` pipelines (MRIQC, dcm2bids, BrainChop, Functional Connectivity) run natively and are not affected.
+
+**fMRIPrep verification pending.** The fMRIPrep manifest exists and the pipeline can be launched, but it has not been verified end-to-end locally. It is marked `local-unsafe`. Use Import fMRIPrep Derivatives for local work.
+
+**No remote or HPC execution.** All execution is local Docker or native subprocess. Remote SSH execution infrastructure exists in the codebase (`RemoteHosts` settings page, SSH executor module) but is not yet connected to the run creation flow. SLURM, Kubernetes, and cloud dispatch are planned but not implemented.
+
+**Workflow Builder is frontend-only.** Workflows are constructed and executed in the browser session. There is no backend workflow record, no saved execution state, and no resume-from-failure. If the page is closed mid-workflow, the state is lost (though individual run records persist).
+
+**No multi-user support.** NeuroForge is a single-user local application. There is no authentication, role-based access, or collaboration feature.
+
+**Planned pipelines not yet implemented:**
+
+| Pipeline | Status |
+|----------|--------|
+| XCP-D (post-processing) | Planned |
+| QSIPrep (diffusion preprocessing) | Planned |
+| MRtrix3 (tractography) | Planned |
+| Seed-based connectivity | Planned |
+| Structural connectomics | Planned |
+| Group-level statistics | Planned |
+
+---
 
 ## Local Setup
 
 ### Requirements
 
-- Docker Desktop (with at least 8 GB memory allocation recommended)
+- Docker Desktop (8 GB memory allocation recommended)
 - Git
 
 ### Quick start
@@ -188,7 +275,7 @@ There is no multi-user mode, HPC scheduler, or cloud execution path in the curre
 ```bash
 git clone https://github.com/SadhanaArivoli/neuroforge.git
 cd neuroforge
-cp .env.example .env   # edit HOST_DATASETS_DIR if needed
+cp .env.example .env   # edit HOST_DATASETS_DIR to your datasets folder
 docker compose up
 ```
 
@@ -196,13 +283,13 @@ Open:
 - UI: `http://localhost:3000`
 - API docs: `http://localhost:8000/docs`
 
-### Environment
+### Environment variables
 
 ```dotenv
-# Path to datasets on your host machine (mounted read-only at /host-data)
+# Path on your host machine mounted read-only at /host-data inside the backend container
 HOST_DATASETS_DIR=/Users/yourname/Documents
 
-# Required for tools that enforce file ownership (e.g. FastSurfer)
+# Required for pipelines that write files with host file ownership (e.g. FastSurfer)
 HOST_UID=
 HOST_GID=
 ```
@@ -214,7 +301,7 @@ export HOST_GID=$(id -g)
 
 ### Development
 
-Backend:
+Backend (Python 3.12, uv):
 
 ```bash
 cd backend
@@ -223,63 +310,70 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
-Frontend:
+Frontend (Node, Vite):
 
 ```bash
 cd frontend
 npm install
-npm run dev   # Vite dev server at http://localhost:5173
+npm run dev   # http://localhost:5173
 ```
 
 ### Tests
 
-Backend:
-
 ```bash
-cd backend
-uv run pytest
+# Backend
+cd backend && uv run pytest
+
+# Frontend
+cd frontend && npm test && npm run build
 ```
 
-Frontend:
+GitHub Actions runs backend pytest, frontend type-checking, and frontend tests on every push.
+
+### Deploy frontend to Docker
+
+After editing frontend source:
 
 ```bash
 cd frontend
-npm test
 npm run build
+docker exec neuroforge-frontend-1 rm -rf /usr/share/nginx/html/assets
+docker cp dist/. neuroforge-frontend-1:/usr/share/nginx/html/
+docker exec neuroforge-frontend-1 nginx -s reload
 ```
 
-GitHub Actions runs backend pytest plus frontend type-checking and tests on every push.
+---
 
-## Current Limitations
+## Repository Structure
 
-- NeuroForge is a local research tool, not a clinical application. Outputs are not medically validated.
-- No cloud execution, HPC scheduler, multi-user collaboration, or role-based permissions.
-- Workflow Builder V1 is frontend-only and executes nodes linearly; no DAGs, parallel execution, saved backend templates, or drag-and-drop editing.
-- fMRIPrep and pydeface manifests exist but are marked `local-unsafe` and should not be treated as laptop-safe workflows.
-- FastSurfer and SynthStrip are `local-slow` and may require extended runtimes on Apple Silicon.
-- Functional Connectivity requires pre-computed fMRIPrep derivatives — it cannot run fMRIPrep itself.
-- Error explanations are human-readable summaries, not exhaustive scientific or clinical validation.
-- No screenshots or end-user tutorial are committed yet.
-- Pipeline support depends on local Docker availability and the external tool images or native commands being accessible.
+```
+neuroforge/
+├── backend/
+│   ├── app/
+│   │   ├── api/           — FastAPI route handlers
+│   │   ├── core/          — database, settings, path utilities
+│   │   ├── execution/     — Docker executor, native executor, SSH executor
+│   │   ├── models/        — SQLAlchemy ORM models
+│   │   ├── services/      — run service, pipeline service, execution queue
+│   │   └── tools/         — native Python pipeline entry points
+│   ├── alembic/           — database migration versions
+│   ├── data/              — SQLite database, derivatives, fixtures
+│   └── tests/
+├── frontend/
+│   └── src/
+│       ├── api/           — API client and type definitions
+│       ├── components/    — shared primitives and domain components
+│       ├── hooks/         — data-fetching hooks
+│       ├── lib/           — pure logic (methods engine, workflow persistence, etc.)
+│       └── pages/         — one file per route
+├── pipelines/
+│   ├── schema/            — artifact_types.yaml, manifest.schema.json
+│   └── *.yaml             — one manifest per pipeline
+└── docker-compose.yml
+```
 
-## Roadmap
-
-Near-term:
-
-- Screenshots and a short demo workflow guide.
-- Improved dataset and run documentation for new users.
-- Expanded end-to-end verification for dcm2bids, BIDS Validator, MRIQC, and Functional Connectivity.
-- More focused frontend tests for the Workflow Builder.
-- Improved friendly error explanations and recovery steps.
-
-Later:
-
-- Backend workflow run records and saved templates.
-- Richer artifact browser and result viewers.
-- Provenance export for methods sections.
-- Optional Docker image management and setup checks.
-- Cloud or HPC execution design after the local foundation is stable.
+---
 
 ## Architecture Document
 
-See [`docs/architecture/neuroimaging-platform-architecture.md`](docs/architecture/neuroimaging-platform-architecture.md) for the broader architecture plan, schema direction, plugin/manifest design, and development roadmap.
+See [`docs/architecture/neuroimaging-platform-architecture.md`](docs/architecture/neuroimaging-platform-architecture.md) for the original architecture plan, data model, and development roadmap that informed the initial implementation.

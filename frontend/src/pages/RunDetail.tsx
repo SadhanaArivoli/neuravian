@@ -10,7 +10,6 @@ function getWsBase(): string {
   if (apiUrl) {
     return apiUrl.replace(/^http/, "ws") + "/runs";
   }
-  // In production (nginx), use window.location so we get the right host and port
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/api/runs`;
 }
@@ -37,16 +36,16 @@ function formatEta(seconds: number): string {
 
 function ProgressPanel({ progress }: { progress: RunProgress }) {
   return (
-    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-      <div className="flex justify-between text-sm text-blue-800 mb-2">
+    <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+      <div className="flex justify-between text-sm text-blue-300 mb-2">
         <span className="font-medium">
           {progress.current} / {progress.total} {progress.rate_unit}s · {progress.percent}%
         </span>
-        <span className="text-blue-600">
+        <span className="text-blue-400">
           {formatEta(progress.eta_seconds)} remaining · {progress.rate.toFixed(1)}s/{progress.rate_unit}
         </span>
       </div>
-      <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
         <div
           className="h-full rounded-full bg-blue-500 transition-all duration-500"
           style={{ width: `${progress.percent}%` }}
@@ -56,21 +55,28 @@ function ProgressPanel({ progress }: { progress: RunProgress }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function RunStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    running: "bg-blue-100 text-blue-800",
-    success: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
+    pending:     "bg-yellow-500/15 text-yellow-300 border-yellow-500/20",
+    queued:      "bg-gray-500/15 text-gray-300 border-gray-500/20",
+    running:     "bg-blue-500/15 text-blue-300 border-blue-500/20",
+    success:     "bg-green-500/15 text-green-300 border-green-500/20",
+    failed:      "bg-red-500/15 text-red-300 border-red-500/20",
+    cancelled:   "bg-orange-500/15 text-orange-300 border-orange-500/20",
+    interrupted: "bg-amber-500/15 text-amber-300 border-amber-500/20",
+  };
+  const dotColors: Record<string, string> = {
+    running: "bg-blue-400 animate-pulse",
+    queued:  "bg-gray-400",
   };
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        styles[status] ?? "bg-gray-100 text-gray-700"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+        styles[status] ?? "bg-white/10 text-gray-300 border-white/10"
       }`}
     >
-      {status === "running" && (
-        <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+      {dotColors[status] && (
+        <span className={`h-1.5 w-1.5 rounded-full ${dotColors[status]}`} />
       )}
       {status}
     </span>
@@ -109,8 +115,6 @@ export default function RunDetail() {
         setLastActivityAt(new Date());
         setSilentSeconds(0);
       } else if (msg.type === "heartbeat") {
-        // Server is alive — update activity timestamp so users know the
-        // connection is healthy even during quiet processing phases.
         setLastActivityAt(new Date());
       } else if (msg.type === "progress") {
         setProgress(msg.data);
@@ -128,7 +132,6 @@ export default function RunDetail() {
     };
   }, [runId, refetch]);
 
-  // Tick a "quiet for Xs" counter whenever connected and no new log lines.
   useEffect(() => {
     if (wsStatus !== "connected" || !lastActivityAt) return;
     const interval = setInterval(() => {
@@ -137,7 +140,6 @@ export default function RunDetail() {
     return () => clearInterval(interval);
   }, [wsStatus, lastActivityAt]);
 
-  // Auto-scroll to bottom as new log lines arrive
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logLines]);
@@ -145,58 +147,58 @@ export default function RunDetail() {
   if (!run) {
     return (
       <div className="p-8">
-        <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+        <div className="h-4 w-32 rounded bg-white/10 animate-pulse" />
       </div>
     );
   }
 
-  const isActive = run.status === "pending" || run.status === "running";
+  const isActive = run.status === "pending" || run.status === "running" || run.status === "queued";
 
   return (
     <div className="p-8 max-w-5xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/runs" className="text-sm text-gray-400 hover:text-gray-200">
+        <Link to="/runs" className="text-sm text-gray-400 hover:text-gray-200 transition-colors">
           ← All runs
         </Link>
-        <span className="text-gray-500">/</span>
+        <span className="text-gray-600">/</span>
         <h1 className="text-xl font-semibold text-gray-100">
           Run #{run.id} — {run.pipeline_manifest_id}
         </h1>
-        <StatusBadge status={run.status} />
+        <RunStatusBadge status={run.status} />
       </div>
 
       {/* Meta */}
-      <div className="grid grid-cols-2 gap-4 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+      <div className="grid grid-cols-2 gap-4 mb-6 rounded-lg border border-white/10 bg-surface-raised p-4 text-sm">
         <div>
-          <span className="text-gray-500">Pipeline</span>
-          <p className="font-medium text-gray-800">{run.pipeline_manifest_id} {run.pipeline_version}</p>
+          <span className="text-gray-500 text-xs uppercase tracking-wide">Pipeline</span>
+          <p className="mt-0.5 font-medium text-gray-200">{run.pipeline_manifest_id} {run.pipeline_version}</p>
         </div>
         <div>
-          <span className="text-gray-500">Dataset</span>
-          <p className="font-medium text-gray-800 text-xs font-mono break-all">{run.output_dir ?? "—"}</p>
+          <span className="text-gray-500 text-xs uppercase tracking-wide">Dataset</span>
+          <p className="mt-0.5 font-medium text-gray-200 text-xs font-mono break-all">{run.output_dir ?? "—"}</p>
         </div>
         {run.started_at && (
           <div>
-            <span className="text-gray-500">Started</span>
-            <p className="font-medium text-gray-800">{new Date(run.started_at).toLocaleString()}</p>
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Started</span>
+            <p className="mt-0.5 font-medium text-gray-200">{new Date(run.started_at).toLocaleString()}</p>
           </div>
         )}
         {run.finished_at && (
           <div>
-            <span className="text-gray-500">Finished</span>
-            <p className="font-medium text-gray-800">{new Date(run.finished_at).toLocaleString()}</p>
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Finished</span>
+            <p className="mt-0.5 font-medium text-gray-200">{new Date(run.finished_at).toLocaleString()}</p>
           </div>
         )}
       </div>
 
-      {/* Resource warnings (from run creation) */}
+      {/* Resource warnings */}
       {run.resource_warnings?.length > 0 && (
         <div className="mb-4 space-y-2">
           {run.resource_warnings.map((w, i) => (
             <div
               key={i}
-              className="rounded border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800"
+              className="rounded border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300"
             >
               ⚠ {w.message}
             </div>
@@ -204,7 +206,7 @@ export default function RunDetail() {
         </div>
       )}
 
-      {/* Progress bar (live, running only) */}
+      {/* Progress bar */}
       {progress != null && run.status === "running" && (
         <ProgressPanel progress={progress} />
       )}
@@ -214,29 +216,38 @@ export default function RunDetail() {
         const progressAgeMs = Date.now() - new Date(progress.last_updated).getTime();
         const staleMinutes = Math.floor(progressAgeMs / 60000);
         return staleMinutes >= 30 ? (
-          <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
             ⚠ No progress update in {staleMinutes} minutes — pipeline may be stalled.
-            Check the log below for recent output. If the last log line is not advancing,
-            the container may need to be stopped and restarted.
+            Check the log below for recent output.
           </div>
         ) : null;
       })()}
 
       {/* Error translation panel */}
       {run.status === "failed" && run.error_message && (
-        <div className="mb-4 rounded border border-red-300 bg-red-50 px-4 py-4">
-          <h3 className="font-semibold text-red-800 mb-1">What went wrong</h3>
-          <p className="text-sm text-red-700 whitespace-pre-wrap">{run.error_message}</p>
+        <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-4">
+          <h3 className="font-semibold text-red-300 mb-1">What went wrong</h3>
+          <p className="text-sm text-red-400 whitespace-pre-wrap">{run.error_message}</p>
+        </div>
+      )}
+
+      {/* Cancelled / interrupted info */}
+      {(run.status === "cancelled" || run.status === "interrupted") && run.error_message && (
+        <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-4 py-4">
+          <h3 className="font-semibold text-amber-300 mb-1">
+            {run.status === "cancelled" ? "Run cancelled" : "Run interrupted"}
+          </h3>
+          <p className="text-sm text-amber-400 whitespace-pre-wrap">{run.error_message}</p>
         </div>
       )}
 
       {/* Command preview */}
       {run.command_preview && (
         <details className="mb-4">
-          <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none">
+          <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none transition-colors">
             Show exact Docker command
           </summary>
-          <pre className="mt-2 rounded bg-gray-900 text-gray-100 text-xs p-4 overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="mt-2 rounded border border-white/10 bg-surface-overlay text-gray-200 text-xs p-4 overflow-x-auto whitespace-pre-wrap break-all">
             {run.command_preview}
           </pre>
         </details>
@@ -244,15 +255,15 @@ export default function RunDetail() {
 
       {/* Provenance panel */}
       <details className="mb-4">
-        <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none">
+        <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none transition-colors">
           Provenance record
         </summary>
         <RunProvenance runId={run.id} />
       </details>
 
       {/* Live log console */}
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
+      <div className="rounded-lg border border-white/10 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-white/10 bg-surface-overlay px-4 py-2">
           <span className="text-xs text-gray-400 font-mono">stdout / stderr</span>
           <span className="text-xs text-gray-500">
             {wsStatus === "connected" && isActive ? (
@@ -269,10 +280,10 @@ export default function RunDetail() {
             )}
           </span>
         </div>
-        <div className="bg-gray-950 h-96 overflow-y-auto p-4 font-mono text-xs text-gray-200">
+        <div className="bg-[#0d0d14] h-96 overflow-y-auto p-4 font-mono text-xs text-gray-300">
           {logLines.length === 0 && (
-            <span className="text-gray-400">
-              {run.status === "pending"
+            <span className="text-gray-600">
+              {run.status === "pending" || run.status === "queued"
                 ? "Waiting for run to start…"
                 : "No log output yet."}
             </span>
@@ -283,7 +294,7 @@ export default function RunDetail() {
             </div>
           ))}
           {wsStatus === "connected" && isActive && silentSeconds >= 30 && (
-            <div className="mt-2 text-gray-400 italic">
+            <div className="mt-2 text-gray-600 italic">
               — pipeline is running, no new output for{" "}
               {silentSeconds < 60
                 ? `${silentSeconds}s`
