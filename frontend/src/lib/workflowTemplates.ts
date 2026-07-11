@@ -490,7 +490,46 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     steps: [],
   },
 
-  // ── 9. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 9. SynthStrip → Atlas ROI Extraction ─────────────────────────────────
+  // SynthStrip produces nifti_skull_stripped and brain_mask; atlas-roi-extraction
+  // accepts both via its accepts[] declarations, so the linear builder can
+  // represent this cleanly.
+  {
+    id: "synthstrip-atlas-roi",
+    name: "Skull Strip → Atlas ROI Extraction",
+    description:
+      "Remove non-brain tissue with SynthStrip, then extract quantitative per-ROI atlas statistics from the skull-stripped image or brain mask.",
+    categoryKey: "quality_control",
+    estimatedRuntime: "5 – 20 min",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "nifti_raw",
+    requiredSourceLabel: "Structural NIfTI",
+    worstComputeProfile: "local-ok",
+    steps: [
+      {
+        pipelineId: "synthstrip",
+        inputArtifactType: "nifti_raw",
+        edge: {
+          artifactType: "nifti_raw",
+          acceptParam: "input",
+          acceptDatasetSlot: false,
+          acceptLabel: "Raw NIfTI",
+        },
+      },
+      {
+        pipelineId: "atlas-roi-extraction",
+        inputArtifactType: "nifti_skull_stripped",
+        edge: {
+          artifactType: "nifti_skull_stripped",
+          acceptParam: "input-file",
+          acceptDatasetSlot: false,
+          acceptLabel: "Skull-Stripped Brain",
+        },
+      },
+    ],
+  },
+
+  // ── 10. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

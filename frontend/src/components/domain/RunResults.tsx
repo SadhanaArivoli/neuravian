@@ -616,6 +616,315 @@ function GroupFCPanel({
   );
 }
 
+// ── Atlas ROI Extraction panel ────────────────────────────────────────────────
+
+interface RoiExtractionRow {
+  roi_number: number;
+  roi_label: string;
+  network: string | null;
+  voxel_count: number;
+  nonzero_voxel_count: number;
+  coverage_pct: number | null;
+  mean: number | null;
+  median: number | null;
+  std: number | null;
+  min: number | null;
+  max: number | null;
+  p5: number | null;
+  p95: number | null;
+  nan_count: number;
+  inf_count: number;
+  overlap_voxel_count?: number;
+  roi_occupancy_pct?: number;
+}
+
+interface RoiExtractionMeta {
+  atlas_id?: string;
+  atlas_display_name?: string;
+  atlas_citation?: string;
+  n_rois?: number;
+  n_rois_with_voxels?: number;
+  resampling_performed?: boolean;
+  interpolation_method?: string;
+  aggregation_mode?: string;
+  is_binary_mask?: boolean;
+  input_filename?: string;
+  input_shape?: number[];
+  image_voxel_spacing_mm?: number[];
+  atlas_fov_overlap_pct?: number;
+  nibabel_version?: string;
+  nilearn_version?: string;
+  runtime_seconds?: number;
+  timestamp?: string;
+}
+
+type RoiExSortKey = "roi_number" | "roi_label" | "network" | "voxel_count" | "coverage_pct" | "mean" | "std" | "min" | "max";
+
+const ROI_EX_SORT_OPTIONS: Array<{ key: RoiExSortKey; label: string }> = [
+  { key: "roi_number", label: "ROI #" },
+  { key: "roi_label", label: "Label" },
+  { key: "mean", label: "Mean" },
+  { key: "coverage_pct", label: "Coverage" },
+  { key: "voxel_count", label: "Voxels" },
+  { key: "std", label: "Std dev" },
+];
+
+function RoiExtractionPanel({ runId, files }: {
+  runId: number;
+  files: RunResultFile[];
+}) {
+  const [rows, setRows] = useState<RoiExtractionRow[]>([]);
+  const [meta, setMeta] = useState<RoiExtractionMeta | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [network, setNetwork] = useState<string>("");
+  const [sortKey, setSortKey] = useState<RoiExSortKey>("roi_number");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [selected, setSelected] = useState<RoiExtractionRow | null>(null);
+
+  const jsonFile = files.find((f) => f.path.endsWith("roi_extraction.json"));
+  const metaFile = files.find((f) => f.path.endsWith("roi_extraction_metadata.json"));
+  const csvFile = files.find((f) => f.path.endsWith("roi_extraction.csv"));
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const loadJson = jsonFile
+      ? fetchRunFile<RoiExtractionRow[]>(runId, jsonFile.path)
+      : Promise.reject(new Error("No roi_extraction.json found"));
+    const loadMeta = metaFile
+      ? fetchRunFile<RoiExtractionMeta>(runId, metaFile.path)
+      : Promise.resolve(null);
+    Promise.all([loadJson, loadMeta])
+      .then(([rowData, metaData]) => {
+        if (!cancelled) { setRows(rowData); setMeta(metaData); setLoading(false); }
+      })
+      .catch((err) => {
+        if (!cancelled) { setError(err instanceof Error ? err.message : "Could not load ROI data."); setLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [runId, jsonFile?.path, metaFile?.path]);
+
+  const networks = useMemo(() => {
+    const nets = new Set(rows.map((r) => r.network).filter(Boolean) as string[]);
+    return [...nets].sort();
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    let filtered = rows;
+    if (query) {
+      const q = query.toLowerCase();
+      filtered = filtered.filter(
+        (r) => r.roi_label.toLowerCase().includes(q) || String(r.roi_number).includes(q) || (r.network ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (network) filtered = filtered.filter((r) => r.network === network);
+    return [...filtered].sort((a, b) => {
+      const av = a[sortKey] ?? 0;
+      const bv = b[sortKey] ?? 0;
+      const cmp = typeof av === "string" && typeof bv === "string"
+        ? av.localeCompare(bv)
+        : (av as number) - (bv as number);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [rows, query, network, sortKey, sortDir]);
+
+  function handleSort(key: RoiExSortKey) {
+    if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  function downloadCsv() {
+    if (!csvFile) return;
+    window.open(`/api/runs/${runId}/files/${csvFile.path}`, "_blank");
+  }
+
+  function fmt(v: number | null | undefined, digits = 4) {
+    if (v === null || v === undefined) return "—";
+    return v.toFixed(digits);
+  }
+
+  if (loading) return <div className="p-4 text-sm text-gray-400">Loading ROI extraction data…</div>;
+  if (error) return <div className="p-4 text-sm text-red-500">ROI extraction preview failed: {error}</div>;
+
+  const isBinary = meta?.is_binary_mask ?? false;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Atlas ROI Extraction</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {meta?.atlas_display_name ?? "Atlas"} · {meta?.n_rois ?? rows.length} ROIs
+            {meta?.input_filename ? ` · ${meta.input_filename}` : ""}
+            {meta?.is_binary_mask ? " · binary mask" : ""}
+            {meta?.resampling_performed ? " · atlas resampled" : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {meta?.resampling_performed && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs text-amber-700">
+              ↔ Resampled
+            </span>
+          )}
+          <button
+            onClick={downloadCsv}
+            className="rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            ↓ CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-4 gap-px bg-gray-100 border-b border-gray-100">
+        {[
+          ["ROIs with voxels", `${meta?.n_rois_with_voxels ?? "—"} / ${meta?.n_rois ?? "—"}`],
+          ["FOV overlap", meta?.atlas_fov_overlap_pct != null ? `${meta.atlas_fov_overlap_pct.toFixed(1)}%` : "—"],
+          ["Aggregation", meta?.aggregation_mode === "temporal_mean" ? "Temporal mean" : meta?.aggregation_mode === "none" ? "None (3D)" : (meta?.aggregation_mode ?? "—")],
+          ["Runtime", meta?.runtime_seconds != null ? `${meta.runtime_seconds}s` : "—"],
+        ].map(([label, val]) => (
+          <div key={label} className="bg-white px-3 py-2">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+            <p className="text-sm font-semibold text-gray-800">{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="px-3 py-2 border-b border-gray-100 flex gap-2 flex-wrap">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search ROI label, number, or network…"
+          className="flex-1 min-w-40 rounded border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300"
+        />
+        {networks.length > 0 && (
+          <select
+            value={network}
+            onChange={(e) => setNetwork(e.target.value)}
+            className="rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none"
+          >
+            <option value="">All networks</option>
+            {networks.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        )}
+        <div className="flex gap-1 flex-wrap">
+          {ROI_EX_SORT_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => handleSort(key)}
+              className={`rounded border px-2 py-1 text-[11px] transition-colors ${
+                sortKey === key
+                  ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              {label}{sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table + side panel */}
+      <div className="flex overflow-hidden" style={{ maxHeight: "420px" }}>
+        {/* ROI table */}
+        <div className={`overflow-y-auto ${selected ? "w-1/2" : "w-full"} transition-all`}>
+          {visible.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-gray-400">No ROIs match the current filter.</div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 z-10">
+                <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">#</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Label</th>
+                  {networks.length > 0 && <th className="px-3 py-2 text-left font-medium text-gray-600">Network</th>}
+                  <th className="px-3 py-2 text-right font-medium text-gray-600">Voxels</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600">Coverage</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600">Mean</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600">Std</th>
+                  {isBinary && <th className="px-3 py-2 text-right font-medium text-gray-600">Occupancy</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((row) => (
+                  <tr
+                    key={row.roi_number}
+                    onClick={() => setSelected(selected?.roi_number === row.roi_number ? null : row)}
+                    className={`border-b border-gray-50 cursor-pointer hover:bg-blue-50 transition-colors ${selected?.roi_number === row.roi_number ? "bg-blue-50" : ""}`}
+                  >
+                    <td className="px-3 py-1.5 text-gray-400 tabular-nums">{row.roi_number}</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-700 max-w-xs truncate">{row.roi_label}</td>
+                    {networks.length > 0 && <td className="px-3 py-1.5 text-gray-500">{row.network ?? "—"}</td>}
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{row.voxel_count.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(row.coverage_pct, 1)}%</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(row.mean)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">{fmt(row.std)}</td>
+                    {isBinary && <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(row.roi_occupancy_pct, 1)}%</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Region Explorer side panel */}
+        {selected && (
+          <div className="w-1/2 border-l border-gray-200 overflow-y-auto bg-gray-50 p-3">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-800">ROI {selected.roi_number}</p>
+                <p className="text-[11px] text-gray-500 font-mono mt-0.5 break-all">{selected.roi_label}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-sm ml-2">✕</button>
+            </div>
+            {selected.network && (
+              <p className="text-[11px] text-blue-600 mb-2">Network: {selected.network}</p>
+            )}
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {[
+                ["Atlas", meta?.atlas_display_name ?? "—"],
+                ["Voxel count", selected.voxel_count.toLocaleString()],
+                ["Non-zero voxels", selected.nonzero_voxel_count.toLocaleString()],
+                ["Coverage", fmt(selected.coverage_pct, 2) + "%"],
+                ["Mean", fmt(selected.mean)],
+                ["Median", fmt(selected.median)],
+                ["Std dev", fmt(selected.std)],
+                ["Min", fmt(selected.min)],
+                ["Max", fmt(selected.max)],
+                ["p5", fmt(selected.p5)],
+                ["p95", fmt(selected.p95)],
+                ["NaN count", String(selected.nan_count)],
+                ["Inf count", String(selected.inf_count)],
+                ...(isBinary ? [
+                  ["Overlap voxels", String(selected.overlap_voxel_count ?? "—")],
+                  ["ROI occupancy", fmt(selected.roi_occupancy_pct, 2) + "%"],
+                ] : []),
+              ].map(([label, val]) => (
+                <div key={label} className="bg-white rounded border border-gray-100 px-2 py-1">
+                  <p className="text-[10px] text-gray-400">{label}</p>
+                  <p className="text-xs font-medium text-gray-800 tabular-nums">{val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-100">
+        {visible.length} of {rows.length} ROIs shown
+        {meta?.nibabel_version && ` · nibabel ${meta.nibabel_version}`}
+        {meta?.nilearn_version && ` · nilearn ${meta.nilearn_version}`}
+        {meta?.atlas_citation && ` · ${meta.atlas_citation}`}
+      </div>
+    </div>
+  );
+}
+
 // ── NIfTI Inspector panel ──────────────────────────────────────────────────────
 
 interface NiftiInspectorResult {
@@ -1357,6 +1666,7 @@ export default function RunResults({ runId }: Props) {
   const timeseries = results.timeseries ?? [];
   const connectivityMetadata = results.connectivity_metadata ?? [];
   const roiStatistics = results.roi_statistics ?? [];
+  const roiExtraction = (results as { roi_extraction?: RunResultFile[] }).roi_extraction ?? [];
   const hasFiles =
     results.reports.length > 0 ||
     results.metrics.length > 0 ||
@@ -1578,7 +1888,9 @@ export default function RunResults({ runId }: Props) {
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
       )}
 
-      {results.metadata?.pipeline_id === "nifti-inspector" ? (
+      {results.metadata?.pipeline_id === "atlas-roi-extraction" && roiExtraction.length > 0 ? (
+        <RoiExtractionPanel runId={runId} files={roiExtraction} />
+      ) : results.metadata?.pipeline_id === "nifti-inspector" ? (
         <NiftiInspectorPanel
           runId={runId}
           jsonPath="nifti_inspector.json"
@@ -1709,6 +2021,22 @@ export default function RunResults({ runId }: Props) {
         </details>
       )}
 
+      {roiExtraction.length > 0 && results.metadata?.pipeline_id !== "atlas-roi-extraction" && (
+        <details className="mt-3">
+          <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
+            ROI extraction files ({roiExtraction.length})
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {roiExtraction.map((file) => (
+              <li key={file.path}>
+                <a href={`/api/runs/${runId}/files/${file.path}`} target="_blank" rel="noopener noreferrer"
+                  className="font-mono text-xs text-blue-600 hover:underline">{file.path}</a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {(connectivityMatrices.length > 0 || timeseries.length > 0 || images.length > 0 || connectivityMetadata.length > 0 || roiStatistics.length > 0) && (
         <details className="mt-3">
           <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
@@ -1750,6 +2078,7 @@ export default function RunResults({ runId }: Props) {
                 );
                 const hostPath = matchingArtifact?.host_paths?.[0] ?? null;
                 const isInspectorRun = results.metadata?.pipeline_id === "nifti-inspector";
+                const isRoiExRun = results.metadata?.pipeline_id === "atlas-roi-extraction";
                 return (
                   <div
                     key={f.path}
@@ -1778,6 +2107,29 @@ export default function RunResults({ runId }: Props) {
                           title="Inspect this NIfTI file's header, statistics, and warnings"
                         >
                           Inspect
+                        </button>
+                      )}
+                      {!isRoiExRun && hostPath && (
+                        <button
+                          onClick={() => navigate("/pipelines", {
+                            state: {
+                              selectPipeline: "atlas-roi-extraction",
+                              prefill: {
+                                runId,
+                                sourcePipelineId: results.metadata?.pipeline_id ?? "",
+                                sourceDisplayName: results.metadata?.pipeline_id ?? "",
+                                artifactType: "nifti_raw",
+                                artifactLabel: f.name,
+                                param: "input-file",
+                                path: hostPath,
+                                isDatasetSlot: false,
+                              },
+                            },
+                          })}
+                          className="rounded border border-violet-300 px-2.5 py-1 text-xs text-violet-700 hover:bg-violet-50 transition-colors"
+                          title="Extract per-ROI atlas statistics from this NIfTI file"
+                        >
+                          Analyze
                         </button>
                       )}
                       <button

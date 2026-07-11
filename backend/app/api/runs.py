@@ -290,7 +290,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
-            "roi_statistics": [],
+            "roi_statistics": [], "roi_extraction": [],
             "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
@@ -301,7 +301,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
-            "roi_statistics": [],
+            "roi_statistics": [], "roi_extraction": [],
             "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
@@ -338,6 +338,11 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     roi_statistics = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("*roi_statistics*"))
+        if f.suffix in {".csv", ".json"}
+    ]
+    roi_extraction = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("roi_extraction*"))
         if f.suffix in {".csv", ".json"}
     ]
     group_summary_path = output_root / "group_summary.json"
@@ -398,6 +403,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "timeseries": timeseries,
         "connectivity_metadata": connectivity_metadata,
         "roi_statistics": roi_statistics,
+        "roi_extraction": roi_extraction,
         "group_summary": group_summary,
         "niftis": niftis,
         "artifacts": artifacts,

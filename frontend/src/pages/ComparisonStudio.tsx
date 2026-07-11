@@ -1309,6 +1309,250 @@ function NiftiInspectorComparisonPanel({
   );
 }
 
+// ── RoiExtractionComparisonPanel ──────────────────────────────────────────────
+
+interface RoiRow {
+  roi_number: number;
+  roi_label: string;
+  mean: number | null;
+  std: number | null;
+  voxel_count: number;
+  coverage_pct: number | null;
+}
+
+interface RoiMeta {
+  atlas_id?: string;
+  atlas_display_name?: string;
+  n_rois?: number;
+  aggregation_mode?: string;
+  resampling_performed?: boolean;
+  software?: { nilearn?: string; nibabel?: string; numpy?: string };
+}
+
+function RoiExtractionComparisonPanel({
+  runIdA,
+  runIdB,
+  labelA,
+  labelB,
+}: {
+  runIdA: number;
+  runIdB: number;
+  labelA: string;
+  labelB: string;
+}) {
+  const [rowsA, setRowsA] = useState<RoiRow[]>([]);
+  const [rowsB, setRowsB] = useState<RoiRow[]>([]);
+  const [metaA, setMetaA] = useState<RoiMeta | null>(null);
+  const [metaB, setMetaB] = useState<RoiMeta | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/runs/${runIdA}/files/roi_extraction.json`).then((r) => r.json()),
+      fetch(`/api/runs/${runIdB}/files/roi_extraction.json`).then((r) => r.json()),
+      fetch(`/api/runs/${runIdA}/files/roi_extraction_metadata.json`).then((r) => r.json()),
+      fetch(`/api/runs/${runIdB}/files/roi_extraction_metadata.json`).then((r) => r.json()),
+    ])
+      .then(([dA, dB, mA, mB]) => {
+        if (cancelled) return;
+        setRowsA(Array.isArray(dA) ? dA : []);
+        setRowsB(Array.isArray(dB) ? dB : []);
+        setMetaA(mA as RoiMeta);
+        setMetaB(mB as RoiMeta);
+        setLoading(false);
+      })
+      .catch((e) => { if (!cancelled) { setErr(String(e)); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [runIdA, runIdB]);
+
+  if (err) return (
+    <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+      Could not load ROI extraction results: {err}
+    </div>
+  );
+  if (loading) return (
+    <div className="text-xs text-gray-500 animate-pulse py-4">Loading ROI data…</div>
+  );
+
+  const sameAtlas = metaA?.atlas_id && metaB?.atlas_id && metaA.atlas_id === metaB.atlas_id;
+  const sameNRois = metaA?.n_rois && metaB?.n_rois && metaA.n_rois === metaB.n_rois;
+  const compatible = sameAtlas && sameNRois;
+
+  // Build per-ROI diff table (join by roi_number)
+  const mapA = new Map(rowsA.map((r) => [r.roi_number, r]));
+  const mapB = new Map(rowsB.map((r) => [r.roi_number, r]));
+  const allNums = [...new Set([...mapA.keys(), ...mapB.keys()])].sort((a, b) => a - b);
+
+  interface DiffRow {
+    roi_number: number;
+    roi_label: string;
+    meanA: number | null;
+    meanB: number | null;
+    diff: number | null;
+    absDiff: number;
+  }
+
+  const diffs: DiffRow[] = allNums.map((n) => {
+    const a = mapA.get(n);
+    const b = mapB.get(n);
+    const meanA = a?.mean ?? null;
+    const meanB = b?.mean ?? null;
+    const diff = meanA != null && meanB != null ? meanB - meanA : null;
+    return {
+      roi_number: n,
+      roi_label: a?.roi_label ?? b?.roi_label ?? `ROI ${n}`,
+      meanA,
+      meanB,
+      diff,
+      absDiff: diff != null ? Math.abs(diff) : 0,
+    };
+  }).sort((a, b) => b.absDiff - a.absDiff);
+
+  // Correlation of means
+  const paired = diffs.filter((d) => d.meanA != null && d.meanB != null);
+  let correlation: number | null = null;
+  if (paired.length >= 3) {
+    const xs = paired.map((d) => d.meanA as number);
+    const ys = paired.map((d) => d.meanB as number);
+    const xm = xs.reduce((s, v) => s + v, 0) / xs.length;
+    const ym = ys.reduce((s, v) => s + v, 0) / ys.length;
+    const num = xs.reduce((s, v, i) => s + (v - xm) * (ys[i] - ym), 0);
+    const den = Math.sqrt(
+      xs.reduce((s, v) => s + (v - xm) ** 2, 0) *
+      ys.reduce((s, v) => s + (v - ym) ** 2, 0),
+    );
+    correlation = den === 0 ? null : num / den;
+  }
+
+  // SVG scatter plot
+  const W = 260, H = 200, PAD = 32;
+  let scatterSvg: React.ReactNode = null;
+  if (paired.length >= 2) {
+    const xs = paired.map((d) => d.meanA as number);
+    const ys = paired.map((d) => d.meanB as number);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xRange = xMax - xMin || 1;
+    const yRange = yMax - yMin || 1;
+    const px = (v: number) => PAD + ((v - xMin) / xRange) * (W - 2 * PAD);
+    const py = (v: number) => H - PAD - ((v - yMin) / yRange) * (H - 2 * PAD);
+    // Identity line
+    const xyMin = Math.min(xMin, yMin), xyMax = Math.max(xMax, yMax);
+    const lx1 = px(Math.max(xMin, xyMin)), ly1 = py(Math.max(yMin, xyMin));
+    const lx2 = px(Math.min(xMax, xyMax)), ly2 = py(Math.min(yMax, xyMax));
+
+    scatterSvg = (
+      <svg width={W} height={H} className="overflow-visible" aria-label="ROI mean scatter plot">
+        {/* Axes */}
+        <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+        <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+        {/* Identity line */}
+        <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="rgba(255,255,255,0.15)" strokeWidth={1} strokeDasharray="3,3" />
+        {/* Points */}
+        {paired.map((d, i) => (
+          <circle key={i} cx={px(d.meanA as number)} cy={py(d.meanB as number)} r={2.5} fill="#a78bfa" fillOpacity={0.7} />
+        ))}
+        {/* Axis labels */}
+        <text x={W / 2} y={H - 4} fill="rgba(156,163,175,0.8)" fontSize={9} textAnchor="middle">{labelA} mean</text>
+        <text x={6} y={H / 2} fill="rgba(156,163,175,0.8)" fontSize={9} textAnchor="middle" transform={`rotate(-90, 6, ${H / 2})`}>{labelB} mean</text>
+      </svg>
+    );
+  }
+
+  const fmt = (v: number | null, dec = 4) =>
+    v == null ? "—" : Number.isFinite(v) ? v.toFixed(dec) : String(v);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeading>Atlas ROI Extraction comparison</SectionHeading>
+
+      {/* Compatibility badges */}
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { ok: sameAtlas, label: `Atlas: ${metaA?.atlas_display_name ?? metaA?.atlas_id ?? "—"}` },
+          { ok: sameNRois, label: `ROIs: ${metaA?.n_rois ?? "—"} vs ${metaB?.n_rois ?? "—"}` },
+        ].map(({ ok, label }) => (
+          <span key={label} className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
+            ok ? "bg-blue-500/10 border-blue-500/20 text-blue-300"
+               : "bg-amber-500/10 border-amber-500/20 text-amber-300"
+          }`}>
+            {ok ? "✓" : "≠"} {label}
+          </span>
+        ))}
+        {!compatible && (
+          <span className="text-xs text-amber-400">Different atlases or ROI counts — per-region comparison may be misleading.</span>
+        )}
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="rounded border border-white/10 bg-surface-overlay px-3 py-2">
+          <p className="text-gray-500 mb-0.5">ROIs compared</p>
+          <p className="text-gray-100 font-mono">{paired.length} / {diffs.length}</p>
+        </div>
+        <div className="rounded border border-white/10 bg-surface-overlay px-3 py-2">
+          <p className="text-gray-500 mb-0.5">Pearson r (means)</p>
+          <p className="text-gray-100 font-mono">{correlation != null ? correlation.toFixed(4) : "—"}</p>
+        </div>
+        <div className="rounded border border-white/10 bg-surface-overlay px-3 py-2">
+          <p className="text-gray-500 mb-0.5">Max |Δmean|</p>
+          <p className="text-gray-100 font-mono">{diffs.length > 0 && diffs[0].absDiff > 0 ? diffs[0].absDiff.toFixed(4) : "—"}</p>
+        </div>
+      </div>
+
+      {/* Scatter + top diffs */}
+      <div className="grid grid-cols-2 gap-4">
+        {scatterSvg && (
+          <div>
+            <p className="text-xs text-gray-500 mb-1">ROI mean scatter (A vs B)</p>
+            <div className="rounded border border-white/10 bg-surface-overlay p-2 flex justify-center">
+              {scatterSvg}
+            </div>
+          </div>
+        )}
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Top regions by |Δmean| (B − A)</p>
+          <div className="rounded-lg border border-white/10 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-white/5 border-b border-white/10">
+                  <th className="px-2 py-1.5 text-xs font-medium text-gray-400">Region</th>
+                  <th className="px-2 py-1.5 text-xs font-medium text-gray-400 text-right">{labelA}</th>
+                  <th className="px-2 py-1.5 text-xs font-medium text-gray-400 text-right">{labelB}</th>
+                  <th className="px-2 py-1.5 text-xs font-medium text-gray-400 text-right">Δ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {diffs.slice(0, 15).map((d) => (
+                  <tr key={d.roi_number}>
+                    <td className="px-2 py-1 text-xs text-gray-300 truncate max-w-[120px]" title={d.roi_label}>{d.roi_label}</td>
+                    <td className="px-2 py-1 text-xs font-mono text-gray-400 text-right">{fmt(d.meanA)}</td>
+                    <td className="px-2 py-1 text-xs font-mono text-gray-400 text-right">{fmt(d.meanB)}</td>
+                    <td className={`px-2 py-1 text-xs font-mono text-right ${
+                      d.diff == null ? "text-gray-600" : d.diff > 0 ? "text-green-400" : "text-red-400"
+                    }`}>
+                      {d.diff != null ? (d.diff > 0 ? "+" : "") + fmt(d.diff) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Provenance */}
+      {(metaA?.software || metaB?.software) && (
+        <p className="text-xs text-gray-600">
+          Software: nilearn {metaA?.software?.nilearn ?? "?"} · nibabel {metaA?.software?.nibabel ?? "?"}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -1570,7 +1814,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "nifti_inspector") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "nifti_inspector" || runAFamily === "roi_extraction") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -1584,7 +1828,7 @@ export default function ComparisonStudio() {
           runBOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity" || runBFamily === "nifti_inspector") return true;
+        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity" || runBFamily === "nifti_inspector" || runBFamily === "roi_extraction") return true;
         return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
       })
     : runOptions;
@@ -1875,6 +2119,8 @@ export default function ComparisonStudio() {
     runAId && !runBId && bOptions.length === 0
       ? runAFamily === "group_connectivity"
         ? "No other group connectivity runs found. Run group-functional-connectivity on a second set of FC runs to compare."
+        : runAFamily === "roi_extraction"
+        ? "No other Atlas ROI Extraction runs found. Run atlas-roi-extraction on another NIfTI to compare region statistics."
         : runAFamily === "nifti_inspector"
         ? "No other NIfTI Inspector runs found. Run nifti-inspector on another NIfTI file to compare metadata and statistics."
         : runAFamily === "connectivity"
@@ -2040,6 +2286,16 @@ export default function ComparisonStudio() {
                   labelB={labelB}
                 />
               )}
+
+            {/* Atlas ROI Extraction comparison panel */}
+            {comparisonFamily === "roi_extraction" && runAId && runBId && (
+              <RoiExtractionComparisonPanel
+                runIdA={runAId}
+                runIdB={runBId}
+                labelA={labelA}
+                labelB={labelB}
+              />
+            )}
 
             {/* NIfTI Inspector comparison panel */}
             {comparisonFamily === "nifti_inspector" && runAId && runBId && (

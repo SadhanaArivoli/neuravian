@@ -312,23 +312,31 @@ const NIFTI_INSPECTABLE_TYPES = new Set([
   "nifti_raw", "nifti_skull_stripped", "brain_mask", "nifti_defaced", "seed_connectivity_map_nii",
 ]);
 
+// NIfTI artifact types that can be passed to Atlas ROI Extraction
+const ATLAS_ROI_TYPES = new Set([
+  "nifti_raw", "nifti_skull_stripped", "brain_mask", "nifti_defaced", "seed_connectivity_map_nii",
+]);
+
 function ArtifactRow({
   artifact,
   onPreview,
   onLineage,
   onInspect,
+  onAnalyze,
   selected,
 }: {
   artifact: DatasetArtifact;
   onPreview: (a: DatasetArtifact) => void;
   onLineage: (a: DatasetArtifact) => void;
   onInspect: (a: DatasetArtifact) => void;
+  onAnalyze: (a: DatasetArtifact) => void;
   selected: boolean;
 }) {
   const kind = resolvePreviewKind(artifact);
   const fileUrl = artifactFileUrl(artifact);
   const filename = artifact.path.split("/").pop() ?? artifact.path;
   const isInspectable = NIFTI_INSPECTABLE_TYPES.has(artifact.type) && !artifact.is_directory;
+  const isAnalyzable = ATLAS_ROI_TYPES.has(artifact.type) && !artifact.is_directory;
 
   return (
     <div
@@ -391,6 +399,15 @@ function ArtifactRow({
             title="Inspect header, statistics, and QC warnings"
           >
             Inspect
+          </button>
+        )}
+        {isAnalyzable && (
+          <button
+            onClick={() => onAnalyze(artifact)}
+            className="rounded px-2 py-1 text-xs text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
+            title="Extract per-ROI atlas statistics"
+          >
+            Analyze
           </button>
         )}
         {kind !== "none" && (
@@ -591,6 +608,25 @@ export default function ArtifactExplorer() {
     });
   }, [navigate]);
 
+  const handleAnalyze = useCallback((a: DatasetArtifact) => {
+    const containerPath = a.output_dir.replace(/\/$/, "") + "/" + a.path;
+    navigate("/pipelines", {
+      state: {
+        selectPipeline: "atlas-roi-extraction",
+        prefill: {
+          runId: a.run_id,
+          sourcePipelineId: a.pipeline_id,
+          sourceDisplayName: a.pipeline_id,
+          artifactType: a.type,
+          artifactLabel: a.label,
+          param: "input-file",
+          path: containerPath,
+          isDatasetSlot: false,
+        },
+      },
+    });
+  }, [navigate]);
+
   const closeSidePanel = useCallback(() => {
     setPreviewArtifact(null);
     setLineageArtifact(null);
@@ -680,6 +716,7 @@ export default function ArtifactExplorer() {
               onPreview={handlePreview}
               onLineage={handleLineage}
               onInspect={handleInspect}
+              onAnalyze={handleAnalyze}
               selected={
                 (previewArtifact?.run_id === a.run_id && previewArtifact?.path === a.path) ||
                 (lineageArtifact?.run_id === a.run_id && lineageArtifact?.path === a.path)

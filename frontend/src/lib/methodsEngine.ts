@@ -305,6 +305,34 @@ const PROSE_TEMPLATES: Record<
       `connectivity map.`
     );
   },
+  "atlas-roi-extraction": (run) => {
+    const atlasId = String(run.params?.["atlas"] ?? run.params?.atlas ?? "schaefer100_7");
+    const atlasMeta = FUNCTIONAL_CONNECTIVITY_ATLASES[atlasId];
+    const atlas = atlasMeta?.label ?? atlasId;
+    const nRois = atlasMeta?.rois ?? NOT_RECORDED;
+    const aggMode = String(run.params?.["aggregation-mode"] ?? run.params?.aggregation_mode ?? "none");
+    const aggText = aggMode === "temporal_mean"
+      ? " 4D data were temporally averaged prior to extraction."
+      : "";
+    const resampNote =
+      "Where the input image and atlas differed in voxel spacing or field of view, " +
+      "the atlas was resampled to the image space using nearest-neighbour interpolation " +
+      "to preserve integer parcel labels exactly.";
+    return (
+      `Atlas-based region-of-interest (ROI) statistics were extracted using a NeuroForge ` +
+      `native pipeline built on nibabel and Nilearn ` +
+      `(v${run.pipeline_version || NOT_RECORDED}) ` +
+      `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
+      `The ${atlas} atlas` +
+      (typeof nRois === "number" ? ` (${nRois} parcels)` : "") +
+      ` was applied to the input scalar image. ` +
+      `For each parcel, the following statistics were computed: mean, median, ` +
+      `standard deviation, minimum, maximum, 5th and 95th percentiles, voxel count, ` +
+      `non-zero voxel count, and coverage percentage.${aggText} ` +
+      resampNote +
+      ` All reported statistics are descriptive; no inferential tests were performed.`
+    );
+  },
   "group-functional-connectivity": (run) => {
     const nRuns = run.params?.["input-run-ids"]
       ? String(run.params["input-run-ids"]).split(",").filter(Boolean).length

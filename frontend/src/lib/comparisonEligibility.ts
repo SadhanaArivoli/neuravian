@@ -160,7 +160,7 @@ export function computeDice(
 
 // ── Comparison family detection ────────────────────────────────────────────────
 
-export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "nifti_inspector" | "mixed" | "none";
+export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "nifti_inspector" | "roi_extraction" | "mixed" | "none";
 
 const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
 
@@ -175,6 +175,9 @@ function hasGroupConnectivity(types: string[]): boolean {
 }
 function hasNiftiInspector(types: string[]): boolean {
   return types.some((t) => t.startsWith("nifti_inspector_") || t === "nifti_inspector_json");
+}
+function hasRoiExtraction(types: string[]): boolean {
+  return types.some((t) => t.startsWith("roi_extraction_"));
 }
 function hasAnatomical(types: string[]): boolean {
   return types.some((t) => ANATOMICAL_TYPES.has(t));
@@ -197,8 +200,13 @@ export function detectComparisonFamily(
   const groupB = hasGroupConnectivity(producedTypesB);
   const inspA = hasNiftiInspector(producedTypesA);
   const inspB = hasNiftiInspector(producedTypesB);
+  const roiA = hasRoiExtraction(producedTypesA);
+  const roiB = hasRoiExtraction(producedTypesB);
   const anatA = hasAnatomical(producedTypesA);
   const anatB = hasAnatomical(producedTypesB);
+  // roi_extraction pairs with itself only
+  if (roiA && roiB) return "roi_extraction";
+  if (roiA || roiB) return "mixed";
   // nifti_inspector pairs with itself only
   if (inspA && inspB) return "nifti_inspector";
   if (inspA || inspB) return "mixed";
@@ -219,7 +227,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "seed_connectivity" | "group_connectivity" | "nifti_inspector" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "group_connectivity" | "nifti_inspector" | "roi_extraction" | "anatomical" | "other" {
+  if (hasRoiExtraction(producedTypes)) return "roi_extraction";
   if (hasNiftiInspector(producedTypes)) return "nifti_inspector";
   if (hasGroupConnectivity(producedTypes)) return "group_connectivity";
   if (hasSeedConnectivity(producedTypes)) return "seed_connectivity";
