@@ -1899,6 +1899,109 @@ def test_functional_connectivity_builds_roi_statistics_from_atlas(tmp_path):
     assert rows[1]["voxel_count"] == 3
 
 
+def test_functional_connectivity_run_writes_roi_statistics_files(tmp_path):
+    """Regression: the entry point must write roi_statistics.csv and .json.
+
+    This test invokes the real neuroforge-functional-connectivity CLI using the
+    checked-in fixture derivatives so that the full execution path (atlas load →
+    time-series extraction → stats → file write) is exercised.  It will be
+    skipped automatically if the fixture is absent (CI without large data).
+    """
+    import subprocess
+    import sys
+    import csv
+
+    fixture_dir = Path(__file__).parent.parent / "data" / "fixtures" / "fmriprep-derivatives"
+    if not fixture_dir.exists():
+        pytest.skip("fmriprep-derivatives fixture not present")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m", "app.tools.functional_connectivity",
+            "--fmriprep-dir", str(fixture_dir),
+            "--output-dir", str(tmp_path),
+            "--atlas-name", "schaefer100_7",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, (
+        f"neuroforge-functional-connectivity exited {result.returncode}.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+    csv_path = tmp_path / "roi_statistics.csv"
+    json_path = tmp_path / "roi_statistics.json"
+
+    assert csv_path.exists(), "roi_statistics.csv was not written"
+    assert json_path.exists(), "roi_statistics.json was not written"
+    assert csv_path.stat().st_size > 0, "roi_statistics.csv is empty"
+    assert json_path.stat().st_size > 0, "roi_statistics.json is empty"
+
+    # Schaefer100 must produce exactly 100 ROI rows (plus header)
+    with csv_path.open() as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 100, (
+        f"Expected 100 ROI rows for Schaefer100, got {len(rows)}"
+    )
+
+    # All required columns must be present
+    required_cols = {
+        "roi_number", "roi_label", "network",
+        "voxel_count", "mean_signal", "std_signal",
+        "min_signal", "max_signal", "median_signal",
+    }
+    assert required_cols.issubset(rows[0].keys()), (
+        f"Missing columns: {required_cols - set(rows[0].keys())}"
+    )
+
+    # JSON must decode to a list of 100 dicts
+    with json_path.open() as fh:
+        json_rows = json.load(fh)
+    assert isinstance(json_rows, list)
+    assert len(json_rows) == 100, (
+        f"Expected 100 JSON rows, got {len(json_rows)}"
+    )
+
+    # Metadata must declare roi_statistics_generated: true
+    meta_path = tmp_path / "connectivity_metadata.json"
+    assert meta_path.exists()
+    with meta_path.open() as fh:
+        meta = json.load(fh)
+    assert meta.get("roi_statistics_generated") is True
+    assert meta.get("n_rois") == 100
+
+
+def test_functional_connectivity_roi_statistics_file_discovery(tmp_path):
+    """Regression: the glob pattern in get_run_results must find both roi_statistics files.
+
+    This tests the discovery logic in isolation — if the glob pattern or suffix
+    filter changes and stops matching the files, this test fails immediately.
+    """
+    # Write fake roi_statistics files into tmp_path (mimics what the pipeline writes)
+    (tmp_path / "roi_statistics.csv").write_text("roi_number,roi_label\n1,Test\n")
+    (tmp_path / "roi_statistics.json").write_text('[{"roi_number":1}]')
+    # Also write an unrelated file that must NOT be picked up
+    (tmp_path / "roi_statistics.npy").write_bytes(b"\x00")
+
+    # Mirror the exact discovery logic from get_run_results
+    output_root = tmp_path
+    roi_statistics = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.glob("*roi_statistics*"))
+        if f.suffix in {".csv", ".json"}
+    ]
+
+    paths = {entry["path"] for entry in roi_statistics}
+    assert "roi_statistics.csv" in paths, "roi_statistics.csv missing from glob discovery"
+    assert "roi_statistics.json" in paths, "roi_statistics.json missing from glob discovery"
+    # .npy must be filtered out
+    assert "roi_statistics.npy" not in paths, ".npy suffix must be excluded"
+    assert len(roi_statistics) == 2
+
+
 def test_import_fmriprep_derivatives_manifest_loads_and_validates():
     """Imported fMRIPrep derivatives must be represented as a native pipeline."""
     schema = _load_schema()

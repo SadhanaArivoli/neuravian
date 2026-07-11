@@ -74,6 +74,16 @@ artifact_types:
     description: "Extracted ROI time series used to compute the connectivity matrix"
     extensions: [".tsv"]
 
+  roi_statistics_csv:
+    label: "ROI Statistics CSV"
+    description: "Per-ROI atlas voxel counts and time-series summary statistics as a CSV file"
+    extensions: [".csv"]
+
+  roi_statistics_json:
+    label: "ROI Statistics JSON"
+    description: "Machine-readable per-ROI atlas statistics in JSON format"
+    extensions: [".json"]
+
   connectivity_report_html:
     label: "Connectivity Report"
     description: "HTML report summarizing atlas, method, matrix statistics, and outputs"
