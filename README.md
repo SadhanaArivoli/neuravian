@@ -240,13 +240,18 @@ Every run record stores: pipeline ID and version, full command, parameters JSON,
 
 ## Known Limitations
 
-**Apple Silicon.** Pipelines that use `linux/amd64` Docker images (SynthStrip, FastSurfer, pydeface, fMRIPrep) run through Rosetta 2 emulation on Apple Silicon. This is significantly slower than native execution. `local-ok` pipelines (MRIQC, dcm2bids, BrainChop, Functional Connectivity) run natively and are not affected.
+**Apple Silicon — per-pipeline emulation status.** Pipelines using `linux/amd64` Docker images run through Rosetta 2 emulation on Apple Silicon. Empirical statuses differ by pipeline:
 
-**fMRIPrep verification pending.** The fMRIPrep manifest exists and the pipeline can be launched, but it has not been verified end-to-end locally. It is marked `local-unsafe`. Use Import fMRIPrep Derivatives for local work.
+- **SynthStrip**: locally verified and functional; slow under emulation (5–15 min per subject).
+- **FastSurfer**: runs locally (`local-slow`); full performance benchmarking pending — expect runtimes significantly longer than on native x86_64.
+- **fMRIPrep**: `local-unsafe` — ANTs non-linear registration under Rosetta 2 / QEMU produces unreliable results and causes excessive memory consumption on laptop hardware. Use Import fMRIPrep Derivatives instead.
+- **pydeface**: `local-unsafe` / unverified — FLIRT-based registration under Rosetta 2 has not been validated to produce correct defacing masks.
 
-**No remote or HPC execution.** All execution is local Docker or native subprocess. Remote SSH execution infrastructure exists in the codebase (`RemoteHosts` settings page, SSH executor module) but is not yet connected to the run creation flow. SLURM, Kubernetes, and cloud dispatch are planned but not implemented.
+`local-ok` pipelines (MRIQC, dcm2bids, BrainChop, Functional Connectivity) run natively on Apple Silicon and are not affected by emulation.
 
-**Workflow Builder is frontend-only.** Workflows are constructed and executed in the browser session. There is no backend workflow record, no saved execution state, and no resume-from-failure. If the page is closed mid-workflow, the state is lost (though individual run records persist).
+**No remote or HPC execution yet.** All execution is local Docker or native subprocess. Remote SSH execution infrastructure exists in the codebase (`RemoteHosts` settings page, SSH executor module) but is not yet connected to the run creation flow. When remote execution is implemented, it will dispatch only to infrastructure explicitly configured and controlled by the researcher (SSH targets, SLURM clusters, or self-hosted compute nodes) — NeuroForge will not route data through any third-party cloud service automatically.
+
+**Workflow execution state is session-bound.** Named workflows are backend-persisted through the Workflow Library: they are stored in SQLite, managed through a CRUD API, and support JSON import/export, schema versioning, and template promotion — all of which survive page reloads and browser restarts. However, *active workflow execution* — the currently running sequence of steps — is held in frontend state. If the page is closed while a workflow is executing, the execution sequence is lost. Individual run records for steps that completed before the page closed persist in the database and can be viewed in the Runs page.
 
 **No multi-user support.** NeuroForge is a single-user local application. There is no authentication, role-based access, or collaboration feature.
 
