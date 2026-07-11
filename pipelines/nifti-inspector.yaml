@@ -1,0 +1,111 @@
+id: nifti-inspector
+display_name: NIfTI Inspector
+description: >
+  Universal NIfTI header and image QC tool. Reads any NIfTI file already
+  produced by NeuroForge (brain masks, skull-stripped images, connectivity
+  maps, defaced images, etc.) and reports dimensions, voxel spacing,
+  orientation, datatype, intensity statistics, and a warning summary.
+  Read-only — no data are modified.
+homepage: https://nipy.org/nibabel/
+category: quality_control
+input_type: "nifti"
+
+inputs: []
+
+execution:
+  type: native
+  command: neuroforge-nifti-inspector
+
+dataset_positional: false
+compute_profile: local-ok
+
+outputs:
+  - nifti_inspector_json
+  - nifti_histogram_png
+  - nifti_inspector_report_html
+
+parameters:
+  - name: input-file
+    type: file_path
+    required: true
+    help: >
+      Path to the NIfTI file to inspect (.nii or .nii.gz).
+      This is normally filled automatically when you click "Inspect" on
+      an artifact from another run.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: >
+      Output directory for the NIfTI Inspector report bundle. Leave unchanged
+      unless you are debugging the native command.
+
+accepts:
+  - type: nifti_raw
+    param: input-file
+    label: "Raw NIfTI"
+    description: "Inspect a raw structural or functional NIfTI image"
+
+  - type: nifti_skull_stripped
+    param: input-file
+    label: "Skull-Stripped Brain"
+    description: "Inspect a skull-stripped brain NIfTI image"
+
+  - type: brain_mask
+    param: input-file
+    label: "Brain Mask"
+    description: "Inspect a binary brain mask: check coverage, warnings, and header"
+
+  - type: nifti_defaced
+    param: input-file
+    label: "Defaced NIfTI"
+    description: "Inspect a defaced NIfTI image for completeness and metadata integrity"
+
+  - type: seed_connectivity_map_nii
+    param: input-file
+    label: "Seed Connectivity Map"
+    description: "Inspect a voxelwise seed connectivity map: range, NaN check, and header"
+
+produces:
+  - type: nifti_inspector_json
+    path_hint: "nifti_inspector.json"
+    label: "NIfTI Inspection Results"
+    description: "Header metadata, image QC stats, warnings, and provenance"
+
+  - type: nifti_histogram_png
+    path_hint: "nifti_histogram.png"
+    label: "Intensity Histogram"
+    description: "Intensity histogram of the inspected NIfTI image"
+
+  - type: nifti_inspector_report_html
+    path_hint: "nifti_report.html"
+    label: "NIfTI Inspector Report"
+    description: "Self-contained HTML QC report with header, statistics, and warnings"
+
+known_errors:
+  - pattern: "Input file not found"
+    explanation: >
+      The NIfTI file path does not exist inside the container. This can happen
+      if you manually typed the path or if the source run's output directory was
+      moved or deleted.
+    fix_hint: >
+      Return to the source run's Results page and click "Inspect" from there
+      to automatically fill the correct path.
+
+  - pattern: "is not a valid NIfTI"
+    explanation: >
+      The file exists but nibabel could not read it as a NIfTI image.
+      It may be corrupted, truncated, or a different format (e.g., ANALYZE or MINC).
+    fix_hint: >
+      Check the file with `file <path>` to verify it is a NIfTI (.nii or .nii.gz).
+      Re-run the source pipeline if the output may be corrupted.
+
+  - pattern: "Cannot load compressed NIfTI"
+    explanation: >
+      nibabel failed to decompress the .nii.gz file. The file may be only
+      partially written or the gzip stream may be corrupted.
+    fix_hint: >
+      Try `gunzip -t <file>` to test gzip integrity. Re-run the source pipeline
+      to regenerate the file.

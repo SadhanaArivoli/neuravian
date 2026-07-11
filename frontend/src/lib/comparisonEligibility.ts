@@ -160,7 +160,7 @@ export function computeDice(
 
 // ── Comparison family detection ────────────────────────────────────────────────
 
-export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "mixed" | "none";
+export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "nifti_inspector" | "mixed" | "none";
 
 const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
 
@@ -172,6 +172,9 @@ function hasSeedConnectivity(types: string[]): boolean {
 }
 function hasGroupConnectivity(types: string[]): boolean {
   return types.some((t) => t.startsWith("group_"));
+}
+function hasNiftiInspector(types: string[]): boolean {
+  return types.some((t) => t.startsWith("nifti_inspector_") || t === "nifti_inspector_json");
 }
 function hasAnatomical(types: string[]): boolean {
   return types.some((t) => ANATOMICAL_TYPES.has(t));
@@ -192,8 +195,13 @@ export function detectComparisonFamily(
   const seedB = hasSeedConnectivity(producedTypesB);
   const groupA = hasGroupConnectivity(producedTypesA);
   const groupB = hasGroupConnectivity(producedTypesB);
+  const inspA = hasNiftiInspector(producedTypesA);
+  const inspB = hasNiftiInspector(producedTypesB);
   const anatA = hasAnatomical(producedTypesA);
   const anatB = hasAnatomical(producedTypesB);
+  // nifti_inspector pairs with itself only
+  if (inspA && inspB) return "nifti_inspector";
+  if (inspA || inspB) return "mixed";
   if ((connA || connB || groupA || groupB) && (anatA || anatB)) return "mixed";
   if ((seedA || seedB) && (anatA || anatB)) return "mixed";
   // Seed, FC, and group cannot be compared with each other
@@ -211,7 +219,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "seed_connectivity" | "group_connectivity" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "group_connectivity" | "nifti_inspector" | "anatomical" | "other" {
+  if (hasNiftiInspector(producedTypes)) return "nifti_inspector";
   if (hasGroupConnectivity(producedTypes)) return "group_connectivity";
   if (hasSeedConnectivity(producedTypes)) return "seed_connectivity";
   if (hasConnectivity(producedTypes)) return "connectivity";

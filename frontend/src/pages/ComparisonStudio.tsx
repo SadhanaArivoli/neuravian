@@ -1114,6 +1114,201 @@ function GroupFCComparisonPanel({
   );
 }
 
+// ── NiftiInspectorComparisonPanel ─────────────────────────────────────────────
+
+interface NiftiInspResult {
+  header?: {
+    dimensions?: number[];
+    n_volumes?: number;
+    voxel_spacing_mm?: number[];
+    tr_seconds?: number | null;
+    datatype?: string;
+    bitpix?: number;
+    endianness?: string;
+    orientation?: string;
+    qform_code?: number;
+    sform_code?: number;
+    header_version?: string;
+    voxel_count?: number;
+  };
+  stats?: {
+    min?: number | null;
+    max?: number | null;
+    mean?: number | null;
+    std?: number | null;
+    dynamic_range?: number | null;
+    nonzero_pct?: number;
+    nan_count?: number;
+  };
+  warnings?: Array<{ code: string; severity: string; message: string }>;
+  provenance?: { nibabel_version?: string; header_hash?: string };
+  input_file?: string;
+}
+
+function NiftiInspectorComparisonPanel({
+  runIdA,
+  runIdB,
+  labelA,
+  labelB,
+}: {
+  runIdA: number;
+  runIdB: number;
+  labelA: string;
+  labelB: string;
+}) {
+  const [inspA, setInspA] = useState<NiftiInspResult | null>(null);
+  const [inspB, setInspB] = useState<NiftiInspResult | null>(null);
+  const [errA, setErrA] = useState<string | null>(null);
+  const [errB, setErrB] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/runs/${runIdA}/files/nifti_inspector.json`)
+      .then((r) => r.json())
+      .then((d: NiftiInspResult) => { if (!cancelled) setInspA(d); })
+      .catch((e) => { if (!cancelled) setErrA(String(e)); });
+    return () => { cancelled = true; };
+  }, [runIdA]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/runs/${runIdB}/files/nifti_inspector.json`)
+      .then((r) => r.json())
+      .then((d: NiftiInspResult) => { if (!cancelled) setInspB(d); })
+      .catch((e) => { if (!cancelled) setErrB(String(e)); });
+    return () => { cancelled = true; };
+  }, [runIdB]);
+
+  if (errA || errB) return (
+    <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+      Could not load inspection results: {errA ?? errB}
+    </div>
+  );
+
+  const fmt = (v: number | null | undefined, dec = 3) =>
+    v == null ? "—" : Number.isFinite(v) ? v.toFixed(dec) : String(v);
+
+  const hA = inspA?.header;
+  const hB = inspB?.header;
+  const sA = inspA?.stats;
+  const sB = inspB?.stats;
+
+  // Compatibility checks
+  const sameDims = hA && hB && JSON.stringify(hA.dimensions) === JSON.stringify(hB.dimensions);
+  const sameSpacing = hA && hB && hA.voxel_spacing_mm && hB.voxel_spacing_mm &&
+    hA.voxel_spacing_mm.every((v, i) => Math.abs(v - (hB.voxel_spacing_mm![i] ?? 0)) < 0.001);
+  const sameDatatype = hA && hB && hA.datatype === hB.datatype;
+  const sameOrientation = hA && hB && hA.orientation === hB.orientation;
+
+  function badge(ok: boolean | undefined, label: string) {
+    if (ok == null) return null;
+    return (
+      <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
+        ok ? "bg-blue-500/10 border-blue-500/20 text-blue-300"
+           : "bg-amber-500/10 border-amber-500/20 text-amber-300"
+      }`}>
+        {ok ? "✓" : "≠"} {label}
+      </span>
+    );
+  }
+
+  const rows: Array<{ label: string; a: string; b: string; match?: boolean }> = [];
+  if (hA || hB) {
+    rows.push(
+      { label: "Dimensions", a: hA?.dimensions?.join(" × ") ?? "—", b: hB?.dimensions?.join(" × ") ?? "—", match: sameDims ?? undefined },
+      { label: "Volumes", a: String(hA?.n_volumes ?? "—"), b: String(hB?.n_volumes ?? "—") },
+      { label: "Voxel spacing (mm)", a: hA?.voxel_spacing_mm?.map((v) => v.toFixed(2)).join(" × ") ?? "—", b: hB?.voxel_spacing_mm?.map((v) => v.toFixed(2)).join(" × ") ?? "—", match: sameSpacing ?? undefined },
+      { label: "TR (s)", a: hA?.tr_seconds != null ? hA.tr_seconds.toFixed(3) : "—", b: hB?.tr_seconds != null ? hB.tr_seconds.toFixed(3) : "—" },
+      { label: "Datatype", a: `${hA?.datatype ?? "—"} (${hA?.bitpix ?? "?"}bit)`, b: `${hB?.datatype ?? "—"} (${hB?.bitpix ?? "?"}bit)`, match: sameDatatype ?? undefined },
+      { label: "Orientation", a: hA?.orientation ?? "—", b: hB?.orientation ?? "—", match: sameOrientation ?? undefined },
+      { label: "NIfTI version", a: hA?.header_version ?? "—", b: hB?.header_version ?? "—" },
+    );
+  }
+  if (sA || sB) {
+    rows.push(
+      { label: "Min", a: fmt(sA?.min), b: fmt(sB?.min) },
+      { label: "Max", a: fmt(sA?.max), b: fmt(sB?.max) },
+      { label: "Mean", a: fmt(sA?.mean), b: fmt(sB?.mean) },
+      { label: "Std dev", a: fmt(sA?.std), b: fmt(sB?.std) },
+      { label: "Dynamic range", a: fmt(sA?.dynamic_range), b: fmt(sB?.dynamic_range) },
+      { label: "Non-zero %", a: sA?.nonzero_pct != null ? `${sA.nonzero_pct.toFixed(1)}%` : "—", b: sB?.nonzero_pct != null ? `${sB.nonzero_pct.toFixed(1)}%` : "—" },
+      { label: "NaN count", a: String(sA?.nan_count ?? "—"), b: String(sB?.nan_count ?? "—") },
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeading>NIfTI Inspector comparison</SectionHeading>
+
+      {/* Compatibility badges */}
+      <div className="flex flex-wrap items-center gap-2">
+        {badge(sameDims, "Dimensions")}
+        {badge(sameSpacing, "Voxel spacing")}
+        {badge(sameDatatype, "Datatype")}
+        {badge(sameOrientation, "Orientation")}
+        {(!inspA || !inspB) && (
+          <span className="text-xs text-gray-500 animate-pulse">Loading…</span>
+        )}
+      </div>
+
+      {/* Warnings summary */}
+      {(inspA?.warnings?.length ?? 0) + (inspB?.warnings?.length ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          {[{ insp: inspA, label: labelA }, { insp: inspB, label: labelB }].map(({ insp, label }) => (
+            insp?.warnings && insp.warnings.length > 0 ? (
+              <div key={label} className="rounded border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                <p className="font-semibold mb-1">{label}: {insp.warnings.length} warning{insp.warnings.length !== 1 ? "s" : ""}</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {insp.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
+                </ul>
+              </div>
+            ) : null
+          ))}
+        </div>
+      )}
+
+      {/* Side-by-side table */}
+      {rows.length > 0 && (
+        <div className="rounded-lg border border-white/10 overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">Property</th>
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelA}</th>
+                <th className="px-3 py-2 text-xs font-medium text-gray-400">{labelB}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {rows.map(({ label, a, b, match }) => (
+                <tr key={label} className={match === false ? "bg-amber-500/5" : ""}>
+                  <td className="px-3 py-2 text-xs text-gray-400 font-medium">{label}</td>
+                  <td className={`px-3 py-2 text-xs font-mono ${match === false ? "text-amber-300" : "text-gray-300"}`}>{a}</td>
+                  <td className={`px-3 py-2 text-xs font-mono ${match === false ? "text-amber-300" : "text-gray-300"}`}>{b}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Histogram side by side */}
+      <div className="grid grid-cols-2 gap-3">
+        {[{ id: runIdA, label: labelA }, { id: runIdB, label: labelB }].map(({ id, label }) => (
+          <div key={id}>
+            <p className="mb-1 text-xs font-medium text-gray-400">{label}: Histogram</p>
+            <img
+              src={`/api/runs/${id}/files/nifti_histogram.png`}
+              alt={`${label} histogram`}
+              className="w-full rounded border border-white/10 object-contain max-h-48"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -1375,7 +1570,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "nifti_inspector") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -1389,7 +1584,7 @@ export default function ComparisonStudio() {
           runBOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity") return true;
+        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity" || runBFamily === "nifti_inspector") return true;
         return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
       })
     : runOptions;
@@ -1680,6 +1875,8 @@ export default function ComparisonStudio() {
     runAId && !runBId && bOptions.length === 0
       ? runAFamily === "group_connectivity"
         ? "No other group connectivity runs found. Run group-functional-connectivity on a second set of FC runs to compare."
+        : runAFamily === "nifti_inspector"
+        ? "No other NIfTI Inspector runs found. Run nifti-inspector on another NIfTI file to compare metadata and statistics."
         : runAFamily === "connectivity"
         ? "No compatible connectivity runs found. Run functional-connectivity again (on this or another subject) to enable matrix comparison."
         : runAFamily === "seed_connectivity"
@@ -1843,6 +2040,16 @@ export default function ComparisonStudio() {
                   labelB={labelB}
                 />
               )}
+
+            {/* NIfTI Inspector comparison panel */}
+            {comparisonFamily === "nifti_inspector" && runAId && runBId && (
+              <NiftiInspectorComparisonPanel
+                runIdA={runAId}
+                runIdB={runBId}
+                labelA={labelA}
+                labelB={labelB}
+              />
+            )}
 
             {/* Atlas connectivity matrix comparison panel */}
             {comparisonFamily === "connectivity" && runAFamily !== "seed_connectivity" && (

@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { DatasetArtifact } from "../api/client";
 import NiivueViewer from "../components/domain/NiivueViewer";
 import { useDatasetArtifacts, useDatasetDashboard } from "../hooks/useDatasets";
@@ -307,20 +307,28 @@ function LineageDrawer({
 
 // ── Artifact row ─────────────────────────────────────────────────────────────
 
+// NIfTI artifact types that can be passed to the NIfTI Inspector
+const NIFTI_INSPECTABLE_TYPES = new Set([
+  "nifti_raw", "nifti_skull_stripped", "brain_mask", "nifti_defaced", "seed_connectivity_map_nii",
+]);
+
 function ArtifactRow({
   artifact,
   onPreview,
   onLineage,
+  onInspect,
   selected,
 }: {
   artifact: DatasetArtifact;
   onPreview: (a: DatasetArtifact) => void;
   onLineage: (a: DatasetArtifact) => void;
+  onInspect: (a: DatasetArtifact) => void;
   selected: boolean;
 }) {
   const kind = resolvePreviewKind(artifact);
   const fileUrl = artifactFileUrl(artifact);
   const filename = artifact.path.split("/").pop() ?? artifact.path;
+  const isInspectable = NIFTI_INSPECTABLE_TYPES.has(artifact.type) && !artifact.is_directory;
 
   return (
     <div
@@ -376,6 +384,15 @@ function ArtifactRow({
 
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {isInspectable && (
+          <button
+            onClick={() => onInspect(artifact)}
+            className="rounded px-2 py-1 text-xs text-emerald-700 border border-emerald-300 hover:bg-emerald-50 transition-colors"
+            title="Inspect header, statistics, and QC warnings"
+          >
+            Inspect
+          </button>
+        )}
         {kind !== "none" && (
           <button
             onClick={() => onPreview(artifact)}
@@ -515,6 +532,7 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 export default function ArtifactExplorer() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const datasetId = Number(id);
 
   const { data: artifacts = [], isLoading, isError } = useDatasetArtifacts(datasetId);
@@ -552,6 +570,26 @@ export default function ArtifactExplorer() {
     setPreviewArtifact(null);
     setLineageArtifact(a);
   }, []);
+
+  const handleInspect = useCallback((a: DatasetArtifact) => {
+    // Derive container-internal path: output_dir + "/" + path
+    const containerPath = a.output_dir.replace(/\/$/, "") + "/" + a.path;
+    navigate("/pipelines", {
+      state: {
+        selectPipeline: "nifti-inspector",
+        prefill: {
+          runId: a.run_id,
+          sourcePipelineId: a.pipeline_id,
+          sourceDisplayName: a.pipeline_id,
+          artifactType: a.type,
+          artifactLabel: a.label,
+          param: "input-file",
+          path: containerPath,
+          isDatasetSlot: false,
+        },
+      },
+    });
+  }, [navigate]);
 
   const closeSidePanel = useCallback(() => {
     setPreviewArtifact(null);
@@ -641,6 +679,7 @@ export default function ArtifactExplorer() {
               artifact={a}
               onPreview={handlePreview}
               onLineage={handleLineage}
+              onInspect={handleInspect}
               selected={
                 (previewArtifact?.run_id === a.run_id && previewArtifact?.path === a.path) ||
                 (lineageArtifact?.run_id === a.run_id && lineageArtifact?.path === a.path)

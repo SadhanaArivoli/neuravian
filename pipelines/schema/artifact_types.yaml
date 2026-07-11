@@ -143,3 +143,18 @@ artifact_types:
     label: "Group Connectivity Report"
     description: "HTML report summarizing group mean/std matrices, n_runs, atlas, and statistics"
     extensions: [".html"]
+
+  nifti_inspector_json:
+    label: "NIfTI Inspection Results"
+    description: "Header metadata, image QC stats, warnings, and provenance from NIfTI Inspector"
+    extensions: [".json"]
+
+  nifti_histogram_png:
+    label: "Intensity Histogram"
+    description: "Intensity histogram of the inspected NIfTI image (5th–95th percentile range)"
+    extensions: [".png"]
+
+  nifti_inspector_report_html:
+    label: "NIfTI Inspector Report"
+    description: "Self-contained HTML report with header metadata, image QC statistics, and warnings"
+    extensions: [".html"]

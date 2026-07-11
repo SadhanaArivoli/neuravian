@@ -616,6 +616,215 @@ function GroupFCPanel({
   );
 }
 
+// ── NIfTI Inspector panel ──────────────────────────────────────────────────────
+
+interface NiftiInspectorResult {
+  input_file?: string;
+  file_size_bytes?: number;
+  header?: {
+    dimensions?: number[];
+    n_volumes?: number;
+    voxel_spacing_mm?: number[];
+    tr_seconds?: number | null;
+    datatype?: string;
+    bitpix?: number;
+    endianness?: string;
+    orientation?: string;
+    qform_code?: number;
+    qform_name?: string;
+    sform_code?: number;
+    sform_name?: string;
+    intent_name?: string;
+    header_version?: string;
+    voxel_count?: number;
+  };
+  stats?: {
+    min?: number | null;
+    max?: number | null;
+    mean?: number | null;
+    median?: number | null;
+    std?: number | null;
+    p5?: number | null;
+    p95?: number | null;
+    dynamic_range?: number | null;
+    nonzero_count?: number;
+    nonzero_pct?: number;
+    nan_count?: number;
+    inf_count?: number;
+    background_pct?: number;
+  };
+  warnings?: Array<{ code: string; severity: string; message: string }>;
+  provenance?: {
+    nibabel_version?: string;
+    inspection_timestamp?: string;
+    header_hash?: string;
+    runtime_seconds?: number;
+  };
+}
+
+function NiftiInspectorPanel({ runId, jsonPath, histogramPath }: {
+  runId: number;
+  jsonPath: string;
+  histogramPath?: string;
+}) {
+  const [result, setResult] = useState<NiftiInspectorResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRunFile<NiftiInspectorResult>(runId, jsonPath)
+      .then((d) => { if (!cancelled) setResult(d); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : "Could not load inspection results"); });
+    return () => { cancelled = true; };
+  }, [runId, jsonPath]);
+
+  if (err) return (
+    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      NIfTI Inspector results could not be loaded: {err}
+    </div>
+  );
+  if (!result) return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 animate-pulse">
+      Loading inspection results…
+    </div>
+  );
+
+  const h = result.header ?? {};
+  const s = result.stats ?? {};
+  const warns = result.warnings ?? [];
+  const prov = result.provenance ?? {};
+  const filename = result.input_file?.split("/").pop() ?? "unknown";
+  const fileSizeKb = result.file_size_bytes ? (result.file_size_bytes / 1024).toFixed(1) : "—";
+
+  const fmt = (v: number | null | undefined, dec = 3) =>
+    v == null ? "—" : Number.isFinite(v) ? v.toFixed(dec) : String(v);
+
+  const errorWarns = warns.filter((w) => w.severity === "error");
+  const otherWarns = warns.filter((w) => w.severity !== "error");
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      {/* Header */}
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">NIfTI Inspector</h3>
+          <p className="text-xs text-gray-500 font-mono truncate max-w-xs" title={filename}>
+            {filename}
+          </p>
+          <p className="text-xs text-gray-400">
+            {h.dimensions?.join(" × ")} vox · {h.voxel_spacing_mm?.map((v) => v.toFixed(2)).join(" × ")} mm
+            {h.tr_seconds != null && ` · TR ${h.tr_seconds.toFixed(3)} s`}
+            {" · "}{h.datatype} · {h.orientation} · {fileSizeKb} KB
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {warns.length > 0 && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              errorWarns.length > 0
+                ? "bg-red-100 text-red-700 border border-red-200"
+                : "bg-amber-100 text-amber-700 border border-amber-200"
+            }`}>
+              {warns.length} warning{warns.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {warns.length === 0 && (
+            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+              ✓ No warnings
+            </span>
+          )}
+          <a
+            href={`/api/runs/${runId}/files/nifti_report.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            View report
+          </a>
+        </div>
+      </div>
+
+      {/* Warnings */}
+      {warns.length > 0 && (
+        <div className="mb-3 space-y-1">
+          {[...errorWarns, ...otherWarns].map((w, i) => (
+            <div
+              key={i}
+              className={`rounded px-3 py-2 text-xs ${
+                w.severity === "error"
+                  ? "bg-red-50 border border-red-200 text-red-800"
+                  : "bg-amber-50 border border-amber-200 text-amber-800"
+              }`}
+            >
+              <span className="font-semibold uppercase mr-1">{w.severity}:</span>
+              {w.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Stats grid */}
+      <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+        {[
+          ["Min", fmt(s.min)],
+          ["Max", fmt(s.max)],
+          ["Mean", fmt(s.mean)],
+          ["Median", fmt(s.median)],
+          ["Std dev", fmt(s.std)],
+          ["Dyn range", fmt(s.dynamic_range)],
+          ["Non-zero", s.nonzero_pct != null ? `${s.nonzero_pct.toFixed(1)}%` : "—"],
+          ["NaN", String(s.nan_count ?? 0)],
+          ["Inf", String(s.inf_count ?? 0)],
+          ["p5", fmt(s.p5)],
+          ["p95", fmt(s.p95)],
+          ["Background", s.background_pct != null ? `${s.background_pct.toFixed(1)}%` : "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded bg-gray-50 p-2">
+            <div className="text-xs text-gray-500">{label}</div>
+            <div className="font-mono text-sm font-semibold text-gray-900 truncate">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Header details (collapsible) */}
+      <details className="mb-3 text-xs">
+        <summary className="cursor-pointer font-medium text-gray-600 hover:text-gray-800">
+          Header details
+        </summary>
+        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 text-xs">
+          {[
+            ["NIfTI version", h.header_version],
+            ["Datatype", `${h.datatype} (${h.bitpix}bit)`],
+            ["Endianness", h.endianness],
+            ["Intent", h.intent_name],
+            ["qform", `${h.qform_code} (${h.qform_name})`],
+            ["sform", `${h.sform_code} (${h.sform_name})`],
+            ["Total voxels", h.voxel_count?.toLocaleString()],
+            ["nibabel", prov.nibabel_version],
+            ["Header hash", prov.header_hash?.slice(0, 20) + "…"],
+          ].map(([label, val]) => (
+            <div key={label} className="flex gap-1 py-0.5">
+              <span className="text-gray-500 shrink-0 w-24">{label}</span>
+              <span className="font-mono text-gray-800 truncate">{val ?? "—"}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      {/* Histogram */}
+      {histogramPath && (
+        <div>
+          <p className="mb-1 text-xs font-medium text-gray-600">Intensity histogram</p>
+          <img
+            src={`/api/runs/${runId}/files/${histogramPath}`}
+            alt="Intensity histogram"
+            className="max-h-[240px] w-full rounded border border-gray-200 object-contain"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectivitySummary({
   runId,
   matrixPath,
@@ -1369,7 +1578,13 @@ export default function RunResults({ runId }: Props) {
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
       )}
 
-      {results.metadata?.pipeline_id === "seed-based-connectivity" ? (
+      {results.metadata?.pipeline_id === "nifti-inspector" ? (
+        <NiftiInspectorPanel
+          runId={runId}
+          jsonPath="nifti_inspector.json"
+          histogramPath="nifti_histogram.png"
+        />
+      ) : results.metadata?.pipeline_id === "seed-based-connectivity" ? (
         <SeedConnectivityPanel
           runId={runId}
           metadataPath={connectivityMetadata[0]?.path}
@@ -1527,29 +1742,63 @@ export default function RunResults({ runId }: Props) {
               Volume files ({niftis.length})
             </h3>
             <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-              {niftis.map((f) => (
-                <div
-                  key={f.path}
-                  className="flex items-center justify-between px-3 py-2 bg-white gap-3"
-                >
-                  <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
-                  <button
-                    onClick={() => {
-                      if (pair && pair.memberNames.includes(f.name)) {
-                        setViewerLayers(pair.layers);
-                      } else {
-                        setViewerLayers([{
-                          url: `/api/runs/${runId}/files/${f.path}`,
-                          name: f.name,
-                        }]);
-                      }
-                    }}
-                    className="shrink-0 rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+              {niftis.map((f) => {
+                // Find host_path for this NIfTI from resolved artifacts so
+                // the Inspector can receive a container-local absolute path.
+                const matchingArtifact = (results.artifacts ?? []).find(
+                  (a) => a.resolved && a.host_paths?.[0] && a.paths?.some((p) => p.endsWith(f.path))
+                );
+                const hostPath = matchingArtifact?.host_paths?.[0] ?? null;
+                const isInspectorRun = results.metadata?.pipeline_id === "nifti-inspector";
+                return (
+                  <div
+                    key={f.path}
+                    className="flex items-center justify-between px-3 py-2 bg-white gap-3"
                   >
-                    View
-                  </button>
-                </div>
-              ))}
+                    <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {!isInspectorRun && hostPath && (
+                        <button
+                          onClick={() => navigate("/pipelines", {
+                            state: {
+                              selectPipeline: "nifti-inspector",
+                              prefill: {
+                                runId,
+                                sourcePipelineId: results.metadata?.pipeline_id ?? "",
+                                sourceDisplayName: results.metadata?.pipeline_id ?? "",
+                                artifactType: "nifti_raw",
+                                artifactLabel: f.name,
+                                param: "input-file",
+                                path: hostPath,
+                                isDatasetSlot: false,
+                              },
+                            },
+                          })}
+                          className="rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50 transition-colors"
+                          title="Inspect this NIfTI file's header, statistics, and warnings"
+                        >
+                          Inspect
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (pair && pair.memberNames.includes(f.name)) {
+                            setViewerLayers(pair.layers);
+                          } else {
+                            setViewerLayers([{
+                              url: `/api/runs/${runId}/files/${f.path}`,
+                              name: f.name,
+                            }]);
+                          }
+                        }}
+                        className="rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {pair && (
               <p className="mt-2 text-xs text-gray-400">{pair.label}</p>

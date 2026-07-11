@@ -34,6 +34,7 @@ neuroforge-import-fmriprep-derivatives = "app.tools.import_fmriprep_derivatives:
 neuroforge-functional-connectivity = "app.tools.functional_connectivity:main"
 neuroforge-seed-based-connectivity = "app.tools.seed_based_connectivity:main"
 neuroforge-group-functional-connectivity = "app.tools.group_functional_connectivity:main"
+neuroforge-nifti-inspector = "app.tools.nifti_inspector:main"
 
 [project.optional-dependencies]
 dev = [
