@@ -14,6 +14,7 @@ import {
   pipelineRuntimeBars,
   pipelineStorageBars,
   timeAgo,
+  toUtc,
   type ChartBar,
 } from "../lib/dashboardStats";
 
@@ -257,7 +258,7 @@ export default function DatasetDashboard() {
         <StatCard label="Sessions" value={meta?.sessions?.length || "—"} />
         <StatCard label="Files" value={meta?.file_count ?? "—"} />
         <StatCard label="BIDS" value={dataset.validation_status} accent={dataset.validation_status === "valid"} />
-        <StatCard label="Registered" value={new Date(dataset.created_at).toLocaleDateString()} />
+        <StatCard label="Registered" value={toUtc(dataset.created_at).toLocaleDateString()} />
         <StatCard label="Version" value={dataset.bids_version ?? "—"} />
       </div>
 

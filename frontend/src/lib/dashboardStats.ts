@@ -27,9 +27,16 @@ export function fmtSeconds(seconds: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+// SQLite stores UTC datetimes but strips the timezone marker on read.
+// Pydantic then serializes them without 'Z', causing JS to misparse as local
+// time. Appending 'Z' restores correct UTC interpretation.
+export function toUtc(iso: string): Date {
+  return new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
 export function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, {
+  return toUtc(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -38,7 +45,7 @@ export function fmtDate(iso: string | null): string {
 
 export function fmtDatetime(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString(undefined, {
+  return toUtc(iso).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -48,7 +55,7 @@ export function fmtDatetime(iso: string | null): string {
 
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = Date.now() - toUtc(iso).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);

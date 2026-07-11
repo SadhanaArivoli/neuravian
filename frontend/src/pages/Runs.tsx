@@ -29,9 +29,13 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function parseUtc(iso: string): Date {
+  return new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
 function duration(start: string | null, end: string | null): string {
   if (!start) return "—";
-  const secs = Math.round(((end ? new Date(end) : new Date()).getTime() - new Date(start).getTime()) / 1000);
+  const secs = Math.round(((end ? parseUtc(end) : new Date()).getTime() - parseUtc(start).getTime()) / 1000);
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m ${secs % 60}s`;
@@ -40,8 +44,7 @@ function duration(start: string | null, end: string | null): string {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return parseUtc(iso).toLocaleString(undefined, {
     month: "short", day: "numeric", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });

@@ -66,10 +66,13 @@ const STATUS_BADGE: Record<string, string> = {
   pending: "bg-white/5      text-gray-400  border-white/10",
 };
 
+function parseUtc(iso: string): Date {
+  return new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
 function fmt(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return parseUtc(iso).toLocaleString(undefined, {
     month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
@@ -78,7 +81,7 @@ function fmt(iso: string | null): string {
 function runtime(run: RunSummary): string | null {
   if (!run.started_at || !run.finished_at) return null;
   const s = Math.round(
-    (new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000,
+    (parseUtc(run.finished_at).getTime() - parseUtc(run.started_at).getTime()) / 1000,
   );
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;

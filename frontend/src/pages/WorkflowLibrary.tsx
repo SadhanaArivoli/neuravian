@@ -14,8 +14,12 @@ import { parseWorkflowImport } from "../lib/workflowPersistence";
 
 type Tab = "recent" | "favorites" | "templates" | "archived" | "drafts";
 
+function parseUtc(iso: string): Date {
+  return new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
 function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = Date.now() - parseUtc(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
@@ -23,7 +27,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return parseUtc(iso).toLocaleDateString();
 }
 
 function classNames(...values: Array<string | false | null | undefined>) {
@@ -225,8 +229,8 @@ export default function WorkflowLibrary() {
     })
     .sort((a, b) => {
       if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "created") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      if (sortBy === "created") return parseUtc(b.created_at).getTime() - parseUtc(a.created_at).getTime();
+      return parseUtc(b.updated_at).getTime() - parseUtc(a.updated_at).getTime();
     });
 
   // ── Actions ────────────────────────────────────────────────────────────────

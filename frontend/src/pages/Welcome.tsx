@@ -294,7 +294,7 @@ export default function Welcome() {
             </Link>
           </div>
           <div className="mt-6 sm:mt-8 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600 font-mono">
-            <span>7 pipelines</span>
+            <span>12 pipelines</span>
             <span className="text-gray-700">·</span>
             <span>3 compute profiles</span>
             <span className="text-gray-700">·</span>

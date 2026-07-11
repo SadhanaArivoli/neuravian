@@ -5,6 +5,10 @@ import RunResults from "../components/domain/RunResults";
 import { useRun } from "../hooks/useRuns";
 import type { RunProgress } from "../api/client";
 
+function parseUtc(iso: string): Date {
+  return new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
 function getWsBase(): string {
   const apiUrl = import.meta.env.VITE_API_URL;
   if (apiUrl) {
@@ -181,13 +185,13 @@ export default function RunDetail() {
         {run.started_at && (
           <div>
             <span className="text-gray-500 text-xs uppercase tracking-wide">Started</span>
-            <p className="mt-0.5 font-medium text-gray-200">{new Date(run.started_at).toLocaleString()}</p>
+            <p className="mt-0.5 font-medium text-gray-200">{parseUtc(run.started_at).toLocaleString()}</p>
           </div>
         )}
         {run.finished_at && (
           <div>
             <span className="text-gray-500 text-xs uppercase tracking-wide">Finished</span>
-            <p className="mt-0.5 font-medium text-gray-200">{new Date(run.finished_at).toLocaleString()}</p>
+            <p className="mt-0.5 font-medium text-gray-200">{parseUtc(run.finished_at).toLocaleString()}</p>
           </div>
         )}
       </div>
@@ -213,7 +217,7 @@ export default function RunDetail() {
 
       {/* Staleness warning */}
       {run.status === "running" && progress?.last_updated && (() => {
-        const progressAgeMs = Date.now() - new Date(progress.last_updated).getTime();
+        const progressAgeMs = Date.now() - parseUtc(progress.last_updated).getTime();
         const staleMinutes = Math.floor(progressAgeMs / 60000);
         return staleMinutes >= 30 ? (
           <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">

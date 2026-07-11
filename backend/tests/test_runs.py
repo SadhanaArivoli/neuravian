@@ -419,11 +419,36 @@ def test_check_resources_clean(base_ctx):
     mock_disk = MagicMock()
     mock_disk.free = 50 * 1024 ** 3
 
+    # Mask ARM detection so the test is not platform-specific; the ARM warning
+    # is exercised by test_check_resources_arm_warning below.
     with patch("psutil.virtual_memory", return_value=mock_vm), \
-         patch("psutil.disk_usage", return_value=mock_disk):
+         patch("psutil.disk_usage", return_value=mock_disk), \
+         patch("platform.machine", return_value="x86_64"):
         warnings = DockerExecutor().check_resources(base_ctx)
 
     assert warnings == []
+
+
+def test_check_resources_arm_warning(base_ctx):
+    """ARM host with an amd64 image triggers an architecture warning."""
+    mock_vm = MagicMock()
+    mock_vm.available = 16 * 1024 ** 3
+    mock_disk = MagicMock()
+    mock_disk.free = 50 * 1024 ** 3
+
+    mock_img = MagicMock()
+    mock_img.attrs = {"Architecture": "amd64"}
+    mock_docker_client = MagicMock()
+    mock_docker_client.images.get.return_value = mock_img
+
+    import docker as _docker_mod
+    with patch("psutil.virtual_memory", return_value=mock_vm), \
+         patch("psutil.disk_usage", return_value=mock_disk), \
+         patch("platform.machine", return_value="arm64"), \
+         patch.object(_docker_mod, "from_env", return_value=mock_docker_client):
+        warnings = DockerExecutor().check_resources(base_ctx)
+
+    assert any("Rosetta 2" in w.message for w in warnings)
 
 
 # ------------------------------------------------------------------ #
