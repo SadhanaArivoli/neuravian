@@ -158,3 +158,28 @@ artifact_types:
     label: "NIfTI Inspector Report"
     description: "Self-contained HTML report with header metadata, image QC statistics, and warnings"
     extensions: [".html"]
+
+  roi_extraction_csv:
+    label: "ROI Extraction CSV"
+    description: "Per-ROI atlas statistics table as CSV (mean, median, std, percentiles, coverage)"
+    extensions: [".csv"]
+
+  roi_extraction_json:
+    label: "ROI Extraction JSON"
+    description: "Machine-readable per-ROI atlas statistics array in JSON format"
+    extensions: [".json"]
+
+  roi_extraction_metadata_json:
+    label: "ROI Extraction Metadata"
+    description: "Provenance and run metadata for the atlas ROI extraction (atlas, geometry, software versions)"
+    extensions: [".json"]
+
+  roi_extraction_report_html:
+    label: "ROI Extraction Report"
+    description: "Self-contained HTML report with atlas metadata, per-ROI statistics table, and provenance"
+    extensions: [".html"]
+
+  atlas_resampled_nii:
+    label: "Resampled Atlas NIfTI"
+    description: "Atlas label image resampled to input image space using nearest-neighbour interpolation"
+    extensions: [".nii", ".nii.gz"]

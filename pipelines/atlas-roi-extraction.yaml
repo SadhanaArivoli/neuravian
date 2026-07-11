@@ -1,0 +1,146 @@
+id: atlas-roi-extraction
+display_name: Atlas ROI Extraction
+description: >
+  Extract quantitative per-ROI statistics from any compatible 3D scalar NIfTI
+  artifact using a standard brain atlas. Computes mean, median, standard
+  deviation, percentiles, voxel counts, and coverage for every atlas parcel.
+  Optionally collapses 4D inputs via temporal mean before extraction.
+  Read-only — the input image is never modified.
+homepage: https://nilearn.github.io/stable/modules/generated/nilearn.image.resample_img.html
+category: connectivity
+input_type: "nifti"
+inputs: []
+
+execution:
+  type: native
+  command: neuroforge-atlas-roi-extraction
+
+dataset_positional: false
+compute_profile: local-ok
+
+outputs:
+  - roi_extraction_csv
+  - roi_extraction_json
+  - roi_extraction_metadata_json
+  - roi_extraction_report_html
+
+parameters:
+  - name: input-file
+    type: file_path
+    required: true
+    help: >
+      Path to the NIfTI file to analyse. Typically filled automatically when
+      you click "Analyze by Atlas" from an artifact or run results page.
+
+  - name: atlas
+    type: select
+    required: false
+    default: "schaefer100_7"
+    options:
+      - schaefer100_7
+      - schaefer200_7
+      - aal
+      - harvard_oxford_cortical
+    help: >
+      Atlas used to define ROI parcels. Schaefer atlases include network
+      annotations; AAL and Harvard-Oxford use anatomical labels.
+
+  - name: aggregation-mode
+    type: select
+    required: false
+    default: "none"
+    options:
+      - none
+      - temporal_mean
+    help: >
+      How to collapse 4D data before ROI extraction. "none" requires a 3D
+      input; "temporal_mean" computes the voxelwise temporal mean across
+      volumes before extraction.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: Output directory for ROI extraction results.
+
+accepts:
+  - type: nifti_skull_stripped
+    param: input-file
+    label: "Skull-Stripped Brain"
+    description: "Extract atlas ROI statistics from a skull-stripped T1w image"
+
+  - type: brain_mask
+    param: input-file
+    label: "Brain Mask"
+    description: "Compute atlas ROI coverage from a binary brain mask"
+
+  - type: nifti_raw
+    param: input-file
+    label: "Raw NIfTI"
+    description: "Extract atlas ROI statistics from an unprocessed structural or functional image"
+
+  - type: nifti_defaced
+    param: input-file
+    label: "Defaced NIfTI"
+    description: "Extract atlas ROI statistics from a defaced image"
+
+  - type: seed_connectivity_map_nii
+    param: input-file
+    label: "Seed Connectivity Map"
+    description: "Summarise a voxelwise seed connectivity map by atlas parcel"
+
+produces:
+  - type: roi_extraction_csv
+    path_hint: "roi_extraction.csv"
+    label: "ROI Extraction CSV"
+    description: "Per-ROI statistics table with mean, median, std, percentiles, and coverage"
+
+  - type: roi_extraction_json
+    path_hint: "roi_extraction.json"
+    label: "ROI Extraction JSON"
+    description: "Machine-readable per-ROI statistics array"
+
+  - type: roi_extraction_metadata_json
+    path_hint: "roi_extraction_metadata.json"
+    label: "ROI Extraction Metadata"
+    description: "Provenance: atlas, geometry, resampling, software versions, checksums"
+
+  - type: roi_extraction_report_html
+    path_hint: "roi_extraction_report.html"
+    label: "ROI Extraction Report"
+    description: "Self-contained HTML report with metadata table and full per-ROI statistics"
+
+known_errors:
+  - pattern: "Input file not found"
+    explanation: >
+      The NIfTI file path does not exist inside the container. This typically
+      happens if the source run output was moved or deleted.
+    fix_hint: >
+      Return to the source run's Results page and click "Analyze by Atlas"
+      to automatically fill the correct path.
+
+  - pattern: "Only.*% of atlas voxels overlap"
+    explanation: >
+      The input image and the selected atlas appear to be in different spaces
+      or have very little spatial overlap. Atlas ROI extraction requires that
+      the image and atlas share a common coordinate space (e.g., MNI152).
+    fix_hint: >
+      Ensure the input image is registered to MNI space, or use an image
+      already in standard space (e.g., an fMRIPrep preprocessed output).
+
+  - pattern: "Input is 4D"
+    explanation: >
+      The input NIfTI has four dimensions (multiple volumes). ROI extraction
+      requires either a 3D scalar image or an explicit aggregation mode.
+    fix_hint: >
+      Re-run with --aggregation-mode temporal_mean to compute the voxelwise
+      temporal mean across volumes before extraction.
+
+  - pattern: "Cannot load NIfTI"
+    explanation: >
+      The file exists but nibabel could not parse it as a valid NIfTI image.
+      It may be corrupted, truncated, or in a different format.
+    fix_hint: >
+      Check the file integrity and confirm it is a .nii or .nii.gz file.
+      Re-run the source pipeline if the output may be corrupted.

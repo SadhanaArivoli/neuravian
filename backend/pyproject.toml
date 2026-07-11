@@ -35,6 +35,7 @@ neuroforge-functional-connectivity = "app.tools.functional_connectivity:main"
 neuroforge-seed-based-connectivity = "app.tools.seed_based_connectivity:main"
 neuroforge-group-functional-connectivity = "app.tools.group_functional_connectivity:main"
 neuroforge-nifti-inspector = "app.tools.nifti_inspector:main"
+neuroforge-atlas-roi-extraction = "app.tools.atlas_roi_extraction:main"
 
 [project.optional-dependencies]
 dev = [
