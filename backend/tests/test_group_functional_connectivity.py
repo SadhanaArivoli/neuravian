@@ -320,6 +320,58 @@ def test_methods_template_exists():
     assert "mean" in content.lower() or "aggregat" in content.lower()
 
 
+# ── Regression: real entry point produces all 7 output files ─────────────────
+
+def test_entry_point_produces_all_seven_files():
+    """Invoke the real entry point with synthetic inputs and verify all 7 output files exist."""
+    from app.tools.group_functional_connectivity import run as gfc_run
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        d1 = td / "run_1"
+        d2 = td / "run_2"
+        d1.mkdir(); d2.mkdir()
+        _write_fake_fc_run(d1, 10, "test_atlas", seed=42)
+        _write_fake_fc_run(d2, 10, "test_atlas", seed=99)
+        output_dir = td / "out"
+        output_dir.mkdir()
+
+        gfc_run([
+            "--matrix-dirs", f"{d1},{d2}",
+            "--output-dir", str(output_dir),
+            "--input-run-ids", "1,2",  # accepted and ignored
+        ])
+
+        expected = [
+            "group_mean_connectivity_matrix.csv",
+            "group_mean_connectivity_matrix.npy",
+            "group_mean_connectivity_heatmap.png",
+            "group_std_connectivity_matrix.csv",
+            "group_std_connectivity_heatmap.png",
+            "group_summary.json",
+            "group_report.html",
+        ]
+        missing = [f for f in expected if not (output_dir / f).exists()]
+        assert not missing, f"Missing output files: {missing}"
+
+        # Verify summary.json has no inferential stat keys
+        with open(output_dir / "group_summary.json") as f:
+            summary = json.load(f)
+        inferential_keys = {"p_value", "t_stat", "f_stat", "z_score", "confidence_interval"}
+        assert not inferential_keys.intersection(summary), "summary.json must not contain inferential stats"
+
+        # Verify NPY matches CSV mean
+        npy = np.load(str(output_dir / "group_mean_connectivity_matrix.npy"))
+        rows = []
+        with open(output_dir / "group_mean_connectivity_matrix.csv", newline="") as f:
+            import csv as csv_mod
+            reader = csv_mod.reader(f)
+            next(reader)  # skip header
+            for row in reader:
+                rows.append([float(v) for v in row[1:]])
+        csv_mat = np.array(rows)
+        assert np.allclose(npy, csv_mat, atol=1e-6), "NPY file does not match CSV mean matrix"
+
+
 # ── Workflow Builder template ─────────────────────────────────────────────────
 
 def test_workflow_template_exists():

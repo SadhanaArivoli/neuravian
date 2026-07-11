@@ -280,6 +280,9 @@ def run(argv: list[str] | None = None) -> None:
         required=True,
         help="Directory to write group outputs into",
     )
+    # input-run-ids is resolved by the backend to matrix-dirs before execution.
+    # It is passed through by NativeExecutor for provenance; the tool ignores it.
+    parser.add_argument("--input-run-ids", required=False)
     args = parser.parse_args(argv)
 
     t0 = time.monotonic()
