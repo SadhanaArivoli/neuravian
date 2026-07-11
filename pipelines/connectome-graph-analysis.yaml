@@ -1,0 +1,139 @@
+id: connectome-graph-analysis
+display_name: Connectome Graph Analysis
+description: >
+  Analyse an existing functional connectivity matrix as a weighted undirected
+  graph and compute graph-theoretic metrics: global and local efficiency,
+  clustering coefficient, betweenness centrality, modularity (Louvain),
+  characteristic path length, density, and per-node strength, degree, and
+  participation coefficient.  This pipeline consumes NeuroForge FC outputs
+  and does NOT compute connectivity itself.
+homepage: https://networkx.org/documentation/stable/reference/algorithms/index.html
+category: connectivity
+
+input_type: "matrix"
+inputs: []
+
+execution:
+  type: native
+  command: neuroforge-connectome-graph-analysis
+
+dataset_positional: false
+
+outputs:
+  - graph_metrics_json
+  - graph_node_metrics_csv
+  - graph_edge_list_csv
+  - graph_adjacency_npy
+  - graph_report_html
+  - graph_summary_png
+
+parameters:
+  - name: input-matrix
+    type: file_path
+    required: true
+    help: >
+      Path to the connectivity matrix file to analyse.
+      Accepts .npy or .csv files produced by a NeuroForge Functional
+      Connectivity run.  Filled automatically when launched via Run Next.
+
+  - name: threshold-method
+    type: select
+    required: false
+    default: "proportional"
+    options:
+      - proportional
+      - absolute
+      - none
+    help: >
+      How to threshold the connectivity matrix before graph construction.
+      Proportional keeps the strongest edges by fraction; absolute keeps
+      edges above a fixed weight; none uses every positive correlation.
+
+  - name: threshold-value
+    type: float
+    required: false
+    default: 0.25
+    help: >
+      Threshold value.  For proportional: fraction of edges to retain
+      (0–1, e.g. 0.25 = top 25%).  For absolute: minimum weight
+      (e.g. 0.3).  Ignored when threshold-method is none.
+
+  - name: source-run-id
+    type: integer
+    required: false
+    default: null
+    advanced: true
+    help: >
+      NeuroForge run ID of the Functional Connectivity run that produced the
+      input matrix.  Used for provenance tracking.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: Output directory (set automatically by NeuroForge).
+
+accepts:
+  - type: connectivity_matrix_npy
+    param: input-matrix
+    label: "Connectivity Matrix (NPY)"
+    description: "Compute graph metrics from a functional connectivity matrix"
+
+  - type: connectivity_matrix_csv
+    param: input-matrix
+    label: "Connectivity Matrix (CSV)"
+    description: "Compute graph metrics from a functional connectivity matrix (CSV format)"
+
+  - type: group_mean_matrix_npy
+    param: input-matrix
+    label: "Group Mean Connectivity Matrix"
+    description: "Compute graph metrics from a group-averaged connectivity matrix"
+
+  - type: group_mean_matrix_csv
+    param: input-matrix
+    label: "Group Mean Connectivity Matrix (CSV)"
+    description: "Compute graph metrics from a group-averaged connectivity matrix"
+
+produces:
+  - type: graph_metrics_json
+    path_hint: "graph_metrics.json"
+    label: "Graph Metrics JSON"
+    description: "Global graph-theoretic metrics including efficiency, modularity, clustering, and density"
+
+  - type: graph_node_metrics_csv
+    path_hint: "node_metrics.csv"
+    label: "Node Metrics CSV"
+    description: "Per-node metrics: degree, strength, clustering, betweenness, participation coefficient, community"
+
+  - type: graph_edge_list_csv
+    path_hint: "edge_list.csv"
+    label: "Edge List CSV"
+    description: "Thresholded edges with source, target, and weight"
+
+  - type: graph_adjacency_npy
+    path_hint: "adjacency_thresholded.npy"
+    label: "Thresholded Adjacency Matrix"
+    description: "NumPy binary of the thresholded weighted adjacency matrix"
+
+  - type: graph_report_html
+    path_hint: "graph_report.html"
+    label: "Graph Analysis Report"
+    description: "Self-contained HTML report with global metrics, node table, and provenance"
+
+  - type: graph_summary_png
+    path_hint: "graph_summary.png"
+    label: "Graph Summary Figure"
+    description: "Degree distribution and hub ranking figure"
+
+known_errors:
+  - pattern: "input matrix not found"
+    explanation: >
+      The input connectivity matrix file does not exist at the specified path.
+      Check that the source FC run completed with status 'success' and that
+      the matrix file exists in the run's output directory.
+
+  - pattern: "Expected square 2-D matrix"
+    explanation: >
+      The loaded matrix is not square. Verify the input is a connectivity
+      matrix (not a time series) and that the FC run completed without errors.

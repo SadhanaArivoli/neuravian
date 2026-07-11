@@ -183,3 +183,33 @@ artifact_types:
     label: "Resampled Atlas NIfTI"
     description: "Atlas label image resampled to input image space using nearest-neighbour interpolation"
     extensions: [".nii", ".nii.gz"]
+
+  graph_metrics_json:
+    label: "Graph Metrics JSON"
+    description: "Global graph-theoretic metrics: efficiency, clustering, modularity, path length, density"
+    extensions: [".json"]
+
+  graph_node_metrics_csv:
+    label: "Node Metrics CSV"
+    description: "Per-node graph metrics: degree, strength, clustering, betweenness, participation coefficient, community"
+    extensions: [".csv"]
+
+  graph_edge_list_csv:
+    label: "Edge List CSV"
+    description: "Thresholded edge list with source, target, and weight columns"
+    extensions: [".csv"]
+
+  graph_adjacency_npy:
+    label: "Thresholded Adjacency Matrix"
+    description: "NumPy binary array of the thresholded weighted adjacency matrix"
+    extensions: [".npy"]
+
+  graph_report_html:
+    label: "Graph Analysis Report"
+    description: "Self-contained HTML report with global metrics, node table, and provenance"
+    extensions: [".html"]
+
+  graph_summary_png:
+    label: "Graph Summary Figure"
+    description: "Degree distribution histogram and hub ranking bar chart"
+    extensions: [".png"]

@@ -128,7 +128,7 @@
     },
     "input_type": {
       "type": "string",
-      "enum": ["dicom", "nifti", "bids_dataset"],
+      "enum": ["dicom", "nifti", "bids_dataset", "matrix"],
       "description": "Coarse classification of what raw data this pipeline expects. Used for UI filtering. dicom=raw scanner DICOMs; nifti=one or more .nii/.nii.gz files; bids_dataset=a BIDS-formatted directory."
     },
     "accepts": {

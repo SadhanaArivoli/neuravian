@@ -290,7 +290,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
-            "roi_statistics": [], "roi_extraction": [],
+            "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
@@ -301,7 +301,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         return {
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
-            "roi_statistics": [], "roi_extraction": [],
+            "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
@@ -344,6 +344,14 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("roi_extraction*"))
         if f.suffix in {".csv", ".json"}
+    ]
+    graph_analysis = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.iterdir())
+        if f.name in {
+            "graph_metrics.json", "node_metrics.csv", "edge_list.csv",
+            "graph_report.html", "graph_summary.png",
+        }
     ]
     group_summary_path = output_root / "group_summary.json"
     group_summary: dict | None = None
@@ -404,6 +412,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "connectivity_metadata": connectivity_metadata,
         "roi_statistics": roi_statistics,
         "roi_extraction": roi_extraction,
+        "graph_analysis": graph_analysis,
         "group_summary": group_summary,
         "niftis": niftis,
         "artifacts": artifacts,
