@@ -113,6 +113,17 @@ def test_overlap_fraction_full_overlap():
     assert frac > 0.95
 
 
+def test_overlap_fraction_never_exceeds_one():
+    """Bug regression: overlap fraction must be ≤ 1.0 even when image has finer voxels than atlas."""
+    # Image at 0.5 mm (finer than atlas 2 mm) — old code produced fraction > 1
+    fine_affine = np.diag([0.5, 0.5, 0.5, 1.0])
+    img = make_nifti(np.ones((80, 80, 80)), affine=fine_affine)
+    atlas = make_atlas((20, 20, 20), AFFINE)  # 2 mm atlas
+    frac = _compute_overlap_fraction(atlas, img)
+    assert 0.0 <= frac <= 1.0, f"Overlap fraction {frac} out of [0,1]"
+    assert frac > 0.9  # full coverage expected
+
+
 def test_overlap_fraction_no_overlap():
     """Atlas translated 100mm away → near-zero overlap."""
     img = make_nifti(np.ones((10, 10, 10)))

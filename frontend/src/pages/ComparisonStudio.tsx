@@ -1326,7 +1326,9 @@ interface RoiMeta {
   n_rois?: number;
   aggregation_mode?: string;
   resampling_performed?: boolean;
-  software?: { nilearn?: string; nibabel?: string; numpy?: string };
+  nilearn_version?: string;
+  nibabel_version?: string;
+  numpy_version?: string;
 }
 
 function RoiExtractionComparisonPanel({
@@ -1544,9 +1546,9 @@ function RoiExtractionComparisonPanel({
       </div>
 
       {/* Provenance */}
-      {(metaA?.software || metaB?.software) && (
+      {(metaA?.nilearn_version || metaB?.nilearn_version) && (
         <p className="text-xs text-gray-600">
-          Software: nilearn {metaA?.software?.nilearn ?? "?"} · nibabel {metaA?.software?.nibabel ?? "?"}
+          Software: nilearn {metaA?.nilearn_version ?? "?"} · nibabel {metaA?.nibabel_version ?? "?"}
         </p>
       )}
     </div>
@@ -1794,7 +1796,8 @@ export default function ComparisonStudio() {
           t.includes("mask") ||
           t.startsWith("connectivity_") ||
           t.startsWith("seed_connectivity_") ||
-          t.startsWith("group_"),
+          t.startsWith("group_") ||
+          t.startsWith("roi_extraction_"),
       ),
     );
 

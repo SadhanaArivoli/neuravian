@@ -22,6 +22,7 @@ outputs:
   - roi_extraction_csv
   - roi_extraction_json
   - roi_extraction_metadata_json
+  - atlas_resampled_nii
   - roi_extraction_report_html
 
 parameters:
@@ -110,6 +111,11 @@ produces:
     path_hint: "roi_extraction_report.html"
     label: "ROI Extraction Report"
     description: "Self-contained HTML report with metadata table and full per-ROI statistics"
+
+  - type: atlas_resampled_nii
+    path_hint: "atlas_resampled.nii.gz"
+    label: "Resampled Atlas NIfTI"
+    description: "Atlas label image resampled to input image space; only present when resampling was required"
 
 known_errors:
   - pattern: "Input file not found"

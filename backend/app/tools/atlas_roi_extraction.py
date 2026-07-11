@@ -69,23 +69,36 @@ def _shapes_match(s1: tuple, s2: tuple) -> bool:
 
 
 def _compute_overlap_fraction(atlas_img: nib.Nifti1Image, img: nib.Nifti1Image) -> float:
-    """Fraction of non-background atlas voxels that fall inside `img`'s FOV.
+    """Fraction of non-background atlas voxels whose centres fall inside `img`'s FOV.
 
-    Uses the atlas resampled to image space — if most atlas voxels are
-    outside the FOV they will map to the fill value (0) after resampling.
+    Resamples a binary FOV mask of the image into atlas space, then counts atlas
+    label voxels that are covered.  Always returns a value in [0, 1] regardless
+    of the relative voxel sizes of atlas and image.
     """
-    resampled = resample_img(
-        atlas_img,
-        target_affine=img.affine,
-        target_shape=img.shape[:3],
-        interpolation=INTERPOLATION_METHOD,
-        fill_value=0,
-    )
-    resampled_data = np.asanyarray(resampled.dataobj)
-    total_atlas_vox = int(np.count_nonzero(np.asanyarray(atlas_img.dataobj)))
-    overlapping = int(np.count_nonzero(resampled_data))
+    from nilearn.image.resampling import BoundingBoxError
+
+    atlas_data = np.asanyarray(atlas_img.dataobj)
+    total_atlas_vox = int(np.count_nonzero(atlas_data))
     if total_atlas_vox == 0:
         return 0.0
+
+    img_data = np.asanyarray(img.dataobj)
+    fov_mask = np.isfinite(img_data).astype(np.float32)
+    fov_img = nib.Nifti1Image(fov_mask, img.affine)
+    try:
+        fov_in_atlas = resample_img(
+            fov_img,
+            target_affine=atlas_img.affine,
+            target_shape=atlas_img.shape[:3],
+            interpolation="nearest",
+            fill_value=0,
+        )
+    except BoundingBoxError:
+        # Image FOV and atlas have zero spatial overlap
+        return 0.0
+
+    fov_data = np.asanyarray(fov_in_atlas.dataobj)
+    overlapping = int(np.sum((atlas_data != 0) & (fov_data > 0)))
     return overlapping / total_atlas_vox
 
 
