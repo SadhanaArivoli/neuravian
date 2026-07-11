@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ComputeProfile, Pipeline, PipelineParameter, PrefillContext } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
 import { useRemoteHosts } from "../../hooks/useRemoteHosts";
-import { useCreateRun } from "../../hooks/useRuns";
+import { useCreateRun, useRuns } from "../../hooks/useRuns";
 
 interface Props {
   pipeline: Pipeline;
@@ -11,6 +11,86 @@ interface Props {
 }
 
 type FormValues = Record<string, string | boolean | string[]>;
+
+// ── Multi-run selector (for group-functional-connectivity input-run-ids) ──────
+
+function MultiRunSelector({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { data: allRuns } = useRuns();
+  const selectedIds = new Set(
+    value.split(",").map((s) => s.trim()).filter(Boolean).map(Number)
+  );
+
+  // Filter for successful functional-connectivity runs only
+  const fcRuns = (allRuns ?? []).filter(
+    (r) =>
+      r.status === "success" &&
+      r.pipeline_manifest_id === "functional-connectivity",
+  );
+
+  function toggle(id: number) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    onChange(Array.from(next).sort((a, b) => a - b).join(","));
+  }
+
+  if (fcRuns.length === 0) {
+    return (
+      <div className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500">
+        No successful functional-connectivity runs found. Run the Functional
+        Connectivity pipeline first.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="rounded border border-gray-200 bg-white divide-y divide-gray-100 max-h-64 overflow-y-auto">
+        {fcRuns.map((run) => {
+          const checked = selectedIds.has(run.id);
+          const date = run.finished_at
+            ? new Date(run.finished_at.endsWith("Z") ? run.finished_at : run.finished_at + "Z")
+                .toLocaleDateString()
+            : "—";
+          return (
+            <label
+              key={run.id}
+              className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
+                checked ? "bg-blue-50" : "hover:bg-gray-50"
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={checked}
+                onChange={() => toggle(run.id)}
+              />
+              <span className={`text-sm ${checked ? "text-blue-700 font-medium" : "text-gray-700"}`}>
+                Run #{run.id}
+              </span>
+              <span className="text-xs text-gray-400 ml-auto">{date}</span>
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-xs text-gray-400">
+        {selectedIds.size} of {fcRuns.length} selected
+        {selectedIds.size < 2 && selectedIds.size > 0 && (
+          <span className="ml-1 text-amber-600">— select at least 2 runs</span>
+        )}
+      </p>
+    </div>
+  );
+}
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +158,16 @@ function ParameterField({
 }) {
   const baseInput =
     "w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
+
+  // Special case: multi-run selector for group FC input
+  if (param.name === "input-run-ids") {
+    return (
+      <MultiRunSelector
+        value={value as string}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
 
   if (param.type === "boolean") {
     return (

@@ -468,7 +468,29 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 8. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 8. Group Functional Connectivity — multi-run input ───────────────────────
+  // group-functional-connectivity accepts multiple prior FC runs by run ID.
+  // The linear workflow builder only supports one-to-one chaining, so this
+  // template is informational. Launch group FC from the Pipelines page and
+  // select two or more completed FC runs in the multi-run selector.
+  {
+    id: "group-connectivity-analysis",
+    name: "Group Functional Connectivity",
+    description:
+      "Average ROI-by-ROI connectivity matrices across multiple fMRIPrep + FC runs to produce a group mean and standard-deviation matrix.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "< 1 min",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "connectivity_matrix_csv",
+    requiredSourceLabel: "FC Run Outputs",
+    worstComputeProfile: "local-ok",
+    disabled: true,
+    disabledReason:
+      "Group FC accepts multiple FC runs as input. Launch it from the Pipelines page and select two or more completed functional-connectivity runs in the run selector.",
+    steps: [],
+  },
+
+  // ── 9. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

@@ -305,6 +305,22 @@ const PROSE_TEMPLATES: Record<
       `connectivity map.`
     );
   },
+  "group-functional-connectivity": (run) => {
+    const nRuns = run.params?.["input-run-ids"]
+      ? String(run.params["input-run-ids"]).split(",").filter(Boolean).length
+      : NOT_RECORDED;
+    const runsText = nRuns !== NOT_RECORDED ? `${nRuns} run${Number(nRuns) === 1 ? "" : "s"}` : "multiple runs";
+    return (
+      `Group-level functional connectivity was computed using Nilearn ` +
+      `(v${run.pipeline_version || NOT_RECORDED}) ` +
+      `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
+      `Individual ROI-by-ROI connectivity matrices from ${runsText} were aggregated ` +
+      `by computing the element-wise arithmetic mean and sample standard deviation ` +
+      `(ddof=1) across all input matrices. All input matrices were verified to share ` +
+      `the same atlas, ROI count, and correlation method prior to aggregation. ` +
+      `Reported statistics are descriptive only and do not include inferential tests.`
+    );
+  },
 };
 
 function genericProse(run: RunMetadata): string {

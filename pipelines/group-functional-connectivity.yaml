@@ -1,0 +1,130 @@
+id: group-functional-connectivity
+display_name: Group Functional Connectivity
+description: >
+  Aggregates multiple functional-connectivity runs (already computed by
+  NeuroForge) into a group mean and standard-deviation connectivity matrix.
+  Performs compatibility validation (same atlas, ROI count, and correlation
+  method) and produces a mean heatmap, std heatmap, and summary report.
+  Descriptive statistics only — no inferential testing.
+category: connectivity
+input_type: bids_dataset
+
+execution:
+  type: native
+  command: neuroforge-group-functional-connectivity
+
+dataset_positional: false
+compute_profile: local-ok
+
+inputs:
+  - connectivity_matrix_csv
+
+outputs:
+  - group_mean_matrix_csv
+  - group_mean_matrix_npy
+  - group_mean_heatmap_png
+  - group_std_matrix_csv
+  - group_std_heatmap_png
+  - group_summary_json
+  - group_report_html
+
+parameters:
+  - name: input-run-ids
+    type: string
+    required: true
+    help: >
+      Comma-separated list of NeuroForge functional-connectivity run IDs to
+      aggregate. All runs must have used the same atlas and ROI ordering.
+      This field is filled automatically by the multi-run selector.
+
+  - name: matrix-dirs
+    type: string
+    required: false
+    internal: true
+    help: >
+      Internal parameter. Comma-separated list of absolute output directory
+      paths resolved from input-run-ids. Injected by the backend before
+      execution — do not set this manually.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: >
+      Output directory for the group connectivity report bundle. Leave
+      unchanged unless debugging the native command.
+
+accepts:
+  - type: connectivity_matrix_csv
+    param: matrix-dirs
+    label: "Connectivity Matrix CSV"
+    description: >
+      Pre-computed ROI-by-ROI connectivity matrices from one or more
+      functional-connectivity runs. All matrices must share the same atlas,
+      ROI count, and correlation method.
+    required: true
+
+produces:
+  - type: group_mean_matrix_csv
+    path_hint: "group_mean_connectivity_matrix.csv"
+    label: "Group Mean Connectivity Matrix"
+    description: "Mean connectivity matrix averaged across all input runs"
+
+  - type: group_mean_matrix_npy
+    path_hint: "group_mean_connectivity_matrix.npy"
+    label: "Group Mean Connectivity Matrix (NPY)"
+    description: "NumPy binary array of the mean connectivity matrix"
+
+  - type: group_mean_heatmap_png
+    path_hint: "group_mean_connectivity_heatmap.png"
+    label: "Group Mean Heatmap"
+    description: "Heatmap PNG of the group mean connectivity matrix"
+
+  - type: group_std_matrix_csv
+    path_hint: "group_std_connectivity_matrix.csv"
+    label: "Group Std Connectivity Matrix"
+    description: "Standard deviation matrix across input runs"
+
+  - type: group_std_heatmap_png
+    path_hint: "group_std_connectivity_heatmap.png"
+    label: "Group Std Heatmap"
+    description: "Heatmap PNG of the across-run standard deviation matrix"
+
+  - type: group_summary_json
+    path_hint: "group_summary.json"
+    label: "Group Summary"
+    description: "Machine-readable summary including n_runs, atlas, ROI count, and statistics"
+
+  - type: group_report_html
+    path_hint: "group_report.html"
+    label: "Group Connectivity Report"
+    description: "HTML report summarizing group mean/std matrices and aggregation details"
+
+known_errors:
+  - pattern: "No matrix directories provided"
+    explanation: >
+      No functional-connectivity run output directories were resolved from
+      the input-run-ids parameter. This usually means the run IDs are
+      invalid or have no output directory recorded.
+    fix_hint: >
+      Ensure all selected runs completed successfully and have status
+      "success" before running group aggregation.
+
+  - pattern: "Atlas mismatch"
+    explanation: >
+      The selected runs used different atlases or ROI orderings and cannot
+      be averaged. Group connectivity requires all input runs to use the
+      same atlas.
+    fix_hint: >
+      Select only runs that were computed with the same atlas (e.g., all
+      Schaefer 100-parcel or all AAL). Check the atlas field on each run
+      in the Run Results page.
+
+  - pattern: "Matrix dimension mismatch"
+    explanation: >
+      The connectivity matrices from the selected runs have different shapes
+      and cannot be stacked for averaging.
+    fix_hint: >
+      Confirm that all selected runs used exactly the same atlas. Matrices
+      must have identical row and column counts.

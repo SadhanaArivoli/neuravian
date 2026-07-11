@@ -108,3 +108,38 @@ artifact_types:
     label: "Seed Connectivity Report"
     description: "HTML report summarizing the seed ROI, atlas, correlation map statistics, and outputs"
     extensions: [".html"]
+
+  group_mean_matrix_csv:
+    label: "Group Mean Connectivity Matrix"
+    description: "Mean ROI-by-ROI connectivity matrix averaged across all input runs, as CSV"
+    extensions: [".csv"]
+
+  group_mean_matrix_npy:
+    label: "Group Mean Connectivity Matrix (NPY)"
+    description: "Mean ROI-by-ROI connectivity matrix as a NumPy binary array"
+    extensions: [".npy"]
+
+  group_mean_heatmap_png:
+    label: "Group Mean Connectivity Heatmap"
+    description: "Heatmap PNG of the mean connectivity matrix"
+    extensions: [".png"]
+
+  group_std_matrix_csv:
+    label: "Group Std Connectivity Matrix"
+    description: "Standard deviation of the ROI-by-ROI connectivity matrices across runs, as CSV"
+    extensions: [".csv"]
+
+  group_std_heatmap_png:
+    label: "Group Std Connectivity Heatmap"
+    description: "Heatmap PNG of the across-run standard deviation connectivity matrix"
+    extensions: [".png"]
+
+  group_summary_json:
+    label: "Group Summary"
+    description: "Machine-readable JSON summary of group-level connectivity aggregation"
+    extensions: [".json"]
+
+  group_report_html:
+    label: "Group Connectivity Report"
+    description: "HTML report summarizing group mean/std matrices, n_runs, atlas, and statistics"
+    extensions: [".html"]

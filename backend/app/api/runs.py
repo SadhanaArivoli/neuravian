@@ -291,6 +291,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [],
+            "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
@@ -301,6 +302,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "reports": [], "metrics": [], "group_tables": [], "images": [],
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [],
+            "group_summary": None,
             "niftis": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
@@ -338,6 +340,15 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         for f in sorted(output_root.glob("*roi_statistics*"))
         if f.suffix in {".csv", ".json"}
     ]
+    group_summary_path = output_root / "group_summary.json"
+    group_summary: dict | None = None
+    if group_summary_path.exists():
+        try:
+            import json as _json
+            with open(group_summary_path) as _f:
+                group_summary = _json.load(_f)
+        except Exception:
+            log.exception("Failed to parse group_summary.json for run %d", run_id)
     # Volumetric files: NIfTI (.nii/.nii.gz) and FreeSurfer MGZ (.mgz).
     # MRIQC produces none; fMRIPrep and FastSurfer produce many.
     # NiiVue reads format from the filename, not Content-Type, so
@@ -387,6 +398,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "timeseries": timeseries,
         "connectivity_metadata": connectivity_metadata,
         "roi_statistics": roi_statistics,
+        "group_summary": group_summary,
         "niftis": niftis,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),

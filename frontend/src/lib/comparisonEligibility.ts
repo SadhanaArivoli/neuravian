@@ -160,7 +160,7 @@ export function computeDice(
 
 // ── Comparison family detection ────────────────────────────────────────────────
 
-export type ComparisonFamily = "anatomical" | "connectivity" | "mixed" | "none";
+export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "mixed" | "none";
 
 const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
 
@@ -169,6 +169,9 @@ function hasConnectivity(types: string[]): boolean {
 }
 function hasSeedConnectivity(types: string[]): boolean {
   return types.some((t) => t.startsWith("seed_connectivity_"));
+}
+function hasGroupConnectivity(types: string[]): boolean {
+  return types.some((t) => t.startsWith("group_"));
 }
 function hasAnatomical(types: string[]): boolean {
   return types.some((t) => ANATOMICAL_TYPES.has(t));
@@ -187,12 +190,16 @@ export function detectComparisonFamily(
   const connB = hasConnectivity(producedTypesB);
   const seedA = hasSeedConnectivity(producedTypesA);
   const seedB = hasSeedConnectivity(producedTypesB);
+  const groupA = hasGroupConnectivity(producedTypesA);
+  const groupB = hasGroupConnectivity(producedTypesB);
   const anatA = hasAnatomical(producedTypesA);
   const anatB = hasAnatomical(producedTypesB);
-  if ((connA || connB) && (anatA || anatB)) return "mixed";
+  if ((connA || connB || groupA || groupB) && (anatA || anatB)) return "mixed";
   if ((seedA || seedB) && (anatA || anatB)) return "mixed";
-  // Seed connectivity vs atlas connectivity cannot be compared
+  // Seed, FC, and group cannot be compared with each other
   if ((seedA || seedB) && (connA || connB)) return "mixed";
+  if ((groupA || groupB) && (connA || connB || seedA || seedB)) return "mixed";
+  if (groupA || groupB) return "group_connectivity";
   if (seedA || seedB) return "connectivity";
   if (connA || connB) return "connectivity";
   if (anatA || anatB) return "anatomical";
@@ -204,7 +211,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "seed_connectivity" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "group_connectivity" | "anatomical" | "other" {
+  if (hasGroupConnectivity(producedTypes)) return "group_connectivity";
   if (hasSeedConnectivity(producedTypes)) return "seed_connectivity";
   if (hasConnectivity(producedTypes)) return "connectivity";
   if (hasAnatomical(producedTypes)) return "anatomical";

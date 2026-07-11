@@ -479,6 +479,143 @@ function SeedConnectivityPanel({
   );
 }
 
+// ── Group FC panel ─────────────────────────────────────────────────────────────
+
+interface GroupFCSummary {
+  pipeline?: string;
+  n_runs?: number;
+  atlas?: string;
+  atlas_id?: string;
+  atlas_citation?: string;
+  n_rois?: number;
+  correlation_method?: string;
+  nilearn_version?: string;
+  mean_z_min?: number;
+  mean_z_max?: number;
+  mean_z_mean?: number;
+  mean_z_std?: number;
+  std_z_max?: number;
+  warnings?: string[];
+  runtime_seconds?: number;
+}
+
+function GroupFCPanel({
+  runId,
+  summary,
+  images,
+}: {
+  runId: number;
+  summary: GroupFCSummary;
+  images: Array<{ name: string; path: string }>;
+}) {
+  const meanHeatmap = images.find((f) => f.name.includes("mean") && f.name.includes("heatmap"));
+  const stdHeatmap = images.find((f) => f.name.includes("std") && f.name.includes("heatmap"));
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Group Functional Connectivity</h3>
+          <p className="text-xs text-gray-500">
+            {summary.atlas ?? "Unknown atlas"} · {summary.n_runs ?? "?"} runs aggregated
+          </p>
+        </div>
+        <a
+          href={`/api/runs/${runId}/files/group_report.html`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          View report
+        </a>
+      </div>
+
+      {summary.warnings && summary.warnings.length > 0 && (
+        <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-800 mb-1">Compatibility warnings</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {summary.warnings.map((w, i) => (
+              <li key={i} className="text-xs text-amber-700">{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[
+          ["Runs", summary.n_runs ?? "—"],
+          ["ROIs", summary.n_rois ?? "—"],
+          ["Mean min z", summary.mean_z_min?.toFixed(3) ?? "—"],
+          ["Mean max z", summary.mean_z_max?.toFixed(3) ?? "—"],
+          ["Mean avg z", summary.mean_z_mean?.toFixed(3) ?? "—"],
+          ["Mean std z", summary.mean_z_std?.toFixed(3) ?? "—"],
+          ["Max std", summary.std_z_max?.toFixed(3) ?? "—"],
+          ["Nilearn", summary.nilearn_version ?? "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded bg-gray-50 p-2">
+            <div className="text-xs text-gray-500">{label}</div>
+            <div className="font-mono text-sm font-semibold text-gray-900">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {summary.atlas_citation && (
+        <p className="mb-3 text-xs text-gray-500">Atlas: {summary.atlas_citation}</p>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {meanHeatmap && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-gray-600">Group mean matrix</p>
+            <img
+              src={`/api/runs/${runId}/files/${meanHeatmap.path}`}
+              alt="Group mean connectivity heatmap"
+              className="w-full rounded border border-gray-200 object-contain"
+            />
+          </div>
+        )}
+        {stdHeatmap && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-gray-600">Across-run std matrix</p>
+            <img
+              src={`/api/runs/${runId}/files/${stdHeatmap.path}`}
+              alt="Group std connectivity heatmap"
+              className="w-full rounded border border-gray-200 object-contain"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-3">
+        <a
+          href={`/api/runs/${runId}/files/group_mean_connectivity_matrix.csv`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Download mean matrix CSV
+        </a>
+        <a
+          href={`/api/runs/${runId}/files/group_std_connectivity_matrix.csv`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Download std matrix CSV
+        </a>
+        <a
+          href={`/api/runs/${runId}/files/group_mean_connectivity_matrix.npy`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Download mean matrix NPY
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function ConnectivitySummary({
   runId,
   matrixPath,
@@ -1238,6 +1375,12 @@ export default function RunResults({ runId }: Props) {
           metadataPath={connectivityMetadata[0]?.path}
           imagePath={images.find((f) => f.name.includes("seed_connectivity_map"))?.path ?? images[0]?.path}
           timeseriesPath={timeseries[0]?.path}
+        />
+      ) : results.metadata?.pipeline_id === "group-functional-connectivity" && results.group_summary ? (
+        <GroupFCPanel
+          runId={runId}
+          summary={results.group_summary as GroupFCSummary}
+          images={images}
         />
       ) : connectivityMatrices.length > 0 ? (
         <ConnectivitySummary

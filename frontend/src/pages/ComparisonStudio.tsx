@@ -905,6 +905,215 @@ function SeedConnectivityComparisonPanel({
   );
 }
 
+// ── GroupFCComparisonPanel ─────────────────────────────────────────────────────
+
+interface GroupFCSummaryForComp {
+  n_runs?: number;
+  atlas?: string;
+  atlas_id?: string;
+  n_rois?: number;
+  correlation_method?: string;
+  nilearn_version?: string;
+  mean_z_min?: number;
+  mean_z_max?: number;
+  mean_z_mean?: number;
+  mean_z_std?: number;
+  std_z_max?: number;
+}
+
+function GroupFCComparisonPanel({
+  runIdA,
+  runIdB,
+  resultsA,
+  resultsB,
+  labelA,
+  labelB,
+}: {
+  runIdA: number;
+  runIdB: number;
+  resultsA: RunResults;
+  resultsB: RunResults;
+  labelA: string;
+  labelB: string;
+}) {
+  const summaryA = resultsA.group_summary as GroupFCSummaryForComp | null | undefined;
+  const summaryB = resultsB.group_summary as GroupFCSummaryForComp | null | undefined;
+
+  const [matA, setMatA] = useState<ConnectivityMatrixData | null>(null);
+  const [matB, setMatB] = useState<ConnectivityMatrixData | null>(null);
+  const [matError, setMatError] = useState<string | null>(null);
+
+  const meanPathA = (resultsA.connectivity_matrices ?? []).find((f) => f.name.includes("mean"))?.path;
+  const meanPathB = (resultsB.connectivity_matrices ?? []).find((f) => f.name.includes("mean"))?.path;
+  const meanImgA = (resultsA.images ?? []).find((f) => f.name.includes("mean") && f.name.includes("heatmap"))?.path;
+  const meanImgB = (resultsB.images ?? []).find((f) => f.name.includes("mean") && f.name.includes("heatmap"))?.path;
+
+  useEffect(() => {
+    if (!meanPathA) return;
+    let cancelled = false;
+    fetchRunTextFile(runIdA, meanPathA)
+      .then((text) => { if (!cancelled) { const parsed = parseConnectivityMatrixCsv(text); setMatA(parsed); } })
+      .catch((e) => { if (!cancelled) setMatError(String(e)); });
+    return () => { cancelled = true; };
+  }, [runIdA, meanPathA]);
+
+  useEffect(() => {
+    if (!meanPathB) return;
+    let cancelled = false;
+    fetchRunTextFile(runIdB, meanPathB)
+      .then((text) => { if (!cancelled) { const parsed = parseConnectivityMatrixCsv(text); setMatB(parsed); } })
+      .catch((e) => { if (!cancelled) setMatError(String(e)); });
+    return () => { cancelled = true; };
+  }, [runIdB, meanPathB]);
+
+  const sameAtlas =
+    !summaryA || !summaryB || summaryA.atlas_id === summaryB.atlas_id;
+  const sameRoiCount =
+    !summaryA || !summaryB || summaryA.n_rois === summaryB.n_rois;
+  const compatible = sameAtlas && sameRoiCount;
+
+  // Compute Frobenius norm and max abs diff if both matrices loaded
+  const diffStats = matA && matB && matA.values.length === matB.values.length
+    ? (() => {
+        let frobenius = 0;
+        let maxAbsDiff = 0;
+        for (let y = 0; y < matA.values.length; y++) {
+          for (let x = 0; x < matA.values[y].length; x++) {
+            const d = matA.values[y][x] - (matB.values[y]?.[x] ?? 0);
+            frobenius += d * d;
+            if (Math.abs(d) > maxAbsDiff) maxAbsDiff = Math.abs(d);
+          }
+        }
+        return { frobenius: Math.sqrt(frobenius), maxAbsDiff };
+      })()
+    : null;
+
+  const diffMatrix: ConnectivityMatrixData | null =
+    matA && matB && matA.values.length === matB.values.length
+      ? {
+          labels: matA.labels,
+          values: matA.values.map((row, y) =>
+            row.map((v, x) => v - (matB.values[y]?.[x] ?? 0)),
+          ),
+        }
+      : null;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeading>Group connectivity comparison</SectionHeading>
+
+      {summaryA && summaryB && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {compatible ? (
+            <span className="rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-blue-300 font-medium">
+              Same atlas · Same ROI count
+            </span>
+          ) : (
+            <span className="rounded-full bg-red-500/10 border border-red-500/20 px-2 py-0.5 text-red-300 font-medium">
+              ⚠ Incompatible:{" "}
+              {!sameAtlas && `different atlases (${summaryA.atlas_id ?? "?"} vs ${summaryB.atlas_id ?? "?"})`}
+              {!sameAtlas && !sameRoiCount && " · "}
+              {!sameRoiCount && `different ROI counts (${summaryA.n_rois ?? "?"} vs ${summaryB.n_rois ?? "?"})`}
+            </span>
+          )}
+          {compatible && summaryA.atlas && (
+            <span className="text-gray-500">{summaryA.atlas}</span>
+          )}
+        </div>
+      )}
+
+      {/* Summary stats table */}
+      {summaryA && summaryB && (
+        <div className="rounded-lg border border-white/10 overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="px-3 py-2 text-gray-400">Metric</th>
+                <th className="px-3 py-2 text-gray-400">{labelA}</th>
+                <th className="px-3 py-2 text-gray-400">{labelB}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {[
+                ["Runs aggregated", summaryA.n_runs, summaryB.n_runs],
+                ["Atlas", summaryA.atlas_id, summaryB.atlas_id],
+                ["ROI count", summaryA.n_rois, summaryB.n_rois],
+                ["Mean z min", summaryA.mean_z_min?.toFixed(4), summaryB.mean_z_min?.toFixed(4)],
+                ["Mean z max", summaryA.mean_z_max?.toFixed(4), summaryB.mean_z_max?.toFixed(4)],
+                ["Mean z avg", summaryA.mean_z_mean?.toFixed(4), summaryB.mean_z_mean?.toFixed(4)],
+                ["Max std", summaryA.std_z_max?.toFixed(4), summaryB.std_z_max?.toFixed(4)],
+              ].map(([label, vA, vB]) => {
+                const differs = String(vA) !== String(vB);
+                return (
+                  <tr key={label as string} className={differs ? "bg-amber-500/5" : ""}>
+                    <td className="px-3 py-2 text-gray-400">{label}</td>
+                    <td className={`px-3 py-2 font-mono ${differs ? "text-amber-300 font-semibold" : "text-gray-200"}`}>{String(vA ?? "—")}</td>
+                    <td className={`px-3 py-2 font-mono ${differs ? "text-amber-300 font-semibold" : "text-gray-200"}`}>{String(vB ?? "—")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Difference statistics */}
+      {diffStats && compatible && (
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            ["Frobenius norm", diffStats.frobenius.toFixed(4)],
+            ["Largest |diff|", diffStats.maxAbsDiff.toFixed(4)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-white/10 bg-surface-raised px-3 py-2">
+              <div className="text-xs text-gray-500">{label}</div>
+              <div className="font-mono text-sm font-semibold text-gray-200">{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Difference heatmap */}
+      {diffMatrix && compatible && (
+        <div>
+          <p className="mb-2 text-xs font-medium text-gray-400">Difference matrix (A − B)</p>
+          <MatrixHeatmap matrix={diffMatrix} mode="diff" />
+        </div>
+      )}
+
+      {matError && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
+          Could not load mean matrices: {matError}
+        </div>
+      )}
+
+      {/* Side-by-side mean heatmap PNGs */}
+      {(meanImgA || meanImgB) && (
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { id: runIdA, img: meanImgA, label: labelA },
+            { id: runIdB, img: meanImgB, label: labelB },
+          ].map(({ id, img, label }) => (
+            <div key={id} className="rounded-lg border border-white/10 bg-surface-raised p-3">
+              <p className="mb-2 text-xs font-medium text-gray-300 truncate">{label} — mean</p>
+              {img ? (
+                <img
+                  src={`/api/runs/${id}/files/${img}`}
+                  alt={`Group mean connectivity — ${label}`}
+                  className="w-full rounded border border-white/10 object-contain max-h-64"
+                />
+              ) : (
+                <div className="rounded border border-white/10 bg-surface-overlay px-3 py-4 text-xs text-gray-500 text-center">
+                  Heatmap not found
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -1145,7 +1354,8 @@ export default function ComparisonStudio() {
           t.includes("brain") ||
           t.includes("mask") ||
           t.startsWith("connectivity_") ||
-          t.startsWith("seed_connectivity_"),
+          t.startsWith("seed_connectivity_") ||
+          t.startsWith("group_"),
       ),
     );
 
@@ -1165,7 +1375,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -1179,7 +1389,7 @@ export default function ComparisonStudio() {
           runBOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity") return true;
+        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity") return true;
         return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
       })
     : runOptions;
@@ -1468,7 +1678,9 @@ export default function ComparisonStudio() {
   // Prompt message when Run A is set but no compatible Run B exists
   const noCompatibleBMessage =
     runAId && !runBId && bOptions.length === 0
-      ? runAFamily === "connectivity"
+      ? runAFamily === "group_connectivity"
+        ? "No other group connectivity runs found. Run group-functional-connectivity on a second set of FC runs to compare."
+        : runAFamily === "connectivity"
         ? "No compatible connectivity runs found. Run functional-connectivity again (on this or another subject) to enable matrix comparison."
         : runAFamily === "seed_connectivity"
         ? "No compatible seed connectivity runs found. Run seed-based-connectivity again (on this or another subject) to compare maps."
@@ -1609,6 +1821,20 @@ export default function ComparisonStudio() {
               resultsA &&
               resultsB && (
                 <SeedConnectivityComparisonPanel
+                  runIdA={runAId!}
+                  runIdB={runBId!}
+                  resultsA={resultsA}
+                  resultsB={resultsB}
+                  labelA={labelA}
+                  labelB={labelB}
+                />
+              )}
+
+            {/* Group FC comparison panel */}
+            {comparisonFamily === "group_connectivity" &&
+              resultsA &&
+              resultsB && (
+                <GroupFCComparisonPanel
                   runIdA={runAId!}
                   runIdB={runBId!}
                   resultsA={resultsA}

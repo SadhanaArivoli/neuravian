@@ -730,6 +730,38 @@ class RunService:
                 body.pipeline_id, body.dataset_id, work_dir,
             )
 
+        # For group-functional-connectivity: resolve input-run-ids to matrix-dirs
+        # before the executor sees the params. Each run ID is looked up in the DB
+        # and its output_dir is appended to a comma-separated list injected as
+        # matrix-dirs. This keeps the NativeExecutor generic.
+        if (
+            body.pipeline_id == "group-functional-connectivity"
+            and effective_params.get("input-run-ids")
+        ):
+            raw_ids = str(effective_params["input-run-ids"])
+            resolved_dirs: list[str] = []
+            for part in raw_ids.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    rid = int(part)
+                except ValueError:
+                    raise ValueError(f"input-run-ids contains non-integer value: '{part}'")
+                src_run = self.db.get(Run, rid)
+                if src_run is None:
+                    raise ValueError(f"Run {rid} not found (from input-run-ids)")
+                if not src_run.output_dir:
+                    raise ValueError(f"Run {rid} has no output directory — did it succeed?")
+                resolved_dirs.append(src_run.output_dir)
+            if not resolved_dirs:
+                raise ValueError("input-run-ids produced no resolvable run directories")
+            effective_params["matrix-dirs"] = ",".join(resolved_dirs)
+            log.info(
+                "group-functional-connectivity: resolved %d input runs → matrix-dirs",
+                len(resolved_dirs),
+            )
+
         # Validate source_run_id if lineage was provided
         if body.lineage:
             src = self.db.get(Run, body.lineage.upstream_run_id)
