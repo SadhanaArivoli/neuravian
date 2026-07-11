@@ -429,7 +429,46 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 7. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 7. Seed-Based Connectivity Analysis ───────────────────────────────────
+  // import-fmriprep-derivatives → seed-based-connectivity
+  {
+    id: "seed-connectivity-analysis",
+    name: "Seed-Based Connectivity",
+    description:
+      "Import precomputed fMRIPrep derivatives, then compute a voxelwise seed connectivity map from one chosen atlas ROI.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "minutes",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "bids_dataset",
+    requiredSourceLabel: "Registered source BIDS dataset",
+    worstComputeProfile: "local-ok",
+    computeWarning:
+      "Requires precomputed fMRIPrep derivatives. NeuroForge does not run fMRIPrep locally for this template.",
+    steps: [
+      {
+        pipelineId: "import-fmriprep-derivatives",
+        inputArtifactType: "bids_dataset",
+        edge: {
+          artifactType: "bids_dataset",
+          acceptParam: null,
+          acceptDatasetSlot: true,
+          acceptLabel: "Associated BIDS Dataset",
+        },
+      },
+      {
+        pipelineId: "seed-based-connectivity",
+        inputArtifactType: "fmriprep_derivatives",
+        edge: {
+          artifactType: "fmriprep_derivatives",
+          acceptParam: "fmriprep-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "fMRIPrep Derivatives",
+        },
+      },
+    ],
+  },
+
+  // ── 8. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

@@ -780,6 +780,131 @@ function ConnectivityComparisonPanel({
   );
 }
 
+// ── SeedConnectivityComparisonPanel ──────────────────────────────────────────
+
+interface SeedConnMeta {
+  atlas_id?: string;
+  atlas?: string;
+  atlas_citation?: string;
+  seed_roi_index?: number;
+  seed_label?: string;
+  z_min?: number;
+  z_max?: number;
+  z_mean?: number;
+  n_volumes?: number;
+  correlation_method?: string;
+  nilearn_version?: string;
+}
+
+function SeedConnectivityComparisonPanel({
+  runIdA,
+  runIdB,
+  resultsA,
+  resultsB,
+  labelA,
+  labelB,
+}: {
+  runIdA: number;
+  runIdB: number;
+  resultsA: RunResults;
+  resultsB: RunResults;
+  labelA: string;
+  labelB: string;
+}) {
+  const [metaA, setMetaA] = useState<SeedConnMeta | null>(null);
+  const [metaB, setMetaB] = useState<SeedConnMeta | null>(null);
+
+  const metaPathA = (resultsA.connectivity_metadata ?? [])[0]?.path;
+  const metaPathB = (resultsB.connectivity_metadata ?? [])[0]?.path;
+  const imgA = (resultsA.images ?? []).find((f) => f.name.includes("seed_connectivity_map"))?.path
+    ?? (resultsA.images ?? [])[0]?.path;
+  const imgB = (resultsB.images ?? []).find((f) => f.name.includes("seed_connectivity_map"))?.path
+    ?? (resultsB.images ?? [])[0]?.path;
+
+  useEffect(() => {
+    if (!metaPathA) return;
+    let c = false;
+    fetchRunFile<SeedConnMeta>(runIdA, metaPathA).then((d) => { if (!c) setMetaA(d); }).catch(() => {});
+    return () => { c = true; };
+  }, [runIdA, metaPathA]);
+
+  useEffect(() => {
+    if (!metaPathB) return;
+    let c = false;
+    fetchRunFile<SeedConnMeta>(runIdB, metaPathB).then((d) => { if (!c) setMetaB(d); }).catch(() => {});
+    return () => { c = true; };
+  }, [runIdB, metaPathB]);
+
+  // Compatibility check
+  const sameAtlas = !metaA || !metaB || metaA.atlas_id === metaB.atlas_id;
+  const sameSeed = !metaA || !metaB || metaA.seed_roi_index === metaB.seed_roi_index;
+  const compatible = sameAtlas && sameSeed;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeading>Seed connectivity map comparison</SectionHeading>
+
+      {metaA && metaB && !compatible && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
+          ⚠ Incompatible runs:{" "}
+          {!sameAtlas && `different atlases (${metaA.atlas_id ?? "?"} vs ${metaB.atlas_id ?? "?"})`}
+          {!sameAtlas && !sameSeed && " · "}
+          {!sameSeed && `different seed ROIs (#${metaA.seed_roi_index ?? "?"} vs #${metaB.seed_roi_index ?? "?"})`}.{" "}
+          Voxelwise comparison is not meaningful without the same atlas and seed.
+        </div>
+      )}
+
+      {metaA && metaB && compatible && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-blue-300 font-medium">
+            Same atlas · Same seed
+          </span>
+          <span className="text-gray-500">
+            Seed: {metaA.seed_label ?? `ROI #${metaA.seed_roi_index}`}
+          </span>
+        </div>
+      )}
+
+      {/* Side-by-side maps */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { id: runIdA, img: imgA, meta: metaA, label: labelA },
+          { id: runIdB, img: imgB, meta: metaB, label: labelB },
+        ].map(({ id, img, meta, label }) => (
+          <div key={id} className="rounded-lg border border-white/10 bg-surface-raised p-3">
+            <p className="mb-2 text-xs font-medium text-gray-300 truncate">{label}</p>
+            {img ? (
+              <img
+                src={`/api/runs/${id}/files/${img}`}
+                alt={`Seed connectivity map — ${label}`}
+                className="w-full rounded border border-white/10 object-contain max-h-64"
+              />
+            ) : (
+              <div className="rounded border border-white/10 bg-surface-overlay px-3 py-4 text-xs text-gray-500 text-center">
+                Map PNG not found
+              </div>
+            )}
+            {meta && (
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                {[
+                  ["Min z", meta.z_min?.toFixed(3)],
+                  ["Max z", meta.z_max?.toFixed(3)],
+                  ["Mean z", meta.z_mean?.toFixed(3)],
+                ].map(([key, val]) => (
+                  <div key={key} className="rounded bg-surface-overlay px-2 py-1">
+                    <div className="text-[10px] text-gray-500">{key}</div>
+                    <div className="text-xs font-mono font-semibold text-gray-200">{val ?? "—"}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── ArtifactComparison ────────────────────────────────────────────────────────
 
 function ArtifactComparison({ resultsA, resultsB, labelA, labelB, runIdA, runIdB }: {
@@ -1019,7 +1144,8 @@ export default function ComparisonStudio() {
           t.includes("nifti") ||
           t.includes("brain") ||
           t.includes("mask") ||
-          t.startsWith("connectivity_"),
+          t.startsWith("connectivity_") ||
+          t.startsWith("seed_connectivity_"),
       ),
     );
 
@@ -1039,7 +1165,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -1053,7 +1179,7 @@ export default function ComparisonStudio() {
           runBOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runBFamily === "connectivity") return true;
+        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity") return true;
         return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
       })
     : runOptions;
@@ -1344,6 +1470,8 @@ export default function ComparisonStudio() {
     runAId && !runBId && bOptions.length === 0
       ? runAFamily === "connectivity"
         ? "No compatible connectivity runs found. Run functional-connectivity again (on this or another subject) to enable matrix comparison."
+        : runAFamily === "seed_connectivity"
+        ? "No compatible seed connectivity runs found. Run seed-based-connectivity again (on this or another subject) to compare maps."
         : "No compatible runs found to compare with Run A. Run another skull-stripping pipeline first."
       : runAId && !runBId && bOptions.length > 0
       ? `Select Run B above. ${bOptions.length} compatible run${bOptions.length === 1 ? "" : "s"} found.`
@@ -1474,8 +1602,24 @@ export default function ComparisonStudio() {
               </div>
             </div>
 
-            {/* Connectivity comparison panel */}
-            {comparisonFamily === "connectivity" && (
+            {/* Seed connectivity comparison panel */}
+            {comparisonFamily === "connectivity" &&
+              runAFamily === "seed_connectivity" &&
+              runBFamily === "seed_connectivity" &&
+              resultsA &&
+              resultsB && (
+                <SeedConnectivityComparisonPanel
+                  runIdA={runAId!}
+                  runIdB={runBId!}
+                  resultsA={resultsA}
+                  resultsB={resultsB}
+                  labelA={labelA}
+                  labelB={labelB}
+                />
+              )}
+
+            {/* Atlas connectivity matrix comparison panel */}
+            {comparisonFamily === "connectivity" && runAFamily !== "seed_connectivity" && (
               <ConnectivityComparisonPanel
                 state={connectivityState}
                 labelA={labelA}

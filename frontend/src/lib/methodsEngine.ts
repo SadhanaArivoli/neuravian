@@ -287,6 +287,24 @@ const PROSE_TEMPLATES: Record<
       `.`
     );
   },
+  "seed-based-connectivity": (run) => {
+    const atlasId = String(run.params?.["atlas-name"] ?? run.params?.atlas ?? "schaefer100_7");
+    const atlasMeta = FUNCTIONAL_CONNECTIVITY_ATLASES[atlasId];
+    const atlas = atlasMeta?.label ?? atlasId;
+    const seedRoi = run.params?.["seed-roi"] ?? run.params?.seed_roi ?? NOT_RECORDED;
+    return (
+      `Seed-based functional connectivity was computed using Nilearn ` +
+      `(v${run.pipeline_version || NOT_RECORDED}) ` +
+      `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
+      `The seed region of interest (ROI${seedRoi !== NOT_RECORDED ? ` #${seedRoi}` : ""}) was defined using the ${atlas} atlas. ` +
+      `A single-seed time series was extracted from the fMRIPrep-preprocessed BOLD data ` +
+      `using NiftiLabelsMasker with z-score standardization and linear detrending. ` +
+      `Voxelwise Pearson correlation was computed between the seed time series and all ` +
+      `brain voxels extracted with NiftiMasker. Correlation values were Fisher ` +
+      `z-transformed (arctanh) to produce an approximately normally distributed ` +
+      `connectivity map.`
+    );
+  },
 };
 
 function genericProse(run: RunMetadata): string {

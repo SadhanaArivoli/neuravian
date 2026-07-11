@@ -364,6 +364,121 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
   );
 }
 
+interface SeedConnectivityMetadata {
+  pipeline?: string;
+  atlas?: string;
+  atlas_id?: string;
+  atlas_citation?: string;
+  atlas_source?: string;
+  atlas_resolution?: string;
+  seed_roi_index?: number;
+  seed_label?: string;
+  correlation_method?: string;
+  nilearn_version?: string;
+  n_volumes?: number;
+  n_rois?: number;
+  z_min?: number;
+  z_max?: number;
+  z_mean?: number;
+  runtime_seconds?: number;
+}
+
+function SeedConnectivityPanel({
+  runId,
+  metadataPath,
+  imagePath,
+  timeseriesPath,
+}: {
+  runId: number;
+  metadataPath?: string;
+  imagePath?: string;
+  timeseriesPath?: string;
+}) {
+  const [metadata, setMetadata] = useState<SeedConnectivityMetadata | null>(null);
+
+  useEffect(() => {
+    if (!metadataPath) return;
+    let cancelled = false;
+    fetchRunFile<SeedConnectivityMetadata>(runId, metadataPath)
+      .then((json) => { if (!cancelled) setMetadata(json); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [runId, metadataPath]);
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Seed-Based Connectivity Map</h3>
+          <p className="text-xs text-gray-500">
+            {metadata?.atlas ?? "Atlas-based"} · {metadata?.correlation_method ?? "Pearson correlation (Fisher z-transformed)"}
+          </p>
+        </div>
+        {imagePath && (
+          <a
+            href={`/api/runs/${runId}/files/${imagePath}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Open PNG
+          </a>
+        )}
+      </div>
+      {metadata && (
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ["Seed ROI", metadata.seed_roi_index ?? "—"],
+            ["Seed label", metadata.seed_label?.slice(0, 24) ?? "—"],
+            ["Volumes", metadata.n_volumes ?? "—"],
+            ["Atlas ROIs", metadata.n_rois ?? "—"],
+            ["Min z", metadata.z_min?.toFixed(3) ?? "—"],
+            ["Max z", metadata.z_max?.toFixed(3) ?? "—"],
+            ["Mean z", metadata.z_mean?.toFixed(3) ?? "—"],
+            ["Resolution", metadata.atlas_resolution ?? "—"],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded bg-gray-50 p-2">
+              <div className="text-xs text-gray-500">{label}</div>
+              <div className="font-mono text-sm font-semibold text-gray-900" title={String(value)}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {metadata?.atlas_citation && (
+        <p className="mb-3 text-xs text-gray-500">
+          Atlas: {metadata.atlas_citation}
+          {metadata.atlas_source && (
+            <> · <a href={metadata.atlas_source} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Reference</a></>
+          )}
+        </p>
+      )}
+      {imagePath ? (
+        <img
+          src={`/api/runs/${runId}/files/${imagePath}`}
+          alt="Seed connectivity map"
+          className="max-h-[320px] w-full rounded border border-gray-200 object-contain"
+        />
+      ) : (
+        <div className="rounded border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+          Connectivity map PNG not found.
+        </div>
+      )}
+      {timeseriesPath && (
+        <div className="mt-2">
+          <a
+            href={`/api/runs/${runId}/files/${timeseriesPath}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Download seed time series TSV
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectivitySummary({
   runId,
   matrixPath,
@@ -1117,14 +1232,21 @@ export default function RunResults({ runId }: Props) {
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
       )}
 
-      {connectivityMatrices.length > 0 && (
+      {results.metadata?.pipeline_id === "seed-based-connectivity" ? (
+        <SeedConnectivityPanel
+          runId={runId}
+          metadataPath={connectivityMetadata[0]?.path}
+          imagePath={images.find((f) => f.name.includes("seed_connectivity_map"))?.path ?? images[0]?.path}
+          timeseriesPath={timeseries[0]?.path}
+        />
+      ) : connectivityMatrices.length > 0 ? (
         <ConnectivitySummary
           runId={runId}
           matrixPath={connectivityMatrices[0].path}
           metadataPath={connectivityMetadata[0]?.path}
           imagePath={images[0]?.path}
         />
-      )}
+      ) : null}
 
       {roiStatistics.length > 0 && (
         <RoiStatisticsPanel

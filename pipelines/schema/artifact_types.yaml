@@ -88,3 +88,23 @@ artifact_types:
     label: "Connectivity Report"
     description: "HTML report summarizing atlas, method, matrix statistics, and outputs"
     extensions: [".html"]
+
+  seed_connectivity_map_nii:
+    label: "Seed Connectivity Map"
+    description: "Voxelwise Fisher z-transformed Pearson correlation map from a seed ROI"
+    extensions: [".nii", ".nii.gz"]
+
+  seed_connectivity_map_png:
+    label: "Seed Connectivity Map PNG"
+    description: "Glass-brain PNG visualization of the seed-based connectivity map"
+    extensions: [".png"]
+
+  seed_timeseries_tsv:
+    label: "Seed Time Series"
+    description: "Extracted seed ROI time series used to compute the connectivity map"
+    extensions: [".tsv"]
+
+  seed_report_html:
+    label: "Seed Connectivity Report"
+    description: "HTML report summarizing the seed ROI, atlas, correlation map statistics, and outputs"
+    extensions: [".html"]

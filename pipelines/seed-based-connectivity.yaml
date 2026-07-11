@@ -1,0 +1,159 @@
+id: seed-based-connectivity
+display_name: Seed-Based Connectivity
+description: >
+  Extracts a single seed ROI time series from validated fMRIPrep BOLD
+  derivatives and computes a voxelwise Pearson correlation map with
+  Fisher z-transform, producing a connectivity map NIfTI and HTML report.
+homepage: https://nilearn.github.io/stable/modules/generated/nilearn.maskers.NiftiLabelsMasker.html
+category: connectivity
+input_type: bids_dataset
+
+# Native Python/Nilearn execution inside the backend environment. No Docker
+# image and no Rosetta emulation are needed; on Apple Silicon this runs as
+# native arm64 Python when the backend is local.
+execution:
+  type: native
+  command: neuroforge-seed-based-connectivity
+
+dataset_positional: false
+compute_profile: local-ok
+
+inputs:
+  - fmriprep_derivatives
+
+outputs:
+  - seed_connectivity_map_nii
+  - seed_connectivity_map_png
+  - seed_timeseries_tsv
+  - seed_report_html
+
+parameters:
+  - name: fmriprep-dir
+    type: directory_path
+    required: true
+    help: >
+      fMRIPrep derivatives directory containing sub-*/func/*desc-preproc_bold.nii.gz
+      files and, when available, matching desc-confounds_timeseries.tsv files.
+      This is normally filled automatically from an imported precomputed
+      fMRIPrep derivatives run.
+
+  - name: output-dir
+    type: directory_path
+    required: false
+    default: "{output_dir}"
+    advanced: true
+    help: >
+      Output directory for the seed connectivity report bundle. Leave unchanged
+      unless you are debugging the native command.
+
+  - name: atlas-name
+    type: select
+    required: true
+    default: schaefer100_7
+    options:
+      - schaefer100_7
+      - schaefer200_7
+      - aal
+      - harvard_oxford_cortical
+    advanced: false
+    help: >
+      Atlas used to define the seed ROI. Must match the atlas used in
+      any functional-connectivity run you want to compare against.
+
+  - name: seed-roi
+    type: integer
+    required: true
+    help: >
+      1-based index of the atlas ROI to use as the seed.
+      For example, enter 1 for the first parcel in the atlas label list.
+      Use the ROI Statistics Explorer from a prior functional-connectivity
+      run on the same atlas to find the desired label index.
+
+  - name: atlas-data-dir
+    type: directory_path
+    required: false
+    advanced: true
+    help: >
+      Optional Nilearn atlas cache directory. If unset, Nilearn uses its
+      default cache location. First run requires internet access to download
+      the selected atlas unless it is already cached.
+
+  - name: subject-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional subject filter without the "sub-" prefix, e.g. "01".
+      Leave blank to use the first available preprocessed BOLD run.
+
+  - name: task-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional task filter without the "task-" prefix, e.g. "rest".
+
+  - name: run-label
+    type: string
+    required: false
+    advanced: true
+    help: >
+      Optional run filter without the "run-" prefix, e.g. "01".
+
+accepts:
+  - type: fmriprep_derivatives
+    param: fmriprep-dir
+    label: "fMRIPrep Derivatives"
+    description: >
+      Preprocessed BOLD derivatives from fMRIPrep, preferably in MNI space
+      with matching confounds.
+    required: true
+
+produces:
+  - type: seed_connectivity_map_nii
+    path_hint: "seed_connectivity_map.nii.gz"
+    label: "Seed Connectivity Map"
+    description: "Voxelwise Fisher z-transformed Pearson correlation map from the chosen seed ROI"
+
+  - type: seed_connectivity_map_png
+    path_hint: "seed_connectivity_map.png"
+    label: "Seed Connectivity Map PNG"
+    description: "Glass-brain PNG of the connectivity map"
+
+  - type: seed_timeseries_tsv
+    path_hint: "seed_timeseries.tsv"
+    label: "Seed Time Series"
+    description: "Single-column TSV of the seed ROI time series"
+
+  - type: seed_report_html
+    path_hint: "seed_report.html"
+    label: "Seed Connectivity Report"
+    description: "HTML report summarizing seed, atlas, correlation statistics, and outputs"
+
+known_errors:
+  - pattern: "No fMRIPrep preprocessed BOLD files were found"
+    explanation: >
+      NeuroForge searched the fMRIPrep derivatives directory for files
+      matching sub-*/func/*desc-preproc_bold.nii.gz but found none.
+      Check that the fMRIPrep derivatives directory is correct and that
+      preprocessing completed successfully.
+    fix_hint: >
+      Verify the derivatives directory path and check that fMRIPrep
+      finished without errors. Re-import fMRIPrep derivatives if needed.
+
+  - pattern: "Seed ROI index .* is out of range"
+    explanation: >
+      The requested seed ROI index exceeds the number of parcels in the
+      selected atlas. Parcel indices are 1-based.
+    fix_hint: >
+      Use the ROI Statistics Explorer on a prior functional-connectivity
+      run with the same atlas to find a valid ROI index.
+
+  - pattern: "Atlas extraction produced no ROI time series"
+    explanation: >
+      The atlas image and BOLD data may be in incompatible spaces or
+      the overlap between the atlas and the brain mask is zero.
+    fix_hint: >
+      Confirm that the preprocessed BOLD is in MNI space
+      (space-MNI152NLin2009cAsym). Check MRIQC and fMRIPrep logs
+      for spatial normalization warnings.

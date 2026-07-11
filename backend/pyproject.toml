@@ -32,6 +32,7 @@ dependencies = [
 [project.scripts]
 neuroforge-import-fmriprep-derivatives = "app.tools.import_fmriprep_derivatives:main"
 neuroforge-functional-connectivity = "app.tools.functional_connectivity:main"
+neuroforge-seed-based-connectivity = "app.tools.seed_based_connectivity:main"
 
 [project.optional-dependencies]
 dev = [

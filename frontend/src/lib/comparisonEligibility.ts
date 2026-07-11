@@ -167,6 +167,9 @@ const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"
 function hasConnectivity(types: string[]): boolean {
   return types.some((t) => t.startsWith("connectivity_"));
 }
+function hasSeedConnectivity(types: string[]): boolean {
+  return types.some((t) => t.startsWith("seed_connectivity_"));
+}
 function hasAnatomical(types: string[]): boolean {
   return types.some((t) => ANATOMICAL_TYPES.has(t));
 }
@@ -182,9 +185,15 @@ export function detectComparisonFamily(
 ): ComparisonFamily {
   const connA = hasConnectivity(producedTypesA);
   const connB = hasConnectivity(producedTypesB);
+  const seedA = hasSeedConnectivity(producedTypesA);
+  const seedB = hasSeedConnectivity(producedTypesB);
   const anatA = hasAnatomical(producedTypesA);
   const anatB = hasAnatomical(producedTypesB);
   if ((connA || connB) && (anatA || anatB)) return "mixed";
+  if ((seedA || seedB) && (anatA || anatB)) return "mixed";
+  // Seed connectivity vs atlas connectivity cannot be compared
+  if ((seedA || seedB) && (connA || connB)) return "mixed";
+  if (seedA || seedB) return "connectivity";
   if (connA || connB) return "connectivity";
   if (anatA || anatB) return "anatomical";
   return "none";
@@ -195,7 +204,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "anatomical" | "other" {
+  if (hasSeedConnectivity(producedTypes)) return "seed_connectivity";
   if (hasConnectivity(producedTypes)) return "connectivity";
   if (hasAnatomical(producedTypes)) return "anatomical";
   return "other";
