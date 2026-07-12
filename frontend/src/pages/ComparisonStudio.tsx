@@ -30,6 +30,7 @@ import {
   sortByEligibility,
   geometriesCompatible,
   checkAlffCompatibility,
+  checkRehoCompatibility,
   computeMapDifferenceStats,
   type ComparisonFamily,
   type DiceStats,
@@ -88,6 +89,54 @@ interface AlffMetadata {
   tr: number; nyquist_frequency: number; frequency_band: [number, number]; confound_strategy: string;
   normalization: string; detrending: string; mask_voxel_count: number; runtime_seconds: number;
   alff_statistics: Record<string, number>; falff_statistics: Record<string, number>; warnings: string[];
+}
+
+interface RehoMetadata {
+  tr: number; neighborhood: number; neighborhood_label: string; confound_strategy: string;
+  detrending: string; z_normalize: boolean; mask_voxel_count: number; valid_voxel_count: number;
+  excluded_edge_voxels: number; reho_statistics: Record<string, number>; warnings: string[]; runtime_seconds: number;
+}
+
+function RehoComparisonPanel({runIdA,runIdB,resultsA,resultsB,labelA,labelB}:{runIdA:number;runIdB:number;resultsA:RunResults;resultsB:RunResults;labelA:string;labelB:string}) {
+  const [state,setState]=useState<{loading:boolean;error?:string;metaA?:RehoMetadata;metaB?:RehoMetadata;stats?:ReturnType<typeof computeMapDifferenceStats>;differenceUrl?:string}>({loading:true});
+  useEffect(()=>{ let cancelled=false; let objectUrl:string|undefined;
+    setState({loading:true});
+    Promise.all([
+      fetchRunFile<RehoMetadata>(runIdA,"reho_metadata.json"), fetchRunFile<RehoMetadata>(runIdB,"reho_metadata.json")
+    ]).then(async ([metaA,metaB])=>{
+      const compatibility=checkRehoCompatibility(metaA,metaB);
+      if(!compatibility.compatible) throw new Error(`Comparison blocked: incompatible ${compatibility.differences.join(", ")}.`);
+      const pathA=resultsA.niftis?.find(f=>f.name==="reho_map.nii.gz")?.path;
+      const pathB=resultsB.niftis?.find(f=>f.name==="reho_map.nii.gz")?.path;
+      if(!pathA||!pathB) throw new Error("Both runs must contain reho_map.nii.gz");
+      const [mapA,mapB]=await Promise.all([loadFloat32Nifti(`/api/runs/${runIdA}/files/${pathA}`),loadFloat32Nifti(`/api/runs/${runIdB}/files/${pathB}`)]);
+      if(!geometriesCompatible(mapA.header,mapB.header)) throw new Error("Comparison blocked: incompatible image geometry.");
+      const stats=computeMapDifferenceStats(mapA.values,mapB.values); objectUrl=differenceNiftiBlobUrl(mapA.bytes,mapA.header.voxOffset,stats.difference);
+      if(!cancelled)setState({loading:false,metaA,metaB,stats,differenceUrl:objectUrl});
+    }).catch(e=>{if(!cancelled)setState({loading:false,error:e instanceof Error?e.message:String(e)})});
+    return()=>{cancelled=true;if(objectUrl)URL.revokeObjectURL(objectUrl)};
+  },[runIdA,runIdB,resultsA,resultsB]);
+  if(state.loading)return <div className="text-xs text-gray-500">Loading ReHo comparison…</div>;
+  if(state.error)return <div className="rounded border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{state.error}</div>;
+  const a=state.metaA!,b=state.metaB!,s=state.stats!;
+  const rows:[[string,string,string],...Array<[string,string,string]>]=[
+    ["Neighborhood",a.neighborhood_label,b.neighborhood_label],
+    ["TR",`${a.tr} s`,`${b.tr} s`],
+    ["Confound strategy",a.confound_strategy,b.confound_strategy],
+    ["Detrending",a.detrending,b.detrending],
+    ["Z-normalize",String(a.z_normalize),String(b.z_normalize)],
+    ["Mask voxels",String(a.mask_voxel_count),String(b.mask_voxel_count)],
+    ["Valid voxels",String(a.valid_voxel_count),String(b.valid_voxel_count)],
+  ];
+  const bins=Array.from({length:31},()=>0); let maxD=1e-12; for(const v of s.difference)maxD=Math.max(maxD,Math.abs(v)); for(const v of s.difference){const i=Math.min(30,Math.max(0,Math.floor(((v+maxD)/(2*maxD))*31)));bins[i]++} const peak=Math.max(...bins,1);
+  return <div className="space-y-4">
+    <SectionHeading>Regional Homogeneity (ReHo) comparison</SectionHeading>
+    <p className="text-xs text-gray-500">Descriptive voxelwise KCC map comparison only; no inferential statistics are performed.</p>
+    <table className="w-full text-xs"><thead><tr className="border-b border-white/10"><th className="p-2 text-left">Setting</th><th className="p-2 text-left">{labelA}</th><th className="p-2 text-left">{labelB}</th><th>Compatible</th></tr></thead><tbody>{rows.map(([k,x,y])=>{const diff=x!==y;return<tr key={k} className="border-b border-white/5"><td className="p-2 text-gray-400">{k}</td><td className={`p-2 font-mono ${diff?"text-amber-300 font-semibold":""}`}>{x}</td><td className={`p-2 font-mono ${diff?"text-amber-300 font-semibold":""}`}>{y}</td><td className="text-center">{diff?<span className="text-amber-400">≠</span>:<span className="text-green-400">✓</span>}</td></tr>})}</tbody></table>
+    <div className="grid grid-cols-5 gap-2">{[["Map correlation",s.correlation?.toFixed(6)??"—"],["Mean |difference|",s.meanAbsoluteDifference.toPrecision(6)],["RMSE",s.rmse.toPrecision(6)],["Max |difference|",s.maximumAbsoluteDifference.toPrecision(6)],["Voxels",String(s.voxelCount)]].map(([k,v])=><div key={k} className="rounded border border-white/10 bg-surface-overlay p-3"><div className="text-[11px] text-gray-500">{k}</div><div className="font-mono text-sm">{v}</div></div>)}</div>
+    <div className="grid grid-cols-2 gap-3"><div className="h-[420px] overflow-hidden rounded border border-white/10">{state.differenceUrl&&<NiivuePanel label="ReHo difference (B − A)" layers={[{url:state.differenceUrl,name:"Difference",colormap:"bwr"}]}/>}</div><div className="rounded border border-white/10 bg-surface-overlay p-4"><div className="mb-3 text-xs text-gray-400">Difference histogram (B − A)</div><svg viewBox="0 0 310 180" className="h-[340px] w-full" aria-label="Difference histogram">{bins.map((v,i)=><rect key={i} x={i*10} y={170-(v/peak)*155} width="8" height={(v/peak)*155} fill="#818cf8"/>)}<line x1="155" y1="5" x2="155" y2="170" stroke="#f59e0b"/></svg></div></div>
+    <p className="text-xs text-gray-500">Reference: Zang et al. (2004). Regional homogeneity approach to fMRI data analysis. NeuroImage 22(1):394–400.</p>
+  </div>;
 }
 
 function AlffFalffComparisonPanel({runIdA,runIdB,resultsA,resultsB,labelA,labelB}:{runIdA:number;runIdB:number;resultsA:RunResults;resultsB:RunResults;labelA:string;labelB:string}) {
@@ -2195,7 +2244,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "alff_falff" || runAFamily === "nifti_inspector" || runAFamily === "roi_extraction" || runAFamily === "graph_analysis") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "alff_falff" || runAFamily === "reho" || runAFamily === "nifti_inspector" || runAFamily === "roi_extraction" || runAFamily === "graph_analysis") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -2500,6 +2549,8 @@ export default function ComparisonStudio() {
     runAId && !runBId && bOptions.length === 0
       ? runAFamily === "group_connectivity"
         ? "No other group connectivity runs found. Run group-functional-connectivity on a second set of FC runs to compare."
+        : runAFamily === "reho"
+        ? "No other compatible ReHo runs found. Run regional-homogeneity again on the same source to compare KCC maps."
         : runAFamily === "alff_falff"
         ? "No other compatible ALFF/fALFF runs found. Run ALFF/fALFF again on the same source to compare maps."
         : runAFamily === "roi_extraction"
@@ -2644,7 +2695,12 @@ export default function ComparisonStudio() {
               </div>
             </div>
 
-            {/* Seed connectivity comparison panel */}
+            {/* ReHo comparison panel */}
+            {comparisonFamily === "reho" && resultsA && resultsB && (
+              <RehoComparisonPanel runIdA={runAId!} runIdB={runBId!} resultsA={resultsA} resultsB={resultsB} labelA={labelA} labelB={labelB}/>
+            )}
+
+            {/* ALFF/fALFF comparison panel */}
             {comparisonFamily === "alff_falff" && resultsA && resultsB && (
               <AlffFalffComparisonPanel runIdA={runAId!} runIdB={runBId!} resultsA={resultsA} resultsB={resultsB} labelA={labelA} labelB={labelB}/>
             )}

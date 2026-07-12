@@ -1,0 +1,46 @@
+id: regional-homogeneity
+display_name: Regional Homogeneity (ReHo)
+description: Voxelwise Kendall's Coefficient of Concordance across spatial neighborhoods from fMRIPrep BOLD derivatives. Zang et al. (2004).
+homepage: https://doi.org/10.1016/S1053-8119(04)00168-0
+category: connectivity
+input_type: bids_dataset
+execution: {type: native, command: neuroforge-regional-homogeneity}
+dataset_positional: false
+compute_profile: local-ok
+inputs: [fmriprep_derivatives]
+outputs: [reho_map_nii, reho_histogram_png, reho_metadata_json, reho_report_html]
+parameters:
+  - {name: fmriprep-dir, type: directory_path, required: true, help: "Imported fMRIPrep derivatives containing 4D desc-preproc_bold data."}
+  - {name: output-dir, type: directory_path, required: false, default: "{output_dir}", advanced: true, help: "Output directory."}
+  - name: neighborhood
+    type: select
+    required: true
+    default: "27"
+    options: ["7", "19", "27"]
+    help: "Spatial neighborhood: 7 (face, 6 neighbors + center), 19 (face+edge), 27 (3×3×3 cube, default per Zang 2004)."
+  - {name: tr, type: float, required: false, advanced: true, help: "Explicit repetition time in seconds; otherwise auto-detected from sidecar JSON or NIfTI header."}
+  - name: confound-strategy
+    type: select
+    required: true
+    default: none
+    options: [none, motion6, motion6_wm_csf, motion6_wm_csf_global]
+    help: "Nuisance regressor strategy applied before rank-transformation."
+  - {name: detrend, type: boolean, required: false, default: true, help: "Remove a linear trend before KCC computation."}
+  - {name: z-normalize, type: boolean, required: false, default: false, help: "Also save a z-score normalized ReHo map (reho_normalized_map.nii.gz)."}
+  - {name: subject-label, type: string, required: false, advanced: true, help: "Optional subject entity without sub-."}
+  - {name: task-label, type: string, required: false, advanced: true, help: "Optional task entity without task-."}
+  - {name: run-label, type: string, required: false, advanced: true, help: "Optional run entity without run-."}
+  - {name: source-run-id, type: integer, required: false, advanced: true, help: "Source import run ID for provenance."}
+accepts:
+  - {type: fmriprep_derivatives, param: fmriprep-dir, label: "fMRIPrep Derivatives", description: "Preprocessed 4D BOLD derivatives with brain mask.", required: true}
+produces:
+  - {type: reho_map_nii, path_hint: reho_map.nii.gz, label: "ReHo Map", description: "Voxelwise KCC (W) map"}
+  - {type: reho_normalized_map_nii, path_hint: reho_normalized_map.nii.gz, label: "Normalized ReHo Map", description: "Z-score normalized KCC map (optional)"}
+  - {type: reho_histogram_png, path_hint: reho_histogram.png, label: "ReHo Histogram", description: "KCC value distribution within mask"}
+  - {type: reho_metadata_json, path_hint: reho_metadata.json, label: "ReHo Metadata", description: "Scientific decisions, inputs, statistics, versions, and warnings"}
+  - {type: reho_report_html, path_hint: reho_report.html, label: "ReHo Report", description: "Self-contained descriptive analysis report"}
+known_errors:
+  - {pattern: "not 4D|at least .* required|empty|constant|mask", explanation: "The selected input is not a usable 4D BOLD timeseries.", fix_hint: "Select an fMRIPrep desc-preproc_bold run with a valid brain mask and at least 30 non-constant timepoints."}
+  - {pattern: "TR|tr.*invalid|repetition", explanation: "TR could not be determined or is implausible.", fix_hint: "Provide TR explicitly with --tr (in seconds)."}
+  - {pattern: "Missing required confound", explanation: "The confounds file lacks the requested regressor columns.", fix_hint: "Choose a confound strategy whose columns are present in this fMRIPrep run."}
+  - {pattern: "geometry does not match", explanation: "The brain mask does not align with the BOLD image.", fix_hint: "Ensure both files come from the same fMRIPrep run (matching space and resolution)."}

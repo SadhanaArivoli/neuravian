@@ -160,7 +160,7 @@ export function computeDice(
 
 // ── Comparison family detection ────────────────────────────────────────────────
 
-export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "alff_falff" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "mixed" | "none";
+export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "alff_falff" | "reho" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "mixed" | "none";
 
 const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
 
@@ -188,6 +188,9 @@ function hasAnatomical(types: string[]): boolean {
 function hasAlffFalff(types: string[]): boolean {
   return types.some((t) => ["alff_map_nii", "falff_map_nii", "alff_normalized_map_nii", "falff_normalized_map_nii"].includes(t));
 }
+function hasReho(types: string[]): boolean {
+  return types.some((t) => t === "reho_map_nii" || t === "reho_normalized_map_nii");
+}
 
 /**
  * Determine which comparison family applies to a pair of runs, based on their
@@ -214,6 +217,10 @@ export function detectComparisonFamily(
   const anatB = hasAnatomical(producedTypesB);
   const alffA = hasAlffFalff(producedTypesA);
   const alffB = hasAlffFalff(producedTypesB);
+  const rehoA = hasReho(producedTypesA);
+  const rehoB = hasReho(producedTypesB);
+  if (rehoA && rehoB) return "reho";
+  if (rehoA || rehoB) return "mixed";
   if (alffA && alffB) return "alff_falff";
   if (alffA || alffB) return "mixed";
   // graph_analysis pairs with itself only
@@ -242,7 +249,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "seed_connectivity" | "group_connectivity" | "alff_falff" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "group_connectivity" | "alff_falff" | "reho" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "anatomical" | "other" {
+  if (hasReho(producedTypes)) return "reho";
   if (hasAlffFalff(producedTypes)) return "alff_falff";
   if (hasGraphAnalysis(producedTypes)) return "graph_analysis";
   if (hasRoiExtraction(producedTypes)) return "roi_extraction";
@@ -275,6 +283,31 @@ export function checkAlffCompatibility(a: AlffCompatibilityMetadata, b: AlffComp
   if (a.confound_strategy !== b.confound_strategy) differences.push("confound strategy");
   if (a.normalization !== b.normalization) differences.push("normalization");
   if (a.detrending !== b.detrending) differences.push("detrending");
+  if (a.mask_voxel_count !== b.mask_voxel_count) differences.push("mask voxel count");
+  return { compatible: differences.length === 0, differences };
+}
+
+export interface RehoCompatibilityMetadata {
+  tr: number;
+  neighborhood: number;
+  confound_strategy: string;
+  detrending: string;
+  z_normalize: boolean;
+  mask_voxel_count: number;
+}
+
+export interface RehoCompatibilityResult {
+  compatible: boolean;
+  differences: string[];
+}
+
+export function checkRehoCompatibility(a: RehoCompatibilityMetadata, b: RehoCompatibilityMetadata): RehoCompatibilityResult {
+  const differences: string[] = [];
+  if (Math.abs(a.tr - b.tr) > 1e-9) differences.push("TR");
+  if (a.neighborhood !== b.neighborhood) differences.push("neighborhood size");
+  if (a.confound_strategy !== b.confound_strategy) differences.push("confound strategy");
+  if (a.detrending !== b.detrending) differences.push("detrending");
+  if (a.z_normalize !== b.z_normalize) differences.push("z-normalization");
   if (a.mask_voxel_count !== b.mask_voxel_count) differences.push("mask voxel count");
   return { compatible: differences.length === 0, differences };
 }

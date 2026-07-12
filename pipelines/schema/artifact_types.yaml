@@ -236,6 +236,22 @@ artifact_types:
     description: "Degree distribution histogram and hub ranking bar chart"
     extensions: [".png"]
 
+  # ── Regional Homogeneity (ReHo) ─────────────────────────────────────────────
+
+  reho_map_nii:
+    label: "ReHo Map"
+    description: "Voxelwise Kendall's Coefficient of Concordance (KCC W) map"
+    extensions: [".nii", ".nii.gz"]
+
+  reho_normalized_map_nii:
+    label: "Normalized ReHo Map"
+    description: "Z-score normalized KCC map within the brain mask"
+    extensions: [".nii", ".nii.gz"]
+
+  reho_histogram_png: {label: "ReHo Histogram", description: "KCC value distribution within brain mask", extensions: [".png"]}
+  reho_metadata_json: {label: "ReHo Metadata", description: "KCC parameters, statistics, versions, and warnings", extensions: [".json"]}
+  reho_report_html: {label: "ReHo Report", description: "Self-contained ReHo analysis report", extensions: [".html"]}
+
   # ── Statistical Map Explorer ─────────────────────────────────────────────────
 
   statistical_map_thresholded:

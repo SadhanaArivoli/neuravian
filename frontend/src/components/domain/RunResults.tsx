@@ -283,6 +283,84 @@ interface AlffMetadata {
   falff_statistics: Record<string, number>; warnings: string[];
 }
 
+interface RehoMetadata {
+  tr: number; number_of_timepoints: number; neighborhood: number; neighborhood_voxels: number;
+  neighborhood_label: string; confound_strategy: string; detrending: string; z_normalize: boolean;
+  mask_voxel_count: number; valid_voxel_count: number; excluded_edge_voxels: number;
+  reho_statistics: Record<string, number>; warnings: string[]; runtime_seconds: number;
+  citations: string[];
+}
+
+function RehoPanel({ runId, niftis, images }: { runId: number; niftis: RunResultFile[]; images: RunResultFile[] }) {
+  const { data: meta, error } = useRunFile<RehoMetadata>(runId, "reho_metadata.json");
+  const rehoMap = niftis.find((f) => f.path.endsWith("reho_map.nii.gz") && !f.path.includes("normalized"));
+  const normMap = niftis.find((f) => f.path.endsWith("reho_normalized_map.nii.gz"));
+  if (error) return <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">Could not load ReHo metadata.</div>;
+  if (!meta) return <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-500">Loading ReHo results…</div>;
+  const cards = [
+    ["Neighborhood", meta.neighborhood_label],
+    ["TR", `${meta.tr} s`],
+    ["Timepoints", meta.number_of_timepoints],
+    ["Valid voxels", meta.valid_voxel_count.toLocaleString()],
+    ["Mask voxels", meta.mask_voxel_count.toLocaleString()],
+    ["Confounds", meta.confound_strategy],
+    ["Detrend", meta.detrending],
+    ["Z-norm", meta.z_normalize ? "yes" : "no"],
+  ];
+  const s = meta.reho_statistics;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-800">Regional Homogeneity (ReHo) Summary</h3>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {cards.map(([k, v]) => (
+            <div key={String(k)} className="rounded bg-gray-50 p-2">
+              <div className="text-xs text-gray-500">{k}</div>
+              <div className="font-mono text-sm text-gray-900">{v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 rounded border border-gray-100 p-3">
+          <div className="text-xs font-semibold text-gray-700">KCC (W) statistics</div>
+          <div className="mt-1 font-mono text-xs text-gray-600">
+            mean {s.mean.toPrecision(5)} · median {s.median.toPrecision(5)} · std {s.std.toPrecision(5)} · range {s.min.toPrecision(4)}–{s.max.toPrecision(4)}
+          </div>
+        </div>
+        {meta.excluded_edge_voxels > 0 && (
+          <p className="mt-2 text-xs text-gray-400">{meta.excluded_edge_voxels.toLocaleString()} mask-edge voxels excluded (incomplete neighborhood).</p>
+        )}
+        {meta.warnings.length > 0 && (
+          <ul className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">
+            {meta.warnings.map((w) => <li key={w}>{w}</li>)}
+          </ul>
+        )}
+      </div>
+      <div className={`grid gap-4 ${normMap ? "lg:grid-cols-2" : ""}`}>
+        {rehoMap && (
+          <div className="h-[420px] overflow-hidden rounded border border-gray-700">
+            <NiivuePanel label="ReHo map (KCC W)" layers={[{ url: `/api/runs/${runId}/files/${rehoMap.path}`, name: "ReHo", colormap: "warm" }]} />
+          </div>
+        )}
+        {normMap && (
+          <div className="h-[420px] overflow-hidden rounded border border-gray-700">
+            <NiivuePanel label="Normalized ReHo (z-score)" layers={[{ url: `/api/runs/${runId}/files/${normMap.path}`, name: "ReHo-z", colormap: "warm" }]} />
+          </div>
+        )}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {images.filter((i) => /reho_histogram/.test(i.path)).map((i) => (
+          <a key={i.path} href={`/api/runs/${runId}/files/${i.path}`} target="_blank" rel="noreferrer">
+            <img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-gray-200" />
+          </a>
+        ))}
+      </div>
+      {meta.citations.length > 0 && (
+        <p className="text-xs text-gray-400">Citation: {meta.citations[0]}</p>
+      )}
+    </div>
+  );
+}
+
 function AlffFalffPanel({ runId, niftis, images }: { runId: number; niftis: RunResultFile[]; images: RunResultFile[] }) {
   const { data: metadata, error } = useRunFile<AlffMetadata>(runId, "alff_falff_metadata.json");
   const alff = niftis.find((f) => f.path.endsWith("alff_map.nii.gz") && !f.path.includes("falff"));
@@ -2304,6 +2382,8 @@ export default function RunResults({ runId }: Props) {
 
       {results.metadata?.pipeline_id === "statistical-map-explorer" ? (
         <StatisticalMapPanel runId={runId} files={clusterFiles} />
+      ) : results.metadata?.pipeline_id === "regional-homogeneity" ? (
+        <RehoPanel runId={runId} niftis={niftis} images={images} />
       ) : results.metadata?.pipeline_id === "alff-falff" ? (
         <AlffFalffPanel runId={runId} niftis={niftis} images={images} />
       ) : results.metadata?.pipeline_id === "connectome-graph-analysis" && graphAnalysis.length > 0 ? (
