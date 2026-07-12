@@ -21,8 +21,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { RunSummary } from "../api/client";
+import { listReports, type ReportSummary, type RunSummary } from "../api/client";
 import { useDataset } from "../hooks/useDatasets";
 import { useRunResults, useRuns } from "../hooks/useRuns";
 import {
@@ -30,6 +31,7 @@ import {
   filterRuns,
   uniquePipelineIds,
   type DatasetNodeData,
+  type ReportNodeData,
   type RunNodeData,
   type StatusFilter,
 } from "../lib/workflowGraph";
@@ -184,7 +186,9 @@ function DatasetNode({ data, selected }: NodeProps) {
   );
 }
 
-const NODE_TYPES = { runNode: RunNode, datasetNode: DatasetNode };
+function ReportNode({data}:NodeProps){const {report}=data as ReportNodeData;return <><Handle type="target" position={Position.Top} className="!bg-purple-400/50"/><Link to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="block w-[220px] rounded-xl border border-purple-500/40 bg-purple-900/20 p-3.5"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-purple-500/20 text-[10px] font-bold text-purple-300">RP</span><div><p className="text-xs font-semibold text-white">Study Report #{report.id}</p><p className="text-[10px] text-purple-300">Publication exports ready</p></div></div></Link></>}
+
+const NODE_TYPES = { runNode: RunNode, datasetNode: DatasetNode, reportNode: ReportNode };
 
 // ── Run Side Panel ─────────────────────────────────────────────────────────────
 
@@ -470,10 +474,12 @@ function GraphInner({
   datasetId,
   datasetName,
   allRuns,
+  reports,
 }: {
   datasetId: number;
   datasetName: string | null;
   allRuns: RunSummary[];
+  reports: ReportSummary[];
 }) {
   const { fitView } = useReactFlow();
   const [searchParams] = useSearchParams();
@@ -494,8 +500,8 @@ function GraphInner({
   );
 
   const { nodes: builtNodes, edges: builtEdges } = useMemo(
-    () => buildWorkflowGraph(visibleRuns, datasetId, datasetName),
-    [visibleRuns, datasetId, datasetName],
+    () => buildWorkflowGraph(visibleRuns, datasetId, datasetName, reports),
+    [visibleRuns, datasetId, datasetName, reports],
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
@@ -628,13 +634,14 @@ export default function WorkflowGraph() {
   const datasetId = Number(id);
   const { data: dataset, isLoading: dsLoading } = useDataset(datasetId);
   const { data: allRuns = [], isLoading: runsLoading } = useRuns();
+  const {data:reports=[],isLoading:reportsLoading}=useQuery({queryKey:["reports",datasetId],queryFn:()=>listReports(datasetId)});
 
   const datasetRuns = useMemo(
     () => allRuns.filter((r) => r.dataset_id === datasetId),
     [allRuns, datasetId],
   );
 
-  if (dsLoading || runsLoading) {
+  if (dsLoading || runsLoading || reportsLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-sm text-gray-400 animate-pulse">Loading graph…</p>
@@ -670,6 +677,7 @@ export default function WorkflowGraph() {
           datasetId={datasetId}
           datasetName={dataset?.name ?? null}
           allRuns={datasetRuns}
+          reports={reports}
         />
       </ReactFlowProvider>
     </div>

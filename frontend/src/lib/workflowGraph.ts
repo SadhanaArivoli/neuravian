@@ -8,7 +8,7 @@
 
 import Dagre from "@dagrejs/dagre";
 import type { Edge, Node } from "@xyflow/react";
-import type { RunSummary } from "../api/client";
+import type { ReportSummary, RunSummary } from "../api/client";
 
 // ── Node dimensions ──────────────────────────────────────────────────────────
 
@@ -29,8 +29,9 @@ export interface DatasetNodeData extends Record<string, unknown> {
   datasetId: number;
   datasetName: string | null;
 }
+export interface ReportNodeData extends Record<string, unknown> { kind:"report"; report:ReportSummary; }
 
-export type WorkflowNodeData = RunNodeData | DatasetNodeData;
+export type WorkflowNodeData = RunNodeData | DatasetNodeData | ReportNodeData;
 
 // ── Edge removal result ────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ export function buildWorkflowGraph(
   runs: RunSummary[],
   datasetId: number,
   datasetName: string | null,
+  reports: ReportSummary[] = [],
 ): BuildResult {
   const dsId = `dataset-${datasetId}`;
   const runIdSet = new Set(runs.map((r) => r.id));
@@ -124,7 +126,10 @@ export function buildWorkflowGraph(
       return { source: srcId, target: `run-${run.id}`, run };
     });
 
-  const allNodeIds = [dsId, ...runs.map((r) => `run-${r.id}`)];
+  const childSources = new Set(runs.map(r=>r.source_run_id).filter((id): id is number=>id!==null));
+  const leaves = runs.filter(r=>!childSources.has(r.id));
+  for(const report of reports.filter(r=>r.status==="ready")) for(const leaf of leaves) rawEdges.push({source:`run-${leaf.id}`,target:`report-${report.id}`,run:leaf});
+  const allNodeIds = [dsId, ...runs.map((r) => `run-${r.id}`), ...reports.filter(r=>r.status==="ready").map(r=>`report-${r.id}`)];
   const badEdgeKeys = removeCycleEdges(allNodeIds, rawEdges);
   const cyclesRemoved = badEdgeKeys.size;
 
@@ -141,6 +146,7 @@ export function buildWorkflowGraph(
   for (const run of runs) {
     g.setNode(`run-${run.id}`, { width: RUN_NODE_W, height: RUN_NODE_H });
   }
+  for(const report of reports.filter(r=>r.status==="ready")) g.setNode(`report-${report.id}`,{width:RUN_NODE_W,height:DATASET_NODE_H});
   for (const e of safeEdges) {
     g.setEdge(e.source, e.target);
   }
@@ -174,6 +180,7 @@ export function buildWorkflowGraph(
       data: { kind: "run", run },
     });
   }
+  for(const report of reports.filter(r=>r.status==="ready")){const pos=g.node(`report-${report.id}`);rfNodes.push({id:`report-${report.id}`,type:"reportNode",position:{x:pos.x-RUN_NODE_W/2,y:pos.y-DATASET_NODE_H/2},data:{kind:"report",report}})}
 
   // ── React Flow edges ──────────────────────────────────────────────────────
   const rfEdges: Edge[] = safeEdges.map((e) => ({

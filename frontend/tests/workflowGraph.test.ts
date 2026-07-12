@@ -68,6 +68,7 @@ describe("buildWorkflowGraph — edges", () => {
     const {edges}=buildWorkflowGraph(runs,1,"Study");
     expect(edges.map(e=>`${e.source}->${e.target}`)).toEqual(expect.arrayContaining(["run-44->run-58","run-58->run-60","run-60->run-61"]));
   });
+  it("connects terminal analyses to ready study reports",()=>{const runs=[makeRun({id:44}),makeRun({id:58,source_run_id:44,pipeline_manifest_id:"alff-falff"})];const report={id:9,dataset_id:1,status:"ready" as const,error_message:null,html_path:"x",md_path:"x",json_path:"x",zip_path:"x",pdf_path:"x",created_at:"2026-01-01",finished_at:"2026-01-01"};const {nodes,edges}=buildWorkflowGraph(runs,1,"Study",[report]);expect(nodes.some(n=>n.id==="report-9")).toBe(true);expect(edges.some(e=>e.source==="run-58"&&e.target==="report-9")).toBe(true)});
   it("connects orphan run (null source_run_id) to dataset node", () => {
     const run = makeRun({ id: 5, source_run_id: null });
     const { edges } = buildWorkflowGraph([run], 1, "DS");
