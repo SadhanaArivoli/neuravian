@@ -353,6 +353,15 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "graph_report.html", "graph_summary.png",
         }
     ]
+    cluster_files = [
+        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
+        for f in sorted(output_root.iterdir())
+        if f.name in {
+            "cluster_table.json", "cluster_table.csv",
+            "cluster_overlay.png", "cluster_report.html",
+            "cluster_metadata.json", "thresholded_map.nii.gz",
+        }
+    ]
     group_summary_path = output_root / "group_summary.json"
     group_summary: dict | None = None
     if group_summary_path.exists():
@@ -413,6 +422,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "roi_statistics": roi_statistics,
         "roi_extraction": roi_extraction,
         "graph_analysis": graph_analysis,
+        "cluster_files": cluster_files,
         "group_summary": group_summary,
         "niftis": niftis,
         "artifacts": artifacts,

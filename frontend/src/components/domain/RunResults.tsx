@@ -1153,6 +1153,162 @@ function GraphAnalysisPanel({ runId, files }: { runId: number; files: Array<{ na
   );
 }
 
+// ── Statistical Map Explorer panel ───────────────────────────────────────────
+
+interface ClusterRow {
+  cluster_id: number;
+  size_voxels: number;
+  peak_value: number;
+  mean_value: number;
+  peak_x_mm: number;
+  peak_y_mm: number;
+  peak_z_mm: number;
+  com_x_mm: number;
+  com_y_mm: number;
+  com_z_mm: number;
+}
+
+interface ClusterTableJson {
+  schema: string;
+  metadata: {
+    threshold?: number;
+    direction?: string;
+    min_cluster_size?: number;
+    n_clusters?: number;
+    n_suprathreshold_voxels?: number;
+    image_shape?: number[];
+    voxel_size_mm?: number[];
+    nibabel_version?: string;
+    scipy_version?: string;
+    neuroforge_version?: string;
+    runtime_seconds?: number;
+    input_filename?: string;
+    generated_at?: string;
+  };
+  clusters: ClusterRow[];
+}
+
+function StatisticalMapPanel({ runId, files }: { runId: number; files: RunResultFile[] }) {
+  const [data, setData] = useState<ClusterTableJson | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const jsonFile = files.find((f) => f.path.endsWith("cluster_table.json"));
+  const overlayFile = files.find((f) => f.path.endsWith("cluster_overlay.png"));
+
+  useEffect(() => {
+    if (!jsonFile) { setErr("cluster_table.json not found in run outputs."); return; }
+    let cancelled = false;
+    fetchRunFile<ClusterTableJson>(runId, jsonFile.path)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : "Could not load cluster table."); });
+    return () => { cancelled = true; };
+  }, [runId, jsonFile?.path]);
+
+  if (err) {
+    return <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{err}</div>;
+  }
+  if (!data) {
+    return <div className="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 animate-pulse">Loading cluster results…</div>;
+  }
+
+  const meta = data.metadata;
+  const clusters = data.clusters;
+  const fmt = (v: number | undefined, dec = 3) => (v == null ? "—" : v.toFixed(dec));
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Statistical Map Explorer</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {meta.input_filename ?? "Statistical map"}
+            {meta.threshold != null && ` · threshold |z| ≥ ${meta.threshold}`}
+            {meta.direction && ` · ${meta.direction}`}
+          </p>
+        </div>
+        <a
+          href={`/api/runs/${runId}/files/cluster_report.html`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline shrink-0"
+        >
+          View cluster report
+        </a>
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-4 gap-px bg-gray-100">
+        {[
+          ["Clusters", String(meta.n_clusters ?? clusters.length)],
+          ["Suprathreshold voxels", (meta.n_suprathreshold_voxels ?? "—").toLocaleString()],
+          ["Largest cluster", clusters[0] ? String(clusters[0].size_voxels) + " vox" : "—"],
+          ["Peak value", clusters[0] ? fmt(clusters[0].peak_value) : "—"],
+        ].map(([label, val]) => (
+          <div key={label} className="bg-white px-3 py-2">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+            <p className="text-sm font-semibold text-gray-800 font-mono">{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Overlay figure */}
+      {overlayFile && (
+        <div className="border-t border-gray-100">
+          <img
+            src={`/api/runs/${runId}/files/${overlayFile.path}`}
+            alt="Cluster overlay"
+            className="w-full object-contain max-h-[320px]"
+          />
+        </div>
+      )}
+
+      {/* Cluster table */}
+      {clusters.length === 0 ? (
+        <div className="px-4 py-4 text-sm text-gray-500">No clusters detected above threshold.</div>
+      ) : (
+        <div className="overflow-x-auto border-t border-gray-100 max-h-[300px]">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-50 z-10">
+              <tr className="border-b border-gray-200">
+                <th className="px-3 py-2 text-left font-medium text-gray-600">#</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Voxels</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Peak</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Mean</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Peak X (mm)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Peak Y (mm)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Peak Z (mm)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clusters.map((c) => (
+                <tr key={c.cluster_id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="px-3 py-1.5 text-gray-400">{c.cluster_id}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{c.size_voxels.toLocaleString()}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-gray-800">{fmt(c.peak_value)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{fmt(c.mean_value)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{fmt(c.peak_x_mm, 1)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{fmt(c.peak_y_mm, 1)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{fmt(c.peak_z_mm, 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-gray-100 flex flex-wrap gap-4 text-[10px] text-gray-400">
+        <span>Min cluster size: {meta.min_cluster_size ?? "—"} vox</span>
+        {meta.voxel_size_mm && <span>Voxel size: {meta.voxel_size_mm.map((v) => v.toFixed(2)).join(" × ")} mm</span>}
+        {meta.nibabel_version && <span>nibabel {meta.nibabel_version}</span>}
+        {meta.scipy_version && <span>scipy {meta.scipy_version}</span>}
+        <span className="ml-auto text-gray-300">No AI-generated interpretation</span>
+      </div>
+    </div>
+  );
+}
+
 // ── NIfTI Inspector panel ──────────────────────────────────────────────────────
 
 interface NiftiInspectorResult {
@@ -1896,6 +2052,7 @@ export default function RunResults({ runId }: Props) {
   const roiStatistics = results.roi_statistics ?? [];
   const roiExtraction = (results as { roi_extraction?: RunResultFile[] }).roi_extraction ?? [];
   const graphAnalysis = (results as { graph_analysis?: RunResultFile[] }).graph_analysis ?? [];
+  const clusterFiles = (results as { cluster_files?: RunResultFile[] }).cluster_files ?? [];
   const hasFiles =
     results.reports.length > 0 ||
     results.metrics.length > 0 ||
@@ -1904,6 +2061,7 @@ export default function RunResults({ runId }: Props) {
     connectivityMatrices.length > 0 ||
     timeseries.length > 0 ||
     roiStatistics.length > 0 ||
+    clusterFiles.length > 0 ||
     niftis.length > 0;
   // Show Download All when any surfaced file or resolved artifact exists.
   // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
@@ -2117,7 +2275,9 @@ export default function RunResults({ runId }: Props) {
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
       )}
 
-      {results.metadata?.pipeline_id === "connectome-graph-analysis" && graphAnalysis.length > 0 ? (
+      {results.metadata?.pipeline_id === "statistical-map-explorer" ? (
+        <StatisticalMapPanel runId={runId} files={clusterFiles} />
+      ) : results.metadata?.pipeline_id === "connectome-graph-analysis" && graphAnalysis.length > 0 ? (
         <GraphAnalysisPanel runId={runId} files={graphAnalysis} />
       ) : results.metadata?.pipeline_id === "atlas-roi-extraction" && roiExtraction.length > 0 ? (
         <RoiExtractionPanel runId={runId} files={roiExtraction} />
