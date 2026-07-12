@@ -577,7 +577,44 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 11. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 11. Seed-Based FC → Statistical Map Explorer ─────────────────────────
+  // Two-step chain: compute a seed-based z-map, then threshold and cluster it.
+  {
+    id: "seed-fc-cluster",
+    name: "Seed FC → Statistical Map Explorer",
+    description:
+      "Compute a whole-brain seed-based functional connectivity z-map, then threshold the result and detect suprathreshold clusters. Produces a cluster table (CSV/JSON), cluster overlay figure, and a self-contained HTML report. All computation is native Python — no FSL or AFNI required.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "2 – 10 min",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "fmriprep_derivatives",
+    requiredSourceLabel: "fMRIPrep Derivatives Folder",
+    worstComputeProfile: "local-ok",
+    steps: [
+      {
+        pipelineId: "seed-based-connectivity",
+        inputArtifactType: "fmriprep_derivatives",
+        edge: {
+          artifactType: "fmriprep_derivatives",
+          acceptParam: "fmriprep-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "fMRIPrep Derivatives",
+        },
+      },
+      {
+        pipelineId: "statistical-map-explorer",
+        inputArtifactType: "seed_connectivity_map_nii",
+        edge: {
+          artifactType: "seed_connectivity_map_nii",
+          acceptParam: "input-file",
+          acceptDatasetSlot: false,
+          acceptLabel: "Seed Connectivity Map (NIfTI)",
+        },
+      },
+    ],
+  },
+
+  // ── 12. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

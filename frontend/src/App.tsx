@@ -16,6 +16,7 @@ import Runs from "./pages/Runs";
 import ReportStudio from "./pages/ReportStudio";
 import ReportViewer from "./pages/ReportViewer";
 import ReportCompare from "./pages/ReportCompare";
+import StatisticalMapExplorer from "./pages/StatisticalMapExplorer";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/datasets/:id/dashboard" element={<DatasetDashboard />} />
             <Route path="/datasets/:id/artifacts" element={<ArtifactExplorer />} />
             <Route path="/datasets/:id/methods" element={<MethodsStudio />} />
+            <Route path="/datasets/:id/stat-maps" element={<StatisticalMapExplorer />} />
             <Route path="/datasets/:id/reports" element={<ReportStudio />} />
             <Route path="/datasets/:id/reports/compare" element={<ReportCompare />} />
             <Route path="/datasets/:id/reports/:reportId" element={<ReportViewer />} />
