@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
+from app.api.projects import router as projects_router
 from app.api.pipelines import router as pipelines_router
 from app.api.remote_hosts import router as remote_hosts_router
 from app.api.reports import router as reports_router
@@ -44,3 +45,4 @@ app.include_router(reports_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
 app.include_router(wizard_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
+app.include_router(projects_router, prefix="/api")
