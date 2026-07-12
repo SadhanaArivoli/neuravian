@@ -195,11 +195,29 @@ export function filterRunsByArtifact<T extends { pipeline_manifest_id: string }>
 //   bids_dataset_validated → mriqc      → mriqc_report → mriqc-group → mriqc_group_report
 //   bids_dataset       → import-fmriprep-derivatives → fmriprep_derivatives
 //   fmriprep_derivatives → functional-connectivity
+//   fmriprep_derivatives → alff-falff → statistical-map-explorer
 //   nifti_raw          → brainchop      → nifti_skull_stripped
 //   nifti_skull_stripped → fastsurfer   → freesurfer_dir
 //   nifti_raw          → pydeface       → nifti_defaced
 
 export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: "alff-falff-analysis",
+    name: "ALFF / fALFF Analysis",
+    description: "Import fMRIPrep derivatives, compute native voxelwise ALFF/fALFF maps, then explore clusters. Atlas ROI Extraction remains available through Run Next.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "minutes",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "bids_dataset",
+    requiredSourceLabel: "Registered source BIDS dataset",
+    worstComputeProfile: "local-ok",
+    computeWarning: "Requires existing fMRIPrep derivatives; this workflow does not run fMRIPrep.",
+    steps: [
+      { pipelineId: "import-fmriprep-derivatives", inputArtifactType: "bids_dataset", edge: { artifactType: "bids_dataset", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Associated BIDS Dataset" } },
+      { pipelineId: "alff-falff", inputArtifactType: "fmriprep_derivatives", edge: { artifactType: "fmriprep_derivatives", acceptParam: "fmriprep-dir", acceptDatasetSlot: false, acceptLabel: "fMRIPrep Derivatives" } },
+      { pipelineId: "statistical-map-explorer", inputArtifactType: "alff_map_nii", edge: { artifactType: "alff_map_nii", acceptParam: "input-file", acceptDatasetSlot: false, acceptLabel: "ALFF Map" } },
+    ],
+  },
   // ── 1. BIDS Validation + QC ────────────────────────────────────────────────
   // bids-validator (bids_dataset → bids_dataset_validated) → mriqc (dataset_slot) → mriqc-group
   {
@@ -540,18 +558,18 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     categoryKey: "connectivity",
     estimatedRuntime: "5 – 30 min",
     requiredSourceKind: "dataset",
-    requiredSourceArtifact: "fmriprep_derivatives",
-    requiredSourceLabel: "fMRIPrep Derivatives Folder",
+    requiredSourceArtifact: "bids_dataset",
+    requiredSourceLabel: "Registered source BIDS dataset",
     worstComputeProfile: "local-ok",
     steps: [
       {
         pipelineId: "import-fmriprep-derivatives",
-        inputArtifactType: "fmriprep_derivatives",
+        inputArtifactType: "bids_dataset",
         edge: {
-          artifactType: "fmriprep_derivatives",
-          acceptParam: "fmriprep-dir",
-          acceptDatasetSlot: false,
-          acceptLabel: "fMRIPrep Derivatives",
+          artifactType: "bids_dataset",
+          acceptParam: null,
+          acceptDatasetSlot: true,
+          acceptLabel: "Associated BIDS Dataset",
         },
       },
       {

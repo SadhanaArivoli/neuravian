@@ -41,6 +41,7 @@ neuroforge-nifti-inspector = "app.tools.nifti_inspector:main"
 neuroforge-atlas-roi-extraction = "app.tools.atlas_roi_extraction:main"
 neuroforge-connectome-graph-analysis = "app.tools.connectome_graph_analysis:main"
 neuroforge-statistical-map-explorer = "app.tools.statistical_map_explorer:main"
+neuroforge-alff-falff = "app.tools.alff_falff:main"
 
 [project.optional-dependencies]
 dev = [

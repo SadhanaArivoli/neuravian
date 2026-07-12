@@ -4,6 +4,28 @@
 
 artifact_types:
 
+  alff_map_nii:
+    label: "Raw ALFF Map"
+    description: "Voxelwise amplitude of low-frequency fluctuations"
+    extensions: [".nii", ".nii.gz"]
+  falff_map_nii:
+    label: "Raw fALFF Map"
+    description: "Voxelwise fractional amplitude of low-frequency fluctuations"
+    extensions: [".nii", ".nii.gz"]
+  alff_normalized_map_nii:
+    label: "Normalized ALFF Map"
+    description: "Optional mean-normalized or z-standardized ALFF map"
+    extensions: [".nii", ".nii.gz"]
+  falff_normalized_map_nii:
+    label: "Normalized fALFF Map"
+    description: "Optional mean-normalized or z-standardized fALFF map"
+    extensions: [".nii", ".nii.gz"]
+  alff_histogram_png: {label: "ALFF Histogram", description: "ALFF value distribution", extensions: [".png"]}
+  falff_histogram_png: {label: "fALFF Histogram", description: "fALFF value distribution", extensions: [".png"]}
+  alff_spectral_summary_png: {label: "Spectral Summary", description: "Mean masked FFT amplitude spectrum", extensions: [".png"]}
+  alff_falff_metadata_json: {label: "ALFF / fALFF Metadata", description: "Machine-readable spectral provenance", extensions: [".json"]}
+  alff_falff_report_html: {label: "ALFF / fALFF Report", description: "Descriptive ALFF/fALFF analysis report", extensions: [".html"]}
+
   nifti_raw:
     label: "Raw NIfTI"
     description: "Unprocessed structural or functional NIfTI image (T1w, T2w, BOLD, etc.)"

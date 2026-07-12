@@ -79,6 +79,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   dcm2bids: "dcm2bids",
   pydeface: "pydeface",
   "functional-connectivity": "Functional Connectivity (Nilearn)",
+  "alff-falff": "ALFF / fALFF Analysis (NumPy/SciPy)",
 };
 
 const FUNCTIONAL_CONNECTIVITY_ATLASES: Record<string, { label: string; rois: number; networks?: number }> = {
@@ -286,6 +287,15 @@ const PROSE_TEMPLATES: Record<
       (n !== NOT_RECORDED ? ` (${n} ROIs)` : "") +
       `.`
     );
+  },
+  "alff-falff": (run) => {
+    const low = run.params?.["low-frequency"] ?? NOT_RECORDED;
+    const high = run.params?.["high-frequency"] ?? NOT_RECORDED;
+    const tr = run.params?.tr ?? NOT_RECORDED;
+    const confounds = run.params?.["confound-strategy"] ?? "none";
+    const detrend = run.params?.detrend === false ? "without detrending" : "after linear detrending";
+    const normalization = run.params?.normalization ?? "none";
+    return `Voxelwise amplitude of low-frequency fluctuations (ALFF) and fractional ALFF (fALFF) were computed from fMRIPrep-preprocessed 4D BOLD data using a native NumPy/SciPy FFT workflow executed ${executionDescription(run)}${runtimeDescription(run)}. The repetition time was ${tr} s and the inclusive low-frequency band was ${low}–${high} Hz. Nuisance regression used the ${confounds} strategy, ${detrend}. Raw ALFF was defined as summed FFT amplitude within the selected band; fALFF was the ratio of that amplitude to summed amplitude across all positive measurable frequencies through Nyquist, excluding DC. Within-mask output normalization was ${normalization}. Zang et al. (2007) and Zou et al. (2008) describe the ALFF and fALFF methods, respectively. No inferential statistics or clinical interpretation were applied.`;
   },
   "seed-based-connectivity": (run) => {
     const atlasId = String(run.params?.["atlas-name"] ?? run.params?.atlas ?? "schaefer100_7");

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { cancelRun, fetchRunFile, fetchRunTextFile, retryRun, rerunRun } from "../../api/client";
 import { useRunFile, useRunResults, useRuns } from "../../hooks/useRuns";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
+import NiivuePanel from "./NiivuePanel";
 import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
 import { detectRunFamily, findCompatibleConnectivityRun, findVerifiedSibling } from "../../lib/comparisonEligibility";
@@ -273,6 +274,32 @@ interface ConnectivityMetadata {
   correlation_max?: number;
   correlation_mean?: number;
   roi_labels?: string[];
+}
+
+interface AlffMetadata {
+  tr: number; number_of_timepoints: number; nyquist_frequency: number;
+  frequency_band: [number, number]; confound_strategy: string; mask_voxel_count: number;
+  normalization: string; detrending: string; alff_statistics: Record<string, number>;
+  falff_statistics: Record<string, number>; warnings: string[];
+}
+
+function AlffFalffPanel({ runId, niftis, images }: { runId: number; niftis: RunResultFile[]; images: RunResultFile[] }) {
+  const { data: metadata, error } = useRunFile<AlffMetadata>(runId, "alff_falff_metadata.json");
+  const alff = niftis.find((f) => f.path.endsWith("alff_map.nii.gz") && !f.path.includes("falff"));
+  const falff = niftis.find((f) => f.path.endsWith("falff_map.nii.gz"));
+  if (error) return <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">Could not load ALFF/fALFF metadata.</div>;
+  if (!metadata) return <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-500">Loading ALFF/fALFF results…</div>;
+  const cards = [["TR", `${metadata.tr} s`], ["Timepoints", metadata.number_of_timepoints], ["Band", `${metadata.frequency_band[0]}–${metadata.frequency_band[1]} Hz`], ["Nyquist", `${metadata.nyquist_frequency} Hz`], ["Confounds", metadata.confound_strategy], ["Mask voxels", metadata.mask_voxel_count]];
+  return <div className="space-y-4">
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <h3 className="mb-3 text-sm font-semibold text-gray-800">ALFF / fALFF Summary</h3>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-6">{cards.map(([k,v]) => <div key={String(k)} className="rounded bg-gray-50 p-2"><div className="text-xs text-gray-500">{k}</div><div className="font-mono text-sm text-gray-900">{v}</div></div>)}</div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">{([['ALFF',metadata.alff_statistics],['fALFF',metadata.falff_statistics]] as const).map(([label,s]) => <div key={label} className="rounded border border-gray-100 p-3"><div className="text-xs font-semibold text-gray-700">{label} statistics</div><div className="mt-1 font-mono text-xs text-gray-600">mean {s.mean.toPrecision(5)} · median {s.median.toPrecision(5)} · std {s.std.toPrecision(5)} · range {s.min.toPrecision(4)}–{s.max.toPrecision(4)}</div></div>)}</div>
+      {metadata.warnings.length > 0 && <ul className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">{metadata.warnings.map(w=><li key={w}>{w}</li>)}</ul>}
+    </div>
+    <div className="grid gap-4 lg:grid-cols-2">{alff && <div className="h-[420px] overflow-hidden rounded border border-gray-700"><NiivuePanel label="ALFF map" layers={[{url:`/api/runs/${runId}/files/${alff.path}`,name:"ALFF",colormap:"warm"}]}/></div>} {falff && <div className="h-[420px] overflow-hidden rounded border border-gray-700"><NiivuePanel label="fALFF map" layers={[{url:`/api/runs/${runId}/files/${falff.path}`,name:"fALFF",colormap:"warm"}]}/></div>}</div>
+    <div className="grid gap-3 md:grid-cols-3">{images.filter(i=>/alff_histogram|falff_histogram|spectral_summary/.test(i.path)).map(i=><a key={i.path} href={`/api/runs/${runId}/files/${i.path}`} target="_blank" rel="noreferrer"><img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-gray-200"/></a>)}</div>
+  </div>;
 }
 
 function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][] }) {
@@ -2277,6 +2304,8 @@ export default function RunResults({ runId }: Props) {
 
       {results.metadata?.pipeline_id === "statistical-map-explorer" ? (
         <StatisticalMapPanel runId={runId} files={clusterFiles} />
+      ) : results.metadata?.pipeline_id === "alff-falff" ? (
+        <AlffFalffPanel runId={runId} niftis={niftis} images={images} />
       ) : results.metadata?.pipeline_id === "connectome-graph-analysis" && graphAnalysis.length > 0 ? (
         <GraphAnalysisPanel runId={runId} files={graphAnalysis} />
       ) : results.metadata?.pipeline_id === "atlas-roi-extraction" && roiExtraction.length > 0 ? (

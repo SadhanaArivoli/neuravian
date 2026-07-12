@@ -1,0 +1,50 @@
+id: alff-falff
+display_name: ALFF / fALFF Analysis
+description: Native voxelwise amplitude and fractional amplitude of low-frequency fluctuations from fMRIPrep BOLD derivatives.
+homepage: https://pubmed.ncbi.nlm.nih.gov/18501969/
+category: connectivity
+input_type: bids_dataset
+execution: {type: native, command: neuroforge-alff-falff}
+dataset_positional: false
+compute_profile: local-ok
+inputs: [fmriprep_derivatives]
+outputs: [alff_map_nii, falff_map_nii, alff_histogram_png, falff_histogram_png, alff_spectral_summary_png, alff_falff_metadata_json, alff_falff_report_html]
+parameters:
+  - {name: fmriprep-dir, type: directory_path, required: true, help: "Imported fMRIPrep derivatives containing 4D desc-preproc_bold data."}
+  - {name: output-dir, type: directory_path, required: false, default: "{output_dir}", advanced: true, help: "Output directory."}
+  - {name: low-frequency, type: float, required: true, default: 0.01, help: "Inclusive lower frequency in Hz."}
+  - {name: high-frequency, type: float, required: true, default: 0.08, help: "Inclusive upper frequency in Hz; cannot exceed Nyquist."}
+  - {name: tr, type: float, required: false, advanced: true, help: "Explicit repetition time in seconds; otherwise read safely from metadata/header."}
+  - name: confound-strategy
+    type: select
+    required: true
+    default: none
+    options: [none, motion6, motion6_wm_csf, motion6_wm_csf_global]
+    help: "Exact nuisance-regressor strategy. Missing requested columns cause a clear failure."
+  - {name: detrend, type: boolean, required: false, default: true, help: "Remove a linear trend before FFT."}
+  - name: normalization
+    type: select
+    required: true
+    default: none
+    options: [none, mean, zscore]
+    help: "Optional within-mask normalization for additional ALFF and fALFF maps."
+  - {name: subject-label, type: string, required: false, advanced: true, help: "Optional subject entity without sub-."}
+  - {name: task-label, type: string, required: false, advanced: true, help: "Optional task entity without task-."}
+  - {name: run-label, type: string, required: false, advanced: true, help: "Optional run entity without run-."}
+  - {name: source-run-id, type: integer, required: false, advanced: true, help: "Source import run ID for provenance."}
+accepts:
+  - {type: fmriprep_derivatives, param: fmriprep-dir, label: "fMRIPrep Derivatives", description: "Legitimate preprocessed BOLD derivatives.", required: true}
+produces:
+  - {type: alff_map_nii, path_hint: alff_map.nii.gz, label: "Raw ALFF Map", description: "Voxelwise raw ALFF amplitude map"}
+  - {type: falff_map_nii, path_hint: falff_map.nii.gz, label: "Raw fALFF Map", description: "Voxelwise raw fractional ALFF map"}
+  - {type: alff_normalized_map_nii, path_hint: alff_normalized_map.nii.gz, label: "Normalized ALFF Map", description: "Optional within-mask normalized ALFF map"}
+  - {type: falff_normalized_map_nii, path_hint: falff_normalized_map.nii.gz, label: "Normalized fALFF Map", description: "Optional within-mask normalized fALFF map"}
+  - {type: alff_histogram_png, path_hint: alff_histogram.png, label: "ALFF Histogram", description: "Masked ALFF distribution"}
+  - {type: falff_histogram_png, path_hint: falff_histogram.png, label: "fALFF Histogram", description: "Masked fALFF distribution"}
+  - {type: alff_spectral_summary_png, path_hint: spectral_summary.png, label: "Spectral Summary", description: "Mean amplitude spectrum and selected band"}
+  - {type: alff_falff_metadata_json, path_hint: alff_falff_metadata.json, label: "ALFF / fALFF Metadata", description: "Scientific decisions, inputs, statistics, versions, and warnings"}
+  - {type: alff_falff_report_html, path_hint: alff_falff_report.html, label: "ALFF / fALFF Report", description: "Self-contained descriptive analysis report"}
+known_errors:
+  - {pattern: "not 4D|at least .* required|empty|constant", explanation: "The selected input is not a scientifically usable 4D BOLD run.", fix_hint: "Select an fMRIPrep desc-preproc_bold run with a valid brain mask and sufficient nonconstant timepoints."}
+  - {pattern: "Nyquist|Frequency|frequency|TR", explanation: "TR or the requested spectral band is invalid.", fix_hint: "Confirm TR and choose 0 <= low < high <= 1/(2*TR)."}
+  - {pattern: "Missing required confound", explanation: "The selected fMRIPrep confounds file lacks one or more requested regressors.", fix_hint: "Choose a strategy whose exact columns are available; NeuroForge will not silently substitute regressors."}

@@ -49,6 +49,15 @@ const TYPE_ICON: Record<string, string> = {
   cluster_overlay_png: "CL",
   cluster_report_html: "CL",
   cluster_metadata_json: "CL",
+  alff_map_nii: "AL",
+  falff_map_nii: "FA",
+  alff_normalized_map_nii: "AL",
+  falff_normalized_map_nii: "FA",
+  alff_histogram_png: "AL",
+  falff_histogram_png: "FA",
+  alff_spectral_summary_png: "SP",
+  alff_falff_metadata_json: "MD",
+  alff_falff_report_html: "RP",
 };
 
 function typeIcon(type: string) {

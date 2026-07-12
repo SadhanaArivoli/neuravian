@@ -21,8 +21,21 @@ compute_profile: local-ok
 
 inputs:
   - seed_connectivity_map_nii
+  - alff_map_nii
+  - falff_map_nii
+  - alff_normalized_map_nii
+  - falff_normalized_map_nii
   - statistical_map_thresholded
   - nifti_raw
+
+accepts:
+  - {type: seed_connectivity_map_nii, param: input-file, label: "Seed Connectivity Map", description: "Explore a voxelwise connectivity map"}
+  - {type: alff_map_nii, param: input-file, label: "ALFF Map", description: "Explore a voxelwise raw ALFF map"}
+  - {type: falff_map_nii, param: input-file, label: "fALFF Map", description: "Explore a voxelwise raw fALFF map"}
+  - {type: alff_normalized_map_nii, param: input-file, label: "Normalized ALFF Map", description: "Explore a normalized ALFF map"}
+  - {type: falff_normalized_map_nii, param: input-file, label: "Normalized fALFF Map", description: "Explore a normalized fALFF map"}
+  - {type: statistical_map_thresholded, param: input-file, label: "Thresholded Statistical Map", description: "Re-explore a prior thresholded map"}
+  - {type: nifti_raw, param: input-file, label: "Raw NIfTI", description: "Explore a compatible scalar NIfTI"}
 
 outputs:
   - statistical_map_thresholded
