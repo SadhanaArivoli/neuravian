@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir brainchop==0.2.5
 
 # Install Playwright and its Chromium browser for PDF export.
 # --with-deps installs the OS libraries Chromium requires (runs apt internally).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN playwright install --with-deps chromium
 
 COPY . .
