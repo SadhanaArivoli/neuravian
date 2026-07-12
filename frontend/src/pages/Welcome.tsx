@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { usePipelines } from "../hooks/usePipelines";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 // Inline SVG — no icon library dependency.
@@ -237,8 +238,8 @@ const WHY_CARDS = [
   },
   {
     icon: <IconLayers />,
-    title: "Seven tools, one interface",
-    body: "Switch between conversion, QC, segmentation, and preprocessing without changing tools or learning new CLIs.",
+    title: "Many tools, one interface",
+    body: "Switch between conversion, QC, segmentation, connectivity, and more without changing tools or learning new CLIs.",
   },
   {
     icon: <IconCheck />,
@@ -260,6 +261,14 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Welcome() {
+  const { data: pipelines, isLoading: pipelinesLoading, isError: pipelinesError } = usePipelines();
+
+  const pipelineCountLabel = pipelinesLoading
+    ? "Loading…"
+    : pipelinesError || !pipelines
+      ? "Pipeline registry unavailable"
+      : `${pipelines.length} pipelines`;
+
   return (
     <div className="min-h-full">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
@@ -294,7 +303,7 @@ export default function Welcome() {
             </Link>
           </div>
           <div className="mt-6 sm:mt-8 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600 font-mono">
-            <span>12 pipelines</span>
+            <span>{pipelineCountLabel}</span>
             <span className="text-gray-700">·</span>
             <span>3 compute profiles</span>
             <span className="text-gray-700">·</span>
