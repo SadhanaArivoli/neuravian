@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { BarChart2, FileText, FileCode, Archive } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   generateReport,
@@ -50,12 +51,12 @@ function StatusBadge({ status }: { status: ReportSummary["status"] }) {
 // ── Download buttons ──────────────────────────────────────────────────────────
 
 function DownloadButtons({ datasetId, reportId, hasPdf }: { datasetId: number; reportId: number; hasPdf: boolean }) {
-  const formats: { fmt: "html" | "md" | "json" | "zip" | "pdf"; label: string; icon: string; available?: boolean }[] = [
-    { fmt: "html", label: "HTML", icon: "📄" },
-    { fmt: "pdf", label: "PDF", icon: "🖨", available: hasPdf },
-    { fmt: "md", label: "Markdown", icon: "📝" },
-    { fmt: "json", label: "JSON", icon: "🗂" },
-    { fmt: "zip", label: "Supplement ZIP", icon: "🗜" },
+  const formats: { fmt: "html" | "md" | "json" | "zip" | "pdf"; label: string; icon: React.ReactNode; available?: boolean }[] = [
+    { fmt: "html", label: "HTML", icon: <FileCode className="h-3.5 w-3.5" /> },
+    { fmt: "pdf", label: "PDF", icon: <FileText className="h-3.5 w-3.5" />, available: hasPdf },
+    { fmt: "md", label: "Markdown", icon: <FileText className="h-3.5 w-3.5" /> },
+    { fmt: "json", label: "JSON", icon: <FileCode className="h-3.5 w-3.5" /> },
+    { fmt: "zip", label: "Supplement ZIP", icon: <Archive className="h-3.5 w-3.5" /> },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -66,7 +67,7 @@ function DownloadButtons({ datasetId, reportId, hasPdf }: { datasetId: number; r
           download
           className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-white/25 hover:text-white transition-colors"
         >
-          <span>{icon}</span> {label}
+          {icon} {label}
         </a>
       ))}
     </div>
@@ -342,7 +343,7 @@ export default function ReportStudio() {
 
       {visible.length === 0 && !isGenerating ? (
         <div className="rounded-lg border border-dashed border-white/10 p-10 text-center">
-          <p className="text-3xl mb-3">📊</p>
+          <BarChart2 className="mx-auto mb-3 h-8 w-8 text-gray-600" />
           <p className="text-sm font-medium text-gray-300">
             {reports.length === 0 ? "No reports yet" : `No ${filter} reports`}
           </p>

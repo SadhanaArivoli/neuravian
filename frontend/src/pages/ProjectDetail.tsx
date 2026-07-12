@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  FolderOpen,
+  Play,
+  CheckCircle,
+  XCircle,
+  BarChart2,
+  FileText,
+  Circle,
+} from "lucide-react";
+import {
   useAssignDataset,
   useCreateNote,
   useDeleteNote,
@@ -46,13 +55,13 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
-const EVENT_ICON: Record<string, string> = {
-  dataset_imported: "📂",
-  run_started: "▶️",
-  run_finished: "✅",
-  run_failed: "❌",
-  report_generated: "📊",
-  note_created: "📝",
+const EVENT_ICON: Record<string, React.ReactNode> = {
+  dataset_imported: <FolderOpen className="h-3.5 w-3.5 text-blue-400" />,
+  run_started: <Play className="h-3.5 w-3.5 text-gray-400" />,
+  run_finished: <CheckCircle className="h-3.5 w-3.5 text-green-400" />,
+  run_failed: <XCircle className="h-3.5 w-3.5 text-red-400" />,
+  report_generated: <BarChart2 className="h-3.5 w-3.5 text-purple-400" />,
+  note_created: <FileText className="h-3.5 w-3.5 text-amber-400" />,
 };
 
 function Timeline({ projectId }: { projectId: number }) {
@@ -63,7 +72,7 @@ function Timeline({ projectId }: { projectId: number }) {
     <ol className="space-y-2">
       {events.map((ev, i) => (
         <li key={i} className="flex gap-3 items-start text-xs">
-          <span className="text-base leading-none mt-0.5">{EVENT_ICON[ev.event_type] ?? "•"}</span>
+          <span className="mt-0.5 shrink-0">{EVENT_ICON[ev.event_type] ?? <Circle className="h-3.5 w-3.5 text-gray-600" />}</span>
           <div className="flex-1 min-w-0">
             <p className="text-gray-300 leading-snug">{ev.label}</p>
             {ev.details && Object.keys(ev.details).length > 0 && <p className="text-gray-600 mt-0.5 truncate">{JSON.stringify(ev.details)}</p>}
@@ -273,8 +282,10 @@ function PublicationTab({ projectId }: { projectId: number }) {
         </div>
         {(pub?.checklist ?? []).map(item => (
           <div key={item.key} className="flex items-start gap-3">
-            <span className={`mt-0.5 text-sm ${item.done ? "text-green-400" : "text-gray-600"}`}>
-              {item.done ? "✓" : "○"}
+            <span className="mt-0.5 shrink-0">
+              {item.done
+                ? <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                : <Circle className="h-3.5 w-3.5 text-gray-600" />}
             </span>
             <div>
               <p className={`text-xs ${item.done ? "text-gray-300" : "text-gray-500"}`}>{item.label}</p>

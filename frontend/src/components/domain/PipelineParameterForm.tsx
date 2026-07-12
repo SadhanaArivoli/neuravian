@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { CornerDownLeft, ArrowUp } from "lucide-react";
 import type { ComputeProfile, Pipeline, PipelineParameter, PrefillContext } from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
 import { useRemoteHosts } from "../../hooks/useRemoteHosts";
@@ -304,7 +305,7 @@ function ParameterRow({
       <ParameterField param={param} value={value} onChange={onChange} />
       {prefillText && (
         <p className={`mt-1 text-xs ${prefillOverridden ? "text-amber-600" : "text-purple-500"}`}>
-          {prefillOverridden ? "↩ Overridden — was: " : "↑ "}
+          {prefillOverridden ? <><CornerDownLeft className="mr-1 inline h-3 w-3" />Overridden — was: </> : <ArrowUp className="mr-1 inline h-3 w-3" />}
           {prefillText}
           {prefillOverridden && ""}
         </p>

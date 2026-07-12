@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import RunProvenance from "../components/domain/RunProvenance";
 import RunResults from "../components/domain/RunResults";
 import { useRun } from "../hooks/useRuns";
@@ -204,7 +205,7 @@ export default function RunDetail() {
               key={i}
               className="rounded border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300"
             >
-              ⚠ {w.message}
+              <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />{w.message}
             </div>
           ))}
         </div>
@@ -221,7 +222,7 @@ export default function RunDetail() {
         const staleMinutes = Math.floor(progressAgeMs / 60000);
         return staleMinutes >= 30 ? (
           <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
-            ⚠ No progress update in {staleMinutes} minutes — pipeline may be stalled.
+            <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />No progress update in {staleMinutes} minutes — pipeline may be stalled.
             Check the log below for recent output.
           </div>
         ) : null;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FlaskConical } from "lucide-react";
 import {
   useCreateProject,
   useDeleteProject,
@@ -255,7 +256,7 @@ export default function Projects() {
 
       {!isLoading && !error && (projects ?? []).length === 0 && (
         <div className="rounded-xl border border-white/8 bg-surface-raised px-8 py-16 text-center">
-          <p className="text-4xl mb-4">🔬</p>
+          <FlaskConical className="mx-auto mb-4 h-10 w-10 text-gray-600" />
           <h2 className="text-lg font-semibold text-gray-200 mb-2">No research projects yet</h2>
           <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
             Create a project to organize your datasets, analyses, notes, and manuscript drafts in one place.

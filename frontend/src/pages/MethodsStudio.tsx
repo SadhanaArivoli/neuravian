@@ -19,6 +19,7 @@ import type { RunMetadata, Dataset } from "../api/client";
 import { fetchRunResults } from "../api/client";
 import { useDataset } from "../hooks/useDatasets";
 import { useRuns } from "../hooks/useRuns";
+import { AlertTriangle, Info } from "lucide-react";
 import {
   buildSoftwareTable,
   buildParamAppendix,
@@ -172,7 +173,7 @@ function Concern({
           : "border-blue-800/40 bg-blue-900/15 text-blue-200"
       }`}
     >
-      <span className="mt-px shrink-0">{level === "warning" ? "⚠" : "ℹ"}</span>
+      <span className="mt-px shrink-0">{level === "warning" ? <AlertTriangle className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}</span>
       <span>{message}</span>
     </div>
   );

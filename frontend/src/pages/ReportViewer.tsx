@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { Download, FileCode, FileText, Printer, Archive } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getReport, reportDownloadUrl, reportViewUrl, type ReportSummary } from "../api/client";
 
@@ -12,7 +13,7 @@ function DownloadButton({
 }: {
   href: string;
   label: string;
-  icon: string;
+  icon?: React.ReactNode;
 }) {
   return (
     <a
@@ -20,7 +21,7 @@ function DownloadButton({
       download
       className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-white/25 hover:text-white transition-colors"
     >
-      <span>{icon}</span> {label}
+      {icon ?? <Download className="h-3.5 w-3.5" />} {label}
     </a>
   );
 }
@@ -64,13 +65,13 @@ function OverviewTab({ report, datasetId }: { report: ReportSummary; datasetId: 
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Downloads</h3>
         <div className="flex flex-wrap gap-2">
-          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "html")} label="HTML" icon="📄" />
+          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "html")} label="HTML" icon={<FileCode className="h-3.5 w-3.5" />} />
           {report.pdf_path && (
-            <DownloadButton href={reportDownloadUrl(datasetId, report.id, "pdf")} label="PDF" icon="🖨" />
+            <DownloadButton href={reportDownloadUrl(datasetId, report.id, "pdf")} label="PDF" icon={<Printer className="h-3.5 w-3.5" />} />
           )}
-          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "md")} label="Markdown" icon="📝" />
-          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "json")} label="JSON" icon="🗂" />
-          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "zip")} label="Supplement ZIP" icon="🗜" />
+          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "md")} label="Markdown" icon={<FileText className="h-3.5 w-3.5" />} />
+          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "json")} label="JSON" icon={<FileCode className="h-3.5 w-3.5" />} />
+          <DownloadButton href={reportDownloadUrl(datasetId, report.id, "zip")} label="Supplement ZIP" icon={<Archive className="h-3.5 w-3.5" />} />
           <PrintButton />
         </div>
         {!report.pdf_path && (
@@ -132,7 +133,7 @@ function RawTextTab({
     <div className="py-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-gray-500">{label}</p>
-        <DownloadButton href={url} label={`Download ${fmt.toUpperCase()}`} icon="⬇" />
+        <DownloadButton href={url} label={`Download ${fmt.toUpperCase()}`} />
       </div>
       {text === null ? (
         <p className="text-sm text-gray-500 animate-pulse">Loading…</p>

@@ -1,3 +1,4 @@
+import { CheckCircle, AlertTriangle, XCircle, Loader2, Clock } from "lucide-react";
 import type { ValidationIssue, ValidationIssues } from "../../api/client";
 
 const STATUS_STYLES = {
@@ -9,14 +10,14 @@ const STATUS_STYLES = {
   pending: "bg-gray-800 border-gray-600 text-gray-400",
 } as const;
 
-const STATUS_LABELS = {
-  valid: "✓ Valid BIDS dataset",
-  warning: "⚠ Valid with warnings",
-  invalid: "✗ Validation errors found",
-  error: "✗ Could not validate",
-  indexing: "… Indexing",
-  pending: "Pending",
-} as const;
+const STATUS_META: Record<string, { label: string; icon: React.ReactNode }> = {
+  valid:    { label: "Valid BIDS dataset",      icon: <CheckCircle className="h-4 w-4" /> },
+  warning:  { label: "Valid with warnings",     icon: <AlertTriangle className="h-4 w-4" /> },
+  invalid:  { label: "Validation errors found", icon: <XCircle className="h-4 w-4" /> },
+  error:    { label: "Could not validate",      icon: <XCircle className="h-4 w-4" /> },
+  indexing: { label: "Indexing…",               icon: <Loader2 className="h-4 w-4 animate-spin" /> },
+  pending:  { label: "Pending",                 icon: <Clock className="h-4 w-4" /> },
+};
 
 interface StatusBannerProps {
   status: string;
@@ -24,10 +25,10 @@ interface StatusBannerProps {
 
 export function ValidationStatusBanner({ status }: StatusBannerProps) {
   const style = STATUS_STYLES[status as keyof typeof STATUS_STYLES] ?? STATUS_STYLES.pending;
-  const label = STATUS_LABELS[status as keyof typeof STATUS_LABELS] ?? status;
+  const { label, icon } = STATUS_META[status] ?? { label: status, icon: null };
   return (
-    <div className={`rounded-md border px-4 py-2 text-sm font-medium ${style}`}>
-      {label}
+    <div className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium ${style}`}>
+      {icon}{label}
     </div>
   );
 }

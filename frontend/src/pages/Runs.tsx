@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BarChart2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelRun, deleteRun, fetchQueue, retryRun, rerunRun } from "../api/client";
 import type { RunSummary, RunStatus } from "../api/client";
@@ -340,7 +341,7 @@ export default function Runs() {
               to={`/datasets/${runs[0].dataset_id}/reports`}
               className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
             >
-              📊 Dataset Report
+              <BarChart2 className="mr-1.5 inline h-3.5 w-3.5" />Dataset Report
             </Link>
           )}
           <Link

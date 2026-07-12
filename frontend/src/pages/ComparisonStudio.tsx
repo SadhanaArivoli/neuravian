@@ -51,6 +51,7 @@ import {
   type RoiStatisticsComparison,
 } from "../lib/roiStatistics";
 import { parseNiftiHeader, DATATYPE_LABELS, differenceNiftiBlobUrl, loadFloat32Nifti } from "../lib/niftiHeader";
+import { AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -396,7 +397,7 @@ function GeometryTable({ geomState, labelA, labelB }: {
       </div>
       {!compatible && (
         <p className="mt-2 text-xs text-amber-400">
-          ⚠ Voxel-wise Difference and Dice are disabled — masks must share the same dimensions and voxel spacing.
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />Voxel-wise Difference and Dice are disabled — masks must share the same dimensions and voxel spacing.
         </p>
       )}
     </div>
@@ -631,7 +632,7 @@ function ConnectivityComparisonPanel({
       {/* Cross-subject warning */}
       {compat?.mode === "cross-subject" && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">
-          ⚠ Cross-subject comparison: these matrices are from different source BOLD files.
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />Cross-subject comparison: these matrices are from different source BOLD files.
           Connectivity values reflect different subjects/sessions. Differences may reflect
           biology, not pipeline variation.
         </div>
@@ -893,7 +894,7 @@ function SeedConnectivityComparisonPanel({
 
       {metaA && metaB && !compatible && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">
-          ⚠ Incompatible runs:{" "}
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />Incompatible runs:{" "}
           {!sameAtlas && `different atlases (${metaA.atlas_id ?? "?"} vs ${metaB.atlas_id ?? "?"})`}
           {!sameAtlas && !sameSeed && " · "}
           {!sameSeed && `different seed ROIs (#${metaA.seed_roi_index ?? "?"} vs #${metaB.seed_roi_index ?? "?"})`}.{" "}
@@ -1057,7 +1058,7 @@ function GroupFCComparisonPanel({
             </span>
           ) : (
             <span className="rounded-full bg-red-500/10 border border-red-500/20 px-2 py-0.5 text-red-300 font-medium">
-              ⚠ Incompatible:{" "}
+              <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />Incompatible:{" "}
               {!sameAtlas && `different atlases (${summaryA.atlas_id ?? "?"} vs ${summaryB.atlas_id ?? "?"})`}
               {!sameAtlas && !sameRoiCount && " · "}
               {!sameRoiCount && `different ROI counts (${summaryA.n_rois ?? "?"} vs ${summaryB.n_rois ?? "?"})`}
@@ -2585,7 +2586,11 @@ export default function ComparisonStudio() {
               : "bg-red-500/10 border border-red-500/20 text-red-300"
           }`}>
             <span className="shrink-0 mt-0.5">
-              {eligibility.tier === "verified" ? "✓" : eligibility.tier === "unverified" ? "⚠" : "✗"}
+              {eligibility.tier === "verified"
+                ? <CheckCircle className="h-3.5 w-3.5" />
+                : eligibility.tier === "unverified"
+                ? <AlertTriangle className="h-3.5 w-3.5" />
+                : <XCircle className="h-3.5 w-3.5" />}
             </span>
             <span>{eligibility.reason}</span>
           </div>
@@ -2612,7 +2617,7 @@ export default function ComparisonStudio() {
         {/* Mixed-family warning */}
         {bothSelected && bothLoaded && comparisonFamily === "mixed" && (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-4 text-sm text-amber-300 max-w-xl">
-            ⚠ These runs produce different artifact families (one anatomical, one connectivity).
+            <AlertTriangle className="mr-1.5 inline h-4 w-4" />These runs produce different artifact families (one anatomical, one connectivity).
             Select two runs from the same family to compare.
           </div>
         )}

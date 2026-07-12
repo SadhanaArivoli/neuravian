@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GitBranch } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { DatasetArtifact } from "../api/client";
 import NiivueViewer from "../components/domain/NiivueViewer";
@@ -446,7 +447,7 @@ function ArtifactRow({
           className="rounded px-2 py-1 text-xs text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-200 transition-colors"
           title="Lineage"
         >
-          ⬆
+          <GitBranch className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
