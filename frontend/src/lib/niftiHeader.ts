@@ -74,6 +74,28 @@ async function readFirstBytes(url: string, n: number): Promise<Uint8Array> {
   return out;
 }
 
+export async function loadFloat32Nifti(url: string): Promise<{ header: NiftiHeader; values: Float32Array; bytes: Uint8Array }> {
+  const resp = await fetch(url);
+  if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status} fetching ${url}`);
+  let stream: ReadableStream<Uint8Array> = resp.body;
+  if (url.endsWith(".gz")) stream = stream.pipeThrough(new DecompressionStream("gzip") as never);
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getInt32(0, true) !== 348) throw new Error("Not a valid little-endian NIfTI-1 file");
+  const header: NiftiHeader = { dims:[dv.getInt16(42,true),dv.getInt16(44,true),dv.getInt16(46,true)], pixdim:[dv.getFloat32(80,true),dv.getFloat32(84,true),dv.getFloat32(88,true)], datatype:dv.getInt16(70,true), bitpix:dv.getInt16(72,true), qformCode:dv.getInt16(252,true), sformCode:dv.getInt16(254,true), voxOffset:dv.getFloat32(108,true) };
+  if (header.datatype !== 16) throw new Error(`ALFF comparison requires float32 NIfTI maps; found datatype ${header.datatype}`);
+  const n = header.dims[0]*header.dims[1]*header.dims[2];
+  const start = Math.floor(header.voxOffset);
+  return { header, values: new Float32Array(bytes.buffer.slice(bytes.byteOffset+start, bytes.byteOffset+start+n*4)), bytes };
+}
+
+export function differenceNiftiBlobUrl(source: Uint8Array, voxOffset: number, difference: Float32Array): string {
+  const bytes = source.slice();
+  const start = Math.floor(voxOffset);
+  new Uint8Array(bytes.buffer, start, difference.byteLength).set(new Uint8Array(difference.buffer));
+  return URL.createObjectURL(new Blob([bytes], {type:"application/octet-stream"}));
+}
+
 /**
  * Parse the NIfTI-1 header from a URL.
  * Works with both `.nii` and `.nii.gz` files.

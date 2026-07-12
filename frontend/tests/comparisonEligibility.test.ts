@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyEligibility,
+  checkAlffCompatibility,
+  computeMapDifferenceStats,
   computeDice,
   detectComparisonFamily,
   findCompatibleConnectivityRun,
@@ -52,6 +54,16 @@ describe("classifyEligibility — verified siblings (shared source_run_id)", () 
     const result = classifyEligibility(run40, hypoChop);
     expect(result.tier).toBe("verified");
   });
+});
+
+describe("ALFF/fALFF comparison", () => {
+  const base = {tr:2,frequency_band:[0.01,0.08] as [number,number],confound_strategy:"motion6",normalization:"none",detrending:"linear",mask_voxel_count:3};
+  it("detects the dedicated artifact family",()=>expect(detectComparisonFamily(["alff_map_nii"],["falff_map_nii"])).toBe("alff_falff"));
+  it("accepts identical scientific settings",()=>expect(checkAlffCompatibility(base,{...base}).compatible).toBe(true));
+  it("rejects frequency band mismatch",()=>expect(checkAlffCompatibility(base,{...base,frequency_band:[0.01,0.1]}).differences).toContain("frequency band"));
+  it("rejects normalization mismatch",()=>expect(checkAlffCompatibility(base,{...base,normalization:"zscore"}).differences).toContain("normalization"));
+  it("rejects confound mismatch",()=>expect(checkAlffCompatibility(base,{...base,confound_strategy:"none"}).differences).toContain("confound strategy"));
+  it("computes descriptive voxel metrics",()=>{const s=computeMapDifferenceStats(new Float32Array([1,2,3]),new Float32Array([2,2,4]));expect(s.correlation).toBeCloseTo(.8660254);expect(s.meanAbsoluteDifference).toBeCloseTo(2/3);expect(s.rmse).toBeCloseTo(Math.sqrt(2/3));expect(s.maximumAbsoluteDifference).toBe(1)});
 });
 
 describe("classifyEligibility — verified parent-child", () => {

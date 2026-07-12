@@ -160,7 +160,7 @@ export function computeDice(
 
 // ── Comparison family detection ────────────────────────────────────────────────
 
-export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "mixed" | "none";
+export type ComparisonFamily = "anatomical" | "connectivity" | "group_connectivity" | "alff_falff" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "mixed" | "none";
 
 const ANATOMICAL_TYPES = new Set(["brain_mask", "skull_stripped_t1", "nifti_raw"]);
 
@@ -184,6 +184,9 @@ function hasGraphAnalysis(types: string[]): boolean {
 }
 function hasAnatomical(types: string[]): boolean {
   return types.some((t) => ANATOMICAL_TYPES.has(t));
+}
+function hasAlffFalff(types: string[]): boolean {
+  return types.some((t) => ["alff_map_nii", "falff_map_nii", "alff_normalized_map_nii", "falff_normalized_map_nii"].includes(t));
 }
 
 /**
@@ -209,6 +212,10 @@ export function detectComparisonFamily(
   const graphB = hasGraphAnalysis(producedTypesB);
   const anatA = hasAnatomical(producedTypesA);
   const anatB = hasAnatomical(producedTypesB);
+  const alffA = hasAlffFalff(producedTypesA);
+  const alffB = hasAlffFalff(producedTypesB);
+  if (alffA && alffB) return "alff_falff";
+  if (alffA || alffB) return "mixed";
   // graph_analysis pairs with itself only
   if (graphA && graphB) return "graph_analysis";
   if (graphA || graphB) return "mixed";
@@ -235,7 +242,8 @@ export function detectComparisonFamily(
  */
 export function detectRunFamily(
   producedTypes: string[],
-): "connectivity" | "seed_connectivity" | "group_connectivity" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "anatomical" | "other" {
+): "connectivity" | "seed_connectivity" | "group_connectivity" | "alff_falff" | "nifti_inspector" | "roi_extraction" | "graph_analysis" | "anatomical" | "other" {
+  if (hasAlffFalff(producedTypes)) return "alff_falff";
   if (hasGraphAnalysis(producedTypes)) return "graph_analysis";
   if (hasRoiExtraction(producedTypes)) return "roi_extraction";
   if (hasNiftiInspector(producedTypes)) return "nifti_inspector";
@@ -244,6 +252,45 @@ export function detectRunFamily(
   if (hasConnectivity(producedTypes)) return "connectivity";
   if (hasAnatomical(producedTypes)) return "anatomical";
   return "other";
+}
+
+export interface AlffCompatibilityMetadata {
+  tr: number;
+  frequency_band: [number, number];
+  confound_strategy: string;
+  normalization: string;
+  detrending: string;
+  mask_voxel_count: number;
+}
+
+export interface AlffCompatibilityResult {
+  compatible: boolean;
+  differences: string[];
+}
+
+export function checkAlffCompatibility(a: AlffCompatibilityMetadata, b: AlffCompatibilityMetadata): AlffCompatibilityResult {
+  const differences: string[] = [];
+  if (Math.abs(a.tr - b.tr) > 1e-9) differences.push("TR");
+  if (Math.abs(a.frequency_band[0] - b.frequency_band[0]) > 1e-9 || Math.abs(a.frequency_band[1] - b.frequency_band[1]) > 1e-9) differences.push("frequency band");
+  if (a.confound_strategy !== b.confound_strategy) differences.push("confound strategy");
+  if (a.normalization !== b.normalization) differences.push("normalization");
+  if (a.detrending !== b.detrending) differences.push("detrending");
+  if (a.mask_voxel_count !== b.mask_voxel_count) differences.push("mask voxel count");
+  return { compatible: differences.length === 0, differences };
+}
+
+export function computeMapDifferenceStats(a: Float32Array, b: Float32Array) {
+  if (a.length !== b.length) throw new Error("Map voxel counts differ");
+  let sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0, abs = 0, sq = 0, max = 0, count = 0;
+  const difference = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) continue;
+    const d = b[i] - a[i]; difference[i] = d; abs += Math.abs(d); sq += d*d; max = Math.max(max, Math.abs(d));
+    sumA += a[i]; sumB += b[i]; sumAA += a[i]*a[i]; sumBB += b[i]*b[i]; sumAB += a[i]*b[i]; count++;
+  }
+  const numerator = count * sumAB - sumA * sumB;
+  const denominator = Math.sqrt((count * sumAA - sumA*sumA) * (count * sumBB - sumB*sumB));
+  return { correlation: denominator > 0 ? numerator / denominator : null, meanAbsoluteDifference: count ? abs/count : 0, rmse: count ? Math.sqrt(sq/count) : 0, maximumAbsoluteDifference: max, voxelCount: count, difference };
 }
 
 /**
