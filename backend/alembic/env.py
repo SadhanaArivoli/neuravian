@@ -14,6 +14,7 @@ from app.core.database import Base  # noqa: E402
 # Import all models so Alembic sees them
 import app.models.dataset  # noqa: F401, E402
 import app.models.pipeline  # noqa: F401, E402
+import app.models.report  # noqa: F401, E402
 import app.models.run  # noqa: F401, E402
 
 config = context.config
