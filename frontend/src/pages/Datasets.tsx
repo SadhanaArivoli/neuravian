@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { Dataset } from "../api/client";
 import { DatasetImportForm } from "../components/domain/DatasetImportForm";
 import { ValidationStatusBanner } from "../components/domain/ValidationResults";
+import { EmptyState } from "../components/primitives/EmptyState";
 import { useDatasets } from "../hooks/useDatasets";
 
 export default function Datasets() {
@@ -57,15 +58,19 @@ export default function Datasets() {
       )}
 
       {datasets && datasets.length === 0 && !showImport && (
-        <div className="rounded-md border border-white/10 bg-surface-raised p-8 text-center">
-          <p className="text-gray-400 text-sm">No datasets yet.</p>
-          <button
-            onClick={() => setShowImport(true)}
-            className="mt-3 text-accent text-sm hover:underline"
-          >
-            Import your first dataset →
-          </button>
-        </div>
+        <EmptyState
+          title="No datasets yet."
+          description="Import a BIDS dataset folder to validate and index it."
+          action={
+            <button
+              onClick={() => setShowImport(true)}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
+            >
+              Import your first dataset
+            </button>
+          }
+          hint="Tip: Click '+ Import dataset' above and enter the full path to your BIDS folder on disk."
+        />
       )}
 
       {datasets && datasets.length > 0 && (

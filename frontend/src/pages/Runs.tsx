@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelRun, deleteRun, fetchQueue, retryRun, rerunRun } from "../api/client";
 import type { RunSummary, RunStatus } from "../api/client";
 import { useRuns } from "../hooks/useRuns";
+import { EmptyState } from "../components/primitives/EmptyState";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -409,16 +410,19 @@ export default function Runs() {
 
       {/* Empty — no runs at all */}
       {!isLoading && !error && runs?.length === 0 && (
-        <div className="rounded-lg border border-white/10 bg-surface-raised px-6 py-10 text-center">
-          <p className="text-sm text-gray-400">No runs yet.</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Go to{" "}
-            <Link to="/pipelines" className="text-accent hover:text-accent-hover underline-offset-2 hover:underline">
-              Pipelines
+        <EmptyState
+          title="No completed runs."
+          description="Go to Pipelines, select a pipeline, and start your first run."
+          action={
+            <Link
+              to="/pipelines"
+              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
+            >
+              Browse Pipelines
             </Link>
-            , select a pipeline, and start your first run.
-          </p>
-        </div>
+          }
+          hint="Tip: Use the Workflow Builder to chain multiple pipelines together before running."
+        />
       )}
 
       {/* Empty — filtered */}
