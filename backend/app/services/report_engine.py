@@ -298,6 +298,9 @@ class ReportData:
     # Warnings
     warnings: list[str]
 
+    # Per-run section data (optional, default empty for backward compat)
+    reho_sections: list[dict[str, Any]] = field(default_factory=list)
+
 
 # ── Data collection ────────────────────────────────────────────────────────────
 
@@ -327,6 +330,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     all_artifacts: list[ArtifactSummary] = []
     figures: list[FigureEmbed] = []
     alff_sections: list[dict[str, Any]] = []
+    reho_sections_list: list[dict[str, Any]] = []
     seen_pipeline_ids: set[str] = set()
 
     for run in runs_orm:
@@ -395,6 +399,15 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
                                         md.setdefault("report_warnings", []).append(str(warning))
                             except Exception as exc:
                                 log.warning("Could not parse ALFF/fALFF metadata for run %d: %s", run.id, exc)
+                    if manifest_id == "regional-homogeneity":
+                        metadata_path = out_path / "reho_metadata.json"
+                        if metadata_path.exists():
+                            try:
+                                md = json.loads(metadata_path.read_text(encoding="utf-8"))
+                                md["run_id"] = run.id
+                                reho_sections_list.append(md)
+                            except Exception as exc:
+                                log.warning("Could not parse ReHo metadata for run %d: %s", run.id, exc)
                     for png in sorted(out_path.glob("*.png"))[:4]:  # max 4 per run
                         try:
                             data = png.read_bytes()
@@ -455,6 +468,8 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
         warnings_list.append(f"{n_failed} run(s) failed. Results from failed runs are excluded from this report.")
     for section in alff_sections:
         warnings_list.extend(f"ALFF/fALFF run {section['run_id']}: {w}" for w in section.get("warnings", []) if w)
+    for section in reho_sections_list:
+        warnings_list.extend(f"ReHo run {section['run_id']}: {w}" for w in section.get("warnings", []) if w)
 
     # ── Version info ──────────────────────────────────────────────────────────
     try:
@@ -497,6 +512,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
         cancelled_runs=status_counts.get("cancelled", 0),
         artifacts=all_artifacts,
         alff_falff_sections=alff_sections,
+        reho_sections=reho_sections_list,
         figures=figures,
         methods_sections=methods_sections,
         software_table=software_table,
@@ -779,6 +795,22 @@ def render_markdown(data: ReportData) -> str:
                 "",
             ]
 
+    if data.reho_sections:
+        lines.append("## Regional Homogeneity (ReHo)\n")
+        for section in data.reho_sections:
+            lines += [
+                f"### Run #{section.get('run_id')}\n",
+                f"- **Neighborhood:** {section.get('neighborhood', '—')} voxels",
+                f"- **Confound strategy:** {section.get('confound_strategy', '—')}",
+                f"- **Detrend:** {section.get('detrend', '—')}",
+                f"- **Z-normalize:** {section.get('z_normalize', '—')}",
+                f"- **Runtime:** {section.get('runtime_seconds', '—')} s",
+                f"- **Mask voxels:** {section.get('mask_voxel_count', '—')}",
+                f"- **Valid voxels:** {section.get('valid_voxel_count', '—')}",
+                f"- **ReHo statistics:** `{json.dumps(section.get('reho_statistics', {}), sort_keys=True)}`",
+                "",
+            ]
+
     if data.methods_sections:
         lines.append("## Methods\n")
         for sec in data.methods_sections:
@@ -971,6 +1003,25 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
     else:
         alff_html = "<p class='empty'>No ALFF/fALFF runs exist for this dataset.</p>"
 
+    if d.reho_sections:
+        reho_parts = []
+        for section in d.reho_sections:
+            rows = [
+                ("Run", f"#{section.get('run_id')}"),
+                ("Neighborhood", f"{section.get('neighborhood', '—')} voxels"),
+                ("Confounds", section.get("confound_strategy", "—")),
+                ("Detrend", str(section.get("detrend", "—"))),
+                ("Z-normalize", str(section.get("z_normalize", "—"))),
+                ("Runtime", f"{section.get('runtime_seconds', '—')} s"),
+                ("Mask voxels", str(section.get("mask_voxel_count", "—"))),
+                ("Valid voxels", str(section.get("valid_voxel_count", "—"))),
+                ("ReHo statistics", json.dumps(section.get("reho_statistics", {}), sort_keys=True)),
+            ]
+            reho_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
+        reho_html = "".join(reho_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
+    else:
+        reho_html = "<p class='empty'>No Regional Homogeneity runs exist for this dataset.</p>"
+
     # Software versions table
     if d.software_table:
         sw_rows = "\n".join(
@@ -1061,6 +1112,7 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
         "pipeline_table_html": pipeline_table_html,
         "methods_html": methods_html,
         "alff_html": alff_html,
+        "reho_html": reho_html,
         "sw_table_html": sw_table_html,
         "citations_html": citations_html,
         "warnings_html": warnings_html,
@@ -1260,6 +1312,10 @@ figcaption {{ font-size: 0.82rem; color: #666; margin-top: 6px; text-align: cent
 <!-- ALFF/fALFF -->
 <h2>ALFF / fALFF Analysis</h2>
 {alff_html}
+
+<!-- Regional Homogeneity -->
+<h2>Regional Homogeneity (ReHo)</h2>
+{reho_html}
 
 <!-- Artifact Inventory -->
 <h2>Artifact Inventory</h2>

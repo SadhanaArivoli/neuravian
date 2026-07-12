@@ -218,6 +218,23 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       { pipelineId: "statistical-map-explorer", inputArtifactType: "alff_map_nii", edge: { artifactType: "alff_map_nii", acceptParam: "input-file", acceptDatasetSlot: false, acceptLabel: "ALFF Map" } },
     ],
   },
+  {
+    id: "regional-homogeneity-analysis",
+    name: "Regional Homogeneity (ReHo) Analysis",
+    description: "Import fMRIPrep derivatives, compute voxelwise KCC-based regional homogeneity maps, then explore suprathreshold clusters. Atlas ROI Extraction and NIfTI Inspector remain available through Run Next.",
+    categoryKey: "connectivity",
+    estimatedRuntime: "minutes",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "bids_dataset",
+    requiredSourceLabel: "Registered source BIDS dataset",
+    worstComputeProfile: "local-ok",
+    computeWarning: "Requires existing fMRIPrep derivatives; this workflow does not run fMRIPrep.",
+    steps: [
+      { pipelineId: "import-fmriprep-derivatives", inputArtifactType: "bids_dataset", edge: { artifactType: "bids_dataset", acceptParam: null, acceptDatasetSlot: true, acceptLabel: "Associated BIDS Dataset" } },
+      { pipelineId: "regional-homogeneity", inputArtifactType: "fmriprep_derivatives", edge: { artifactType: "fmriprep_derivatives", acceptParam: "fmriprep-dir", acceptDatasetSlot: false, acceptLabel: "fMRIPrep Derivatives" } },
+      { pipelineId: "statistical-map-explorer", inputArtifactType: "reho_map_nii", edge: { artifactType: "reho_map_nii", acceptParam: "input-file", acceptDatasetSlot: false, acceptLabel: "ReHo Map" } },
+    ],
+  },
   // ── 1. BIDS Validation + QC ────────────────────────────────────────────────
   // bids-validator (bids_dataset → bids_dataset_validated) → mriqc (dataset_slot) → mriqc-group
   {

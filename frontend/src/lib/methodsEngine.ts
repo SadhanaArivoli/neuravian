@@ -80,6 +80,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   pydeface: "pydeface",
   "functional-connectivity": "Functional Connectivity (Nilearn)",
   "alff-falff": "ALFF / fALFF Analysis (NumPy/SciPy)",
+  "regional-homogeneity": "Regional Homogeneity / KCC (NumPy/SciPy)",
 };
 
 const FUNCTIONAL_CONNECTIVITY_ATLASES: Record<string, { label: string; rois: number; networks?: number }> = {
@@ -296,6 +297,19 @@ const PROSE_TEMPLATES: Record<
     const detrend = run.params?.detrend === false ? "without detrending" : "after linear detrending";
     const normalization = run.params?.normalization ?? "none";
     return `Voxelwise amplitude of low-frequency fluctuations (ALFF) and fractional ALFF (fALFF) were computed from fMRIPrep-preprocessed 4D BOLD data using a native NumPy/SciPy FFT workflow executed ${executionDescription(run)}${runtimeDescription(run)}. The repetition time was ${tr} s and the inclusive low-frequency band was ${low}–${high} Hz. Nuisance regression used the ${confounds} strategy, ${detrend}. Raw ALFF was defined as summed FFT amplitude within the selected band; fALFF was the ratio of that amplitude to summed amplitude across all positive measurable frequencies through Nyquist, excluding DC. Within-mask output normalization was ${normalization}. Zang et al. (2007) and Zou et al. (2008) describe the ALFF and fALFF methods, respectively. No inferential statistics or clinical interpretation were applied.`;
+  },
+  "regional-homogeneity": (run) => {
+    const neighborhood = run.params?.neighborhood ?? run.params?.["neighborhood"] ?? 27;
+    const neighborhoodLabel = neighborhood === 7 ? "7 voxels (face-adjacent; L1 ≤ 1)"
+      : neighborhood === 19 ? "19 voxels (face + edge; L1 ≤ 2)"
+      : "27 voxels (full 3×3×3 cube)";
+    const tr = run.params?.tr ?? NOT_RECORDED;
+    const confounds = run.params?.["confound-strategy"] ?? "none";
+    const detrend = run.params?.detrend === false ? "without prior detrending" : "after linear detrending";
+    const zNorm = run.params?.["z-normalize"] === true || run.params?.["z-normalize"] === "true"
+      ? " A z-score normalized map was additionally produced by subtracting the within-mask mean and dividing by the within-mask standard deviation."
+      : "";
+    return `Regional homogeneity (ReHo) was computed voxelwise using Kendall's Coefficient of Concordance (KCC; W) from fMRIPrep-preprocessed 4D BOLD data executed ${executionDescription(run)}${runtimeDescription(run)}. The repetition time was ${tr !== NOT_RECORDED ? `${tr} s` : NOT_RECORDED}. For each brain voxel, the timeseries of the voxel and its ${neighborhoodLabel} spatial neighborhood were rank-transformed independently using average-rank tie breaking. KCC was computed as W = 12·S / [K²·(T³ − T)], where S is the sum of squared deviations of per-timepoint rank sums from their mean, K is the neighborhood size (${neighborhood}), and T is the number of timepoints. Only voxels whose complete neighborhood fell within the brain mask were retained. Nuisance regression used the "${confounds}" strategy, ${detrend}.${zNorm} KCC values are bounded in [0, 1]; higher values indicate greater local temporal synchrony. The method is described in Zang et al. (2004). No inferential statistics or clinical interpretation were applied.`;
   },
   "seed-based-connectivity": (run) => {
     const atlasId = String(run.params?.["atlas-name"] ?? run.params?.atlas ?? "schaefer100_7");

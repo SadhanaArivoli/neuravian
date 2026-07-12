@@ -249,6 +249,20 @@ export const CITATION_DB: Citation[] = [
     doi: "10.1016/j.neuroimage.2006.01.021",
     url: "https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_harvard_oxford.html",
   },
+  {
+    key: "reho",
+    tool: "Regional Homogeneity (ReHo / KCC)",
+    pipelineIds: ["regional-homogeneity"],
+    authors: "Zang Y, Jiang T, Lu Y, He Y, Tian L",
+    year: 2004,
+    title: "Regional homogeneity approach to fMRI data analysis",
+    journal: "NeuroImage",
+    volume: "22",
+    issue: "1",
+    pages: "394–400",
+    doi: "10.1016/S1053-8119(04)00168-0",
+    url: "https://doi.org/10.1016/S1053-8119(04)00168-0",
+  },
 ];
 
 // ── Lookup helpers ────────────────────────────────────────────────────────────
