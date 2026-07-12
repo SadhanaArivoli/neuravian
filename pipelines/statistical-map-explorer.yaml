@@ -1,0 +1,146 @@
+id: statistical-map-explorer
+name: Statistical Map Explorer
+version: "1.0.0"
+description: >
+  Threshold a statistical NIfTI map (z-map, t-map, beta map, contrast map,
+  seed connectivity map), detect suprathreshold clusters, compute cluster
+  statistics (size, peak, center of mass, MNI coordinates), and generate a
+  self-contained HTML report with a cluster overlay figure, CSV/JSON cluster
+  table, and provenance metadata. All computation is native Python — no FSL,
+  AFNI, SPM, or ANTs required.
+
+execution:
+  type: local
+  runtime: python
+  entry_point: neuroforge-statistical-map-explorer
+
+parameters:
+  - name: input_file
+    label: Input statistical map
+    description: >
+      Path to the NIfTI file (.nii or .nii.gz).
+      Accepted map types: z-map, t-map, beta map, contrast map,
+      seed-based correlation map, ALFF, ReHo, or any single-volume float image.
+    type: path
+    required: true
+
+  - name: threshold
+    label: Threshold
+    description: >
+      Absolute threshold applied to the statistic value before clustering.
+      Voxels below this value (for positive direction), above its negation
+      (for negative direction), or below it in absolute value (for two-sided)
+      are set to zero and excluded from cluster detection. Typical values:
+      z > 2.3 for p < 0.01 uncorrected, z > 3.1 for p < 0.001 uncorrected.
+    type: float
+    default: 2.3
+    min: 0.0
+
+  - name: direction
+    label: Threshold direction
+    description: >
+      Which side of the distribution to threshold.
+      "positive": keep voxels >= threshold (e.g., activations).
+      "negative": keep voxels <= -threshold (e.g., deactivations).
+      "two-sided": keep voxels with |value| >= threshold.
+    type: enum
+    choices: [positive, negative, two-sided]
+    default: positive
+
+  - name: min_cluster_size
+    label: Minimum cluster size (voxels)
+    description: >
+      Discard clusters smaller than this many voxels after thresholding.
+      Reduces sensitivity to isolated noise voxels. Default is 10.
+    type: int
+    default: 10
+    min: 1
+
+  - name: colormap
+    label: Overlay colormap
+    description: >
+      Colormap used for the cluster overlay figure.
+      "hot": warm red-yellow (activations).
+      "cold": cool blue-green (deactivations).
+      "hot_cold": diverging red-blue (two-sided maps).
+      "bwr": blue-white-red (symmetric around zero).
+    type: enum
+    choices: [hot, cold, hot_cold, viridis, plasma, bwr]
+    default: hot
+
+accepts:
+  - "*.nii"
+  - "*.nii.gz"
+
+produces:
+  - path: thresholded_map.nii.gz
+    label: Thresholded map
+    description: Input map with sub-threshold voxels zeroed out.
+    mime_type: application/gzip
+    artifact_type: nifti
+
+  - path: cluster_table.csv
+    label: Cluster table (CSV)
+    description: >
+      Per-cluster statistics: id, size, peak value, mean value,
+      peak MNI coordinates (mm), center of mass (mm), bounding box (voxels).
+    mime_type: text/csv
+    artifact_type: table
+
+  - path: cluster_table.json
+    label: Cluster table (JSON)
+    description: Machine-readable cluster table with run metadata.
+    mime_type: application/json
+    artifact_type: data
+
+  - path: cluster_overlay.png
+    label: Cluster overlay figure
+    description: >
+      Mosaic of axial slices showing the thresholded statistical map
+      overlaid on the grayscale brain anatomy.
+    mime_type: image/png
+    artifact_type: figure
+
+  - path: cluster_report.html
+    label: Cluster report (HTML)
+    description: >
+      Self-contained HTML report with summary statistics, cluster overlay,
+      cluster table, methods paragraph, and software versions.
+    mime_type: text/html
+    artifact_type: report
+
+  - path: cluster_metadata.json
+    label: Run metadata (JSON)
+    description: >
+      Provenance record: input file, threshold, direction, cluster count,
+      image shape, voxel size, runtime, and library versions.
+    mime_type: application/json
+    artifact_type: metadata
+
+known_errors:
+  - pattern: "Input file not found"
+    explanation: >
+      The specified NIfTI file does not exist at the given path.
+      Check that the path is correct and that the file has been transferred
+      to the expected location.
+    action: Verify the input path and re-run.
+
+  - pattern: "Expected 3D or 4D NIfTI"
+    explanation: >
+      The input file has an unexpected number of dimensions. This tool
+      accepts single-volume (3D) images or 4D images (first volume is used).
+      2D slices or 5D tensors are not supported.
+    action: Check the NIfTI header with the NIfTI Inspector tool.
+
+  - pattern: "No suprathreshold voxels"
+    explanation: >
+      No voxels survived the threshold. The statistical map may have very
+      low values, or the threshold may be too high for this dataset.
+    action: Try lowering the threshold or changing the direction.
+
+tags:
+  - statistical-map
+  - clustering
+  - visualization
+  - native
+  - local-ok
