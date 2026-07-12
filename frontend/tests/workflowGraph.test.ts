@@ -58,6 +58,16 @@ describe("buildWorkflowGraph — nodes", () => {
 // ── buildWorkflowGraph: edge direction ───────────────────────────────────────
 
 describe("buildWorkflowGraph — edges", () => {
+  it("preserves fMRIPrep through ALFF and downstream analysis lineage", () => {
+    const runs = [
+      makeRun({id:44,pipeline_manifest_id:"import-fmriprep-derivatives"}),
+      makeRun({id:58,pipeline_manifest_id:"alff-falff",source_run_id:44}),
+      makeRun({id:60,pipeline_manifest_id:"statistical-map-explorer",source_run_id:58}),
+      makeRun({id:61,pipeline_manifest_id:"atlas-roi-extraction",source_run_id:60}),
+    ];
+    const {edges}=buildWorkflowGraph(runs,1,"Study");
+    expect(edges.map(e=>`${e.source}->${e.target}`)).toEqual(expect.arrayContaining(["run-44->run-58","run-58->run-60","run-60->run-61"]));
+  });
   it("connects orphan run (null source_run_id) to dataset node", () => {
     const run = makeRun({ id: 5, source_run_id: null });
     const { edges } = buildWorkflowGraph([run], 1, "DS");

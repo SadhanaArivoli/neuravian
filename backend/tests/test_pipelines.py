@@ -2042,6 +2042,14 @@ def test_bids_dataset_compatible_pipeline_includes_fmriprep_import(api_client):
     )
 
 
+@pytest.mark.parametrize("artifact_type", ["alff_map_nii", "falff_map_nii", "alff_normalized_map_nii", "falff_normalized_map_nii"])
+def test_alff_maps_offer_all_compatible_run_next_tools(api_client, artifact_type):
+    resp = api_client.get(f"/api/pipelines/compatible?artifact_type={artifact_type}")
+    assert resp.status_code == 200
+    ids = {item["pipeline_id"] for item in resp.json()}
+    assert {"statistical-map-explorer", "atlas-roi-extraction", "nifti-inspector"}.issubset(ids)
+
+
 def test_docker_manifests_have_container_not_execution():
     """All Docker-based manifests must have container block, not execution block."""
     schema = _load_schema()
