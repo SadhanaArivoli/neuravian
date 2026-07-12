@@ -149,7 +149,7 @@ export interface PipelineKnownError {
 
 export type ComputeProfile = "local-ok" | "local-slow" | "local-unsafe";
 export type PipelineCategory = "conversion" | "validation" | "quality_control" | "segmentation" | "preprocessing" | "deidentification" | "connectivity";
-export type PipelineInputType = "dicom" | "nifti" | "bids_dataset";
+export type PipelineInputType = "dicom" | "nifti" | "bids_dataset" | "matrix";
 
 export interface PipelineSummary {
   id: string;

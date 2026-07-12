@@ -50,6 +50,10 @@ const INPUT_TYPE_LABEL: Record<PipelineInputType, { label: string; className: st
     label: "BIDS dataset",
     className: "bg-teal-500/10 text-teal-300 border border-teal-500/20",
   },
+  matrix: {
+    label: "Matrix",
+    className: "bg-orange-500/10 text-orange-300 border border-orange-500/20",
+  },
 };
 
 // ── Filter chip ───────────────────────────────────────────────────────────────
