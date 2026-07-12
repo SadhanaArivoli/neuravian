@@ -118,7 +118,7 @@ function AlffFalffComparisonPanel({runIdA,runIdB,resultsA,resultsB,labelA,labelB
     ["Confound strategy",a.confound_strategy,b.confound_strategy],["Normalization",a.normalization,b.normalization],
     ["Detrending",a.detrending,b.detrending],["Mask voxels",String(a.mask_voxel_count),String(b.mask_voxel_count)]
   ];
-  const bins=Array.from({length:31},()=>0); const max=Math.max(...Array.from(s.difference,Math.abs),1e-12); for(const v of s.difference){const i=Math.min(30,Math.floor(((v+max)/(2*max))*31));bins[i]++} const peak=Math.max(...bins,1);
+  const bins=Array.from({length:31},()=>0); let max=1e-12; for(const v of s.difference)max=Math.max(max,Math.abs(v)); for(const v of s.difference){const i=Math.min(30,Math.max(0,Math.floor(((v+max)/(2*max))*31)));bins[i]++} const peak=Math.max(...bins,1);
   return <div className="space-y-4">
     <div className="flex items-center gap-2"><SectionHeading>ALFF / fALFF comparison</SectionHeading><select aria-label="Measure" value={measure} onChange={e=>setMeasure(e.target.value as "alff"|"falff")} className="rounded border border-white/20 bg-surface-raised px-2 py-1 text-xs"><option value="alff">ALFF vs ALFF</option><option value="falff">fALFF vs fALFF</option></select></div>
     <p className="text-xs text-gray-500">Descriptive voxelwise comparison only; no inferential statistics are performed.</p>
