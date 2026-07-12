@@ -501,6 +501,15 @@ export default function DatasetDashboard() {
             Methods Studio
           </Link>
           <Link
+            to={`/datasets/${datasetId}/reports`}
+            className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent hover:border-accent/60 hover:bg-accent/15 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+              <rect x="2" y="1" width="12" height="14" rx="1" /><path d="M5 5h6M5 8h4M5 11h3" strokeLinecap="round" />
+            </svg>
+            Study Report
+          </Link>
+          <Link
             to="/compare"
             className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
           >

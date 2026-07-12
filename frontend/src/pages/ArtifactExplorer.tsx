@@ -666,6 +666,7 @@ export default function ArtifactExplorer() {
               { label: "Dashboard", to: `/datasets/${datasetId}/dashboard` },
               { label: "Artifacts", to: `/datasets/${datasetId}/artifacts` },
               { label: "Graph", to: `/datasets/${datasetId}/graph` },
+              { label: "Reports", to: `/datasets/${datasetId}/reports` },
             ].map(({ label, to }) => {
               const active = label === "Artifacts";
               return (

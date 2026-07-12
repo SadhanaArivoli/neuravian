@@ -76,12 +76,22 @@ export default function DatasetDetail() {
           </Link>
           <Link
             to={`/datasets/${datasetId}/methods`}
-            className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:border-accent/60 hover:bg-accent/15 transition-colors"
+            className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
               <path d="M2 4h12M2 8h9M2 12h6" strokeLinecap="round" />
             </svg>
             Methods
+          </Link>
+          <Link
+            to={`/datasets/${datasetId}/reports`}
+            className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:border-accent/60 hover:bg-accent/15 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
+              <path d="M2 2h12v12H2z" rx="1" />
+              <path d="M5 6h6M5 9h4M5 12h3" strokeLinecap="round" />
+            </svg>
+            Study Report
           </Link>
         </nav>
       </div>

@@ -760,3 +760,40 @@ export function duplicateWorkflow(id: number): Promise<WorkflowRead> {
 export function promoteWorkflowToTemplate(id: number): Promise<WorkflowRead> {
   return apiFetch<WorkflowRead>(`/workflows/${id}/promote-template`, { method: "POST" });
 }
+
+// ------------------------------------------------------------------ //
+// Reports                                                              //
+// ------------------------------------------------------------------ //
+
+export interface ReportSummary {
+  id: number;
+  dataset_id: number;
+  status: "generating" | "ready" | "failed";
+  error_message: string | null;
+  html_path: string | null;
+  md_path: string | null;
+  json_path: string | null;
+  zip_path: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export function generateReport(datasetId: number): Promise<{ report_id: number; status: string; created_at: string }> {
+  return apiFetch(`/datasets/${datasetId}/reports`, { method: "POST" });
+}
+
+export function listReports(datasetId: number): Promise<ReportSummary[]> {
+  return apiFetch<ReportSummary[]>(`/datasets/${datasetId}/reports`);
+}
+
+export function getReport(datasetId: number, reportId: number): Promise<ReportSummary> {
+  return apiFetch<ReportSummary>(`/datasets/${datasetId}/reports/${reportId}`);
+}
+
+export function reportDownloadUrl(datasetId: number, reportId: number, fmt: "html" | "md" | "json" | "zip"): string {
+  return `${BASE_URL}/datasets/${datasetId}/reports/${reportId}/download/${fmt}`;
+}
+
+export function reportViewUrl(datasetId: number, reportId: number): string {
+  return `${BASE_URL}/datasets/${datasetId}/reports/${reportId}/view`;
+}
