@@ -529,7 +529,55 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // ── 10. DICOM to Validated BIDS — coming later ─────────────────────────────
+  // ── 10. fMRIPrep → Functional Connectivity → Connectome Graph Analysis ──────
+  // Linear three-step chain: import fMRIPrep derivatives → compute FC matrix →
+  // analyse the matrix as a weighted graph.
+  {
+    id: "fmriprep-fc-graph",
+    name: "fMRIPrep → FC → Graph Analysis",
+    description:
+      "Import fMRIPrep derivatives, extract a parcel-wise functional connectivity matrix, then compute graph-theoretic metrics (global efficiency, modularity, clustering, betweenness, and hub identification).",
+    categoryKey: "connectivity",
+    estimatedRuntime: "5 – 30 min",
+    requiredSourceKind: "dataset",
+    requiredSourceArtifact: "fmriprep_derivatives",
+    requiredSourceLabel: "fMRIPrep Derivatives Folder",
+    worstComputeProfile: "local-ok",
+    steps: [
+      {
+        pipelineId: "import-fmriprep-derivatives",
+        inputArtifactType: "fmriprep_derivatives",
+        edge: {
+          artifactType: "fmriprep_derivatives",
+          acceptParam: "fmriprep-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "fMRIPrep Derivatives",
+        },
+      },
+      {
+        pipelineId: "functional-connectivity",
+        inputArtifactType: "fmriprep_derivatives",
+        edge: {
+          artifactType: "fmriprep_derivatives",
+          acceptParam: "fmriprep-dir",
+          acceptDatasetSlot: false,
+          acceptLabel: "fMRIPrep Derivatives",
+        },
+      },
+      {
+        pipelineId: "connectome-graph-analysis",
+        inputArtifactType: "connectivity_matrix_npy",
+        edge: {
+          artifactType: "connectivity_matrix_npy",
+          acceptParam: "input-matrix",
+          acceptDatasetSlot: false,
+          acceptLabel: "Connectivity Matrix",
+        },
+      },
+    ],
+  },
+
+  // ── 11. DICOM to Validated BIDS — coming later ─────────────────────────────
   // dcm2bids has `accepts: []` — no declared artifact input. The linear V1
   // builder cannot represent a raw DICOM folder as a source. Use the DICOM
   // Wizard (/wizard/dcm2bids) instead.

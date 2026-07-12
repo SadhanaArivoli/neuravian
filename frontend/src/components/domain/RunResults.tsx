@@ -925,6 +925,234 @@ function RoiExtractionPanel({ runId, files }: {
   );
 }
 
+// ── Connectome Graph Analysis panel ───────────────────────────────────────────
+
+interface GraphMetrics {
+  n_nodes: number;
+  n_edges: number;
+  max_possible_edges: number;
+  density: number | null;
+  mean_degree: number | null;
+  mean_strength: number | null;
+  global_efficiency: number | null;
+  local_efficiency: number | null;
+  clustering_coefficient: number | null;
+  transitivity: number | null;
+  characteristic_path_length: number | null;
+  average_shortest_path_length: number | null;
+  mean_betweenness_centrality: number | null;
+  modularity: number | null;
+  n_communities: number | null;
+  n_connected_components: number;
+  largest_component_size: number;
+  is_connected: boolean;
+  provenance?: {
+    threshold_method?: string;
+    threshold_value?: number;
+    source_run_id?: number | null;
+    runtime_seconds?: number;
+    networkx_version?: string;
+    louvain_available?: boolean;
+  };
+}
+
+interface GraphNodeRow {
+  node_index: number;
+  node_label: string;
+  degree: number;
+  strength: number | null;
+  clustering_coefficient: number | null;
+  betweenness_centrality: number | null;
+  participation_coefficient: number | null;
+  community: number | null;
+}
+
+type GraphNodeSortKey = "strength" | "degree" | "clustering_coefficient" | "betweenness_centrality" | "participation_coefficient";
+
+function GraphAnalysisPanel({ runId, files }: { runId: number; files: Array<{ name: string; path: string }> }) {
+  const [metrics, setMetrics] = useState<GraphMetrics | null>(null);
+  const [nodes, setNodes] = useState<GraphNodeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<GraphNodeSortKey>("strength");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  const metricsFile = files.find((f) => f.name === "graph_metrics");
+  const nodeFile = files.find((f) => f.name === "node_metrics");
+  const imgFile = files.find((f) => f.name === "graph_summary");
+
+  useEffect(() => {
+    if (!metricsFile) { setLoading(false); return; }
+    setLoading(true);
+    const p1 = fetchRunFile<GraphMetrics>(runId, metricsFile.path).then(setMetrics);
+    const p2 = nodeFile
+      ? fetch(`/api/runs/${runId}/files/${nodeFile.path}`).then((r) => r.text()).then((txt) => {
+          const lines = txt.trim().split("\n");
+          if (lines.length < 2) return;
+          const headers = lines[0].split(",");
+          const rows: GraphNodeRow[] = lines.slice(1).map((line) => {
+            const vals = line.split(",");
+            const obj: Record<string, string> = {};
+            headers.forEach((h, i) => { obj[h.trim()] = vals[i]?.trim() ?? ""; });
+            return {
+              node_index: parseInt(obj.node_index),
+              node_label: obj.node_label,
+              degree: parseInt(obj.degree),
+              strength: obj.strength === "" || obj.strength === "None" ? null : parseFloat(obj.strength),
+              clustering_coefficient: obj.clustering_coefficient === "" || obj.clustering_coefficient === "None" ? null : parseFloat(obj.clustering_coefficient),
+              betweenness_centrality: obj.betweenness_centrality === "" || obj.betweenness_centrality === "None" ? null : parseFloat(obj.betweenness_centrality),
+              participation_coefficient: obj.participation_coefficient === "" || obj.participation_coefficient === "None" ? null : parseFloat(obj.participation_coefficient),
+              community: obj.community === "" || obj.community === "None" ? null : parseInt(obj.community),
+            };
+          });
+          setNodes(rows);
+        })
+      : Promise.resolve();
+    Promise.all([p1, p2]).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [runId, metricsFile?.path, nodeFile?.path]);
+
+  const sortedNodes = useMemo(() => {
+    const sorted = [...nodes].sort((a, b) => {
+      const av = a[sortKey] ?? -Infinity;
+      const bv = b[sortKey] ?? -Infinity;
+      return sortAsc ? (av < bv ? -1 : 1) : (av > bv ? -1 : 1);
+    });
+    return showAll ? sorted : sorted.slice(0, 20);
+  }, [nodes, sortKey, sortAsc, showAll]);
+
+  function toggleSort(k: GraphNodeSortKey) {
+    if (sortKey === k) setSortAsc((p) => !p);
+    else { setSortKey(k); setSortAsc(false); }
+  }
+
+  const fmt = (v: number | null | undefined, decimals = 4) =>
+    v == null ? "—" : v.toFixed(decimals);
+
+  if (loading) return <div className="text-gray-500 text-sm py-4">Loading graph metrics…</div>;
+  if (error || !metrics) return <div className="text-red-500 text-sm py-4">{error ?? "No graph metrics found."}</div>;
+
+  const prov = metrics.provenance ?? {};
+  const METRIC_CARDS: Array<{ label: string; value: string }> = [
+    { label: "Nodes", value: String(metrics.n_nodes) },
+    { label: "Edges", value: String(metrics.n_edges) },
+    { label: "Density", value: fmt(metrics.density) },
+    { label: "Mean Degree", value: fmt(metrics.mean_degree, 2) },
+    { label: "Mean Strength", value: fmt(metrics.mean_strength, 4) },
+    { label: "Global Efficiency", value: fmt(metrics.global_efficiency) },
+    { label: "Local Efficiency", value: fmt(metrics.local_efficiency) },
+    { label: "Clustering Coeff", value: fmt(metrics.clustering_coefficient) },
+    { label: "Transitivity", value: fmt(metrics.transitivity) },
+    { label: "Char Path Length", value: fmt(metrics.characteristic_path_length) },
+    { label: "Modularity (Q)", value: fmt(metrics.modularity) },
+    { label: "Communities", value: metrics.n_communities != null ? String(metrics.n_communities) : "—" },
+    { label: "Connected", value: metrics.is_connected ? "Yes" : "No" },
+    { label: "Components", value: String(metrics.n_connected_components) },
+    { label: "Largest CC", value: String(metrics.largest_component_size) },
+  ];
+
+  const SortHeader = ({ k, label }: { k: GraphNodeSortKey; label: string }) => (
+    <th
+      className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-300 select-none"
+      onClick={() => toggleSort(k)}
+    >
+      {label}{sortKey === k ? (sortAsc ? " ↑" : " ↓") : ""}
+    </th>
+  );
+
+  return (
+    <div className="space-y-4 mt-4">
+      {/* Graph summary figure */}
+      {imgFile && (
+        <div className="rounded-lg overflow-hidden border border-gray-700">
+          <img
+            src={`/api/runs/${runId}/files/${imgFile.path}`}
+            alt="Graph summary"
+            className="w-full object-contain"
+          />
+        </div>
+      )}
+
+      {/* Badges */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        <span className="px-2 py-1 rounded bg-violet-900/40 text-violet-300 border border-violet-700">
+          Threshold: {prov.threshold_method ?? "—"} @ {prov.threshold_value ?? "—"}
+        </span>
+        <span className="px-2 py-1 rounded bg-blue-900/40 text-blue-300 border border-blue-700">
+          weighted undirected graph
+        </span>
+        {prov.networkx_version && (
+          <span className="px-2 py-1 rounded bg-gray-800 text-gray-400 border border-gray-700">
+            networkx {prov.networkx_version}
+          </span>
+        )}
+      </div>
+
+      {/* Global metrics grid */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 mb-2">Global Graph Metrics</h3>
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          {METRIC_CARDS.map(({ label, value }) => (
+            <div key={label} className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</div>
+              <div className="text-sm font-semibold text-gray-100">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Node metrics table */}
+      {nodes.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-300 mb-2">
+            Node Metrics — Top {showAll ? nodes.length : Math.min(20, nodes.length)} of {nodes.length} nodes
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-gray-700">
+            <table className="min-w-full text-xs">
+              <thead className="bg-gray-800">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Label</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-300" onClick={() => toggleSort("degree" as GraphNodeSortKey)}>
+                    Deg{sortKey === "degree" ? (sortAsc ? " ↑" : " ↓") : ""}
+                  </th>
+                  <SortHeader k="strength" label="Strength" />
+                  <SortHeader k="clustering_coefficient" label="Clust" />
+                  <SortHeader k="betweenness_centrality" label="Btwn" />
+                  <SortHeader k="participation_coefficient" label="Partic" />
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comm</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {sortedNodes.map((row) => (
+                  <tr key={row.node_index} className="hover:bg-gray-800/50">
+                    <td className="px-3 py-1.5 text-gray-500">{row.node_index}</td>
+                    <td className="px-3 py-1.5 text-gray-200 font-mono text-[11px] max-w-[180px] truncate" title={row.node_label}>{row.node_label}</td>
+                    <td className="px-3 py-1.5 text-gray-300">{row.degree}</td>
+                    <td className="px-3 py-1.5 text-gray-300">{fmt(row.strength, 4)}</td>
+                    <td className="px-3 py-1.5 text-gray-300">{fmt(row.clustering_coefficient, 4)}</td>
+                    <td className="px-3 py-1.5 text-gray-300">{fmt(row.betweenness_centrality, 4)}</td>
+                    <td className="px-3 py-1.5 text-gray-300">{fmt(row.participation_coefficient, 4)}</td>
+                    <td className="px-3 py-1.5 text-gray-400">{row.community ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {nodes.length > 20 && (
+            <button
+              onClick={() => setShowAll((p) => !p)}
+              className="mt-2 text-xs text-violet-400 hover:text-violet-300"
+            >
+              {showAll ? "Show top 20 only" : `Show all ${nodes.length} nodes`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── NIfTI Inspector panel ──────────────────────────────────────────────────────
 
 interface NiftiInspectorResult {
@@ -1667,6 +1895,7 @@ export default function RunResults({ runId }: Props) {
   const connectivityMetadata = results.connectivity_metadata ?? [];
   const roiStatistics = results.roi_statistics ?? [];
   const roiExtraction = (results as { roi_extraction?: RunResultFile[] }).roi_extraction ?? [];
+  const graphAnalysis = (results as { graph_analysis?: RunResultFile[] }).graph_analysis ?? [];
   const hasFiles =
     results.reports.length > 0 ||
     results.metrics.length > 0 ||
@@ -1888,7 +2117,9 @@ export default function RunResults({ runId }: Props) {
         <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
       )}
 
-      {results.metadata?.pipeline_id === "atlas-roi-extraction" && roiExtraction.length > 0 ? (
+      {results.metadata?.pipeline_id === "connectome-graph-analysis" && graphAnalysis.length > 0 ? (
+        <GraphAnalysisPanel runId={runId} files={graphAnalysis} />
+      ) : results.metadata?.pipeline_id === "atlas-roi-extraction" && roiExtraction.length > 0 ? (
         <RoiExtractionPanel runId={runId} files={roiExtraction} />
       ) : results.metadata?.pipeline_id === "nifti-inspector" ? (
         <NiftiInspectorPanel

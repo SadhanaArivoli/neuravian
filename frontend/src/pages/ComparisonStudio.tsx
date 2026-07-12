@@ -1309,6 +1309,333 @@ function NiftiInspectorComparisonPanel({
   );
 }
 
+// ── GraphAnalysisComparisonPanel ──────────────────────────────────────────────
+
+interface GraphGlobalMetrics {
+  n_nodes: number;
+  n_edges: number;
+  density: number;
+  global_efficiency: number;
+  local_efficiency: number;
+  clustering_coefficient: number;
+  transitivity: number;
+  characteristic_path_length: number | null;
+  mean_betweenness_centrality: number;
+  modularity: number;
+  n_communities: number;
+  n_connected_components: number;
+  largest_component_size: number;
+  threshold_method: string;
+  threshold_value: number | null;
+}
+
+interface GraphNodeRow {
+  label: string;
+  strength: number;
+  degree: number;
+  betweenness: number;
+  participation_coefficient: number;
+  community: number;
+}
+
+function parseGraphNodeCsv(text: string): GraphNodeRow[] {
+  const lines = text.trim().split("\n");
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    const get = (k: string) => {
+      const i = headers.indexOf(k);
+      return i >= 0 ? cols[i]?.trim() ?? "" : "";
+    };
+    return {
+      label: get("label") || get("node"),
+      strength: parseFloat(get("strength")) || 0,
+      degree: parseInt(get("degree"), 10) || 0,
+      betweenness: parseFloat(get("betweenness")) || 0,
+      participation_coefficient: parseFloat(get("participation_coefficient")) || 0,
+      community: parseInt(get("community"), 10) || 0,
+    };
+  });
+}
+
+function GraphAnalysisComparisonPanel({
+  runIdA,
+  runIdB,
+  labelA,
+  labelB,
+}: {
+  runIdA: number;
+  runIdB: number;
+  labelA: string;
+  labelB: string;
+}) {
+  const [metricsA, setMetricsA] = useState<GraphGlobalMetrics | null>(null);
+  const [metricsB, setMetricsB] = useState<GraphGlobalMetrics | null>(null);
+  const [nodesA, setNodesA] = useState<GraphNodeRow[]>([]);
+  const [nodesB, setNodesB] = useState<GraphNodeRow[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/runs/${runIdA}/files/graph_metrics.json`).then((r) => r.json()),
+      fetch(`/api/runs/${runIdB}/files/graph_metrics.json`).then((r) => r.json()),
+      fetch(`/api/runs/${runIdA}/files/node_metrics.csv`).then((r) => r.text()),
+      fetch(`/api/runs/${runIdB}/files/node_metrics.csv`).then((r) => r.text()),
+    ])
+      .then(([mA, mB, csvA, csvB]) => {
+        if (cancelled) return;
+        setMetricsA(mA as GraphGlobalMetrics);
+        setMetricsB(mB as GraphGlobalMetrics);
+        setNodesA(parseGraphNodeCsv(csvA));
+        setNodesB(parseGraphNodeCsv(csvB));
+        setLoading(false);
+      })
+      .catch((e) => { if (!cancelled) { setErr(String(e)); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [runIdA, runIdB]);
+
+  if (err) return (
+    <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+      Could not load graph analysis results: {err}
+    </div>
+  );
+  if (loading) return (
+    <div className="text-xs text-gray-500 animate-pulse py-4">Loading graph metrics…</div>
+  );
+  if (!metricsA || !metricsB) return null;
+
+  const fmt = (v: number | null | undefined, dec = 3) =>
+    v == null ? "—" : v.toFixed(dec);
+
+  const delta = (a: number | null | undefined, b: number | null | undefined) => {
+    if (a == null || b == null) return null;
+    return b - a;
+  };
+
+  const deltaStr = (a: number | null | undefined, b: number | null | undefined, dec = 3) => {
+    const d = delta(a, b);
+    if (d == null) return "—";
+    const sign = d > 0 ? "+" : "";
+    return `${sign}${d.toFixed(dec)}`;
+  };
+
+  const deltaColor = (a: number | null | undefined, b: number | null | undefined) => {
+    const d = delta(a, b);
+    if (d == null || Math.abs(d) < 1e-6) return "text-gray-400";
+    return d > 0 ? "text-emerald-400" : "text-rose-400";
+  };
+
+  const rows: { label: string; a: string; b: string; diff: string; diffColor: string }[] = [
+    {
+      label: "Nodes",
+      a: String(metricsA.n_nodes),
+      b: String(metricsB.n_nodes),
+      diff: deltaStr(metricsA.n_nodes, metricsB.n_nodes, 0),
+      diffColor: deltaColor(metricsA.n_nodes, metricsB.n_nodes),
+    },
+    {
+      label: "Edges",
+      a: String(metricsA.n_edges),
+      b: String(metricsB.n_edges),
+      diff: deltaStr(metricsA.n_edges, metricsB.n_edges, 0),
+      diffColor: deltaColor(metricsA.n_edges, metricsB.n_edges),
+    },
+    {
+      label: "Density",
+      a: fmt(metricsA.density),
+      b: fmt(metricsB.density),
+      diff: deltaStr(metricsA.density, metricsB.density),
+      diffColor: deltaColor(metricsA.density, metricsB.density),
+    },
+    {
+      label: "Global Efficiency",
+      a: fmt(metricsA.global_efficiency),
+      b: fmt(metricsB.global_efficiency),
+      diff: deltaStr(metricsA.global_efficiency, metricsB.global_efficiency),
+      diffColor: deltaColor(metricsA.global_efficiency, metricsB.global_efficiency),
+    },
+    {
+      label: "Local Efficiency",
+      a: fmt(metricsA.local_efficiency),
+      b: fmt(metricsB.local_efficiency),
+      diff: deltaStr(metricsA.local_efficiency, metricsB.local_efficiency),
+      diffColor: deltaColor(metricsA.local_efficiency, metricsB.local_efficiency),
+    },
+    {
+      label: "Clustering Coeff.",
+      a: fmt(metricsA.clustering_coefficient),
+      b: fmt(metricsB.clustering_coefficient),
+      diff: deltaStr(metricsA.clustering_coefficient, metricsB.clustering_coefficient),
+      diffColor: deltaColor(metricsA.clustering_coefficient, metricsB.clustering_coefficient),
+    },
+    {
+      label: "Transitivity",
+      a: fmt(metricsA.transitivity),
+      b: fmt(metricsB.transitivity),
+      diff: deltaStr(metricsA.transitivity, metricsB.transitivity),
+      diffColor: deltaColor(metricsA.transitivity, metricsB.transitivity),
+    },
+    {
+      label: "Char. Path Length",
+      a: fmt(metricsA.characteristic_path_length),
+      b: fmt(metricsB.characteristic_path_length),
+      diff: deltaStr(metricsA.characteristic_path_length, metricsB.characteristic_path_length),
+      diffColor: deltaColor(metricsA.characteristic_path_length, metricsB.characteristic_path_length),
+    },
+    {
+      label: "Betweenness (mean)",
+      a: fmt(metricsA.mean_betweenness_centrality),
+      b: fmt(metricsB.mean_betweenness_centrality),
+      diff: deltaStr(metricsA.mean_betweenness_centrality, metricsB.mean_betweenness_centrality),
+      diffColor: deltaColor(metricsA.mean_betweenness_centrality, metricsB.mean_betweenness_centrality),
+    },
+    {
+      label: "Modularity (Q)",
+      a: fmt(metricsA.modularity),
+      b: fmt(metricsB.modularity),
+      diff: deltaStr(metricsA.modularity, metricsB.modularity),
+      diffColor: deltaColor(metricsA.modularity, metricsB.modularity),
+    },
+    {
+      label: "Communities",
+      a: String(metricsA.n_communities),
+      b: String(metricsB.n_communities),
+      diff: deltaStr(metricsA.n_communities, metricsB.n_communities, 0),
+      diffColor: deltaColor(metricsA.n_communities, metricsB.n_communities),
+    },
+  ];
+
+  // Top 10 hubs by strength in each run
+  const hubsA = [...nodesA].sort((x, y) => y.strength - x.strength).slice(0, 10);
+  const hubsB = [...nodesB].sort((x, y) => y.strength - x.strength).slice(0, 10);
+
+  const hubSetA = new Set(hubsA.map((n) => n.label));
+  const hubSetB = new Set(hubsB.map((n) => n.label));
+  const sharedHubs = hubsA.filter((n) => hubSetB.has(n.label));
+
+  const diffThreshold = metricsA.threshold_method !== metricsB.threshold_method ||
+    (metricsA.threshold_value ?? 0) !== (metricsB.threshold_value ?? 0);
+
+  return (
+    <div className="space-y-6">
+      {diffThreshold && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          Warning: runs used different thresholding ({metricsA.threshold_method} {metricsA.threshold_value} vs {metricsB.threshold_method} {metricsB.threshold_value}). Metric differences may reflect threshold choice rather than biology.
+        </div>
+      )}
+
+      <div>
+        <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wide mb-3">Global Graph Metrics</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-white/10 text-gray-500">
+                <th className="text-left py-1 pr-4 font-medium">Metric</th>
+                <th className="text-right py-1 px-3 font-medium">{labelA}</th>
+                <th className="text-right py-1 px-3 font-medium">{labelB}</th>
+                <th className="text-right py-1 pl-3 font-medium">Δ (B − A)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.label} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="py-1 pr-4 text-gray-400">{r.label}</td>
+                  <td className="py-1 px-3 text-right font-mono text-blue-300">{r.a}</td>
+                  <td className="py-1 px-3 text-right font-mono text-violet-300">{r.b}</td>
+                  <td className={`py-1 pl-3 text-right font-mono ${r.diffColor}`}>{r.diff}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wide mb-3">
+          Hub Nodes — Top 10 by Strength
+          {sharedHubs.length > 0 && (
+            <span className="ml-2 font-normal text-gray-500 normal-case">
+              ({sharedHubs.length} shared)
+            </span>
+          )}
+        </h4>
+        <div className="grid grid-cols-2 gap-4">
+          {([["A", hubsA, labelA, "text-blue-300", hubSetB], ["B", hubsB, labelB, "text-violet-300", hubSetA]] as const).map(
+            ([key, hubs, label, cls, otherSet]) => (
+              <div key={key}>
+                <p className={`text-xs font-medium mb-2 ${cls}`}>{label}</p>
+                <ol className="space-y-0.5">
+                  {hubs.map((n, i) => (
+                    <li key={n.label} className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-600 w-4 text-right">{i + 1}.</span>
+                      <span className={`flex-1 truncate ${otherSet.has(n.label) ? "text-emerald-400" : "text-gray-300"}`}>
+                        {n.label}
+                      </span>
+                      <span className="font-mono text-gray-500">{n.strength.toFixed(3)}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )
+          )}
+        </div>
+        {sharedHubs.length > 0 && (
+          <p className="text-xs text-gray-600 mt-2">
+            Green = node appears in both top-10 hub lists.
+          </p>
+        )}
+      </div>
+
+      {nodesA.length > 0 && nodesB.length > 0 && (() => {
+        const mapA = new Map(nodesA.map((n) => [n.label, n]));
+        const mapB = new Map(nodesB.map((n) => [n.label, n]));
+        const shared = [...mapA.keys()].filter((k) => mapB.has(k));
+        if (shared.length === 0) return null;
+        const strengthDiffs = shared
+          .map((k) => ({ label: k, diff: (mapB.get(k)!.strength - mapA.get(k)!.strength) }))
+          .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))
+          .slice(0, 10);
+        return (
+          <div>
+            <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wide mb-3">
+              Largest Strength Differences (B − A, top 10)
+            </h4>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-white/10 text-gray-500">
+                  <th className="text-left py-1 pr-4 font-medium">Node</th>
+                  <th className="text-right py-1 pr-4 font-medium">{labelA}</th>
+                  <th className="text-right py-1 pr-4 font-medium">{labelB}</th>
+                  <th className="text-right py-1 font-medium">Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {strengthDiffs.map(({ label, diff }) => {
+                  const a = mapA.get(label)!;
+                  const b = mapB.get(label)!;
+                  return (
+                    <tr key={label} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="py-1 pr-4 text-gray-300 truncate max-w-[120px]">{label}</td>
+                      <td className="py-1 pr-4 text-right font-mono text-blue-300">{a.strength.toFixed(3)}</td>
+                      <td className="py-1 pr-4 text-right font-mono text-violet-300">{b.strength.toFixed(3)}</td>
+                      <td className={`py-1 text-right font-mono ${diff > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {diff > 0 ? "+" : ""}{diff.toFixed(3)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ── RoiExtractionComparisonPanel ──────────────────────────────────────────────
 
 interface RoiRow {
@@ -1797,7 +2124,8 @@ export default function ComparisonStudio() {
           t.startsWith("connectivity_") ||
           t.startsWith("seed_connectivity_") ||
           t.startsWith("group_") ||
-          t.startsWith("roi_extraction_"),
+          t.startsWith("roi_extraction_") ||
+          t.startsWith("graph_"),
       ),
     );
 
@@ -1817,7 +2145,7 @@ export default function ComparisonStudio() {
           runAOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "nifti_inspector" || runAFamily === "roi_extraction") return true;
+        if (runAFamily === "connectivity" || runAFamily === "seed_connectivity" || runAFamily === "group_connectivity" || runAFamily === "nifti_inspector" || runAFamily === "roi_extraction" || runAFamily === "graph_analysis") return true;
         return o.run.pipeline_manifest_id !== runAOption.run.pipeline_manifest_id;
       })
     : runOptions.filter((o) => o.run.id !== runBId);
@@ -1831,7 +2159,7 @@ export default function ComparisonStudio() {
           runBOption.producedTypes.includes(t),
         );
         if (sharedTypes.length === 0) return false;
-        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity" || runBFamily === "nifti_inspector" || runBFamily === "roi_extraction") return true;
+        if (runBFamily === "connectivity" || runBFamily === "seed_connectivity" || runBFamily === "group_connectivity" || runBFamily === "nifti_inspector" || runBFamily === "roi_extraction" || runBFamily === "graph_analysis") return true;
         return o.run.pipeline_manifest_id !== runBOption.run.pipeline_manifest_id;
       })
     : runOptions;
@@ -2289,6 +2617,16 @@ export default function ComparisonStudio() {
                   labelB={labelB}
                 />
               )}
+
+            {/* Connectome Graph Analysis comparison panel */}
+            {comparisonFamily === "graph_analysis" && runAId && runBId && (
+              <GraphAnalysisComparisonPanel
+                runIdA={runAId}
+                runIdB={runBId}
+                labelA={labelA}
+                labelB={labelB}
+              />
+            )}
 
             {/* Atlas ROI Extraction comparison panel */}
             {comparisonFamily === "roi_extraction" && runAId && runBId && (

@@ -333,6 +333,32 @@ const PROSE_TEMPLATES: Record<
       ` All reported statistics are descriptive; no inferential tests were performed.`
     );
   },
+  "connectome-graph-analysis": (run) => {
+    const method = String(run.params?.["threshold-method"] ?? run.params?.threshold_method ?? "proportional");
+    const value = run.params?.["threshold-value"] ?? run.params?.threshold_value;
+    const threshDesc =
+      method === "proportional"
+        ? `proportional thresholding retaining the strongest ${value != null ? `${Math.round(Number(value) * 100)}%` : NOT_RECORDED} of edges by weight`
+        : method === "absolute"
+        ? `absolute weight thresholding (minimum weight ≥ ${value ?? NOT_RECORDED})`
+        : "no thresholding (all positive correlations retained as edges)";
+    return (
+      `Connectome graph-theoretic analysis was performed using a NeuroForge native pipeline ` +
+      `built on NetworkX (v${run.pipeline_version || NOT_RECORDED}) and python-louvain ` +
+      `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
+      `The input functional connectivity matrix was converted to a weighted undirected graph using ` +
+      `${threshDesc}. ` +
+      `Self-loops were excluded and edge weights were set to the mean of symmetric matrix entries. ` +
+      `Global graph metrics computed included: graph density, global efficiency (mean inverse ` +
+      `shortest path length), local efficiency, mean clustering coefficient, transitivity, ` +
+      `characteristic path length, mean betweenness centrality, and modularity (Q) estimated ` +
+      `via the Louvain community-detection algorithm. ` +
+      `Per-node metrics included: degree, weighted strength, node clustering coefficient, ` +
+      `betweenness centrality (normalised), participation coefficient (reflecting inter-community ` +
+      `hub status), and community assignment. ` +
+      `All reported metrics are descriptive; no inferential statistics were applied.`
+    );
+  },
   "group-functional-connectivity": (run) => {
     const nRuns = run.params?.["input-run-ids"]
       ? String(run.params["input-run-ids"]).split(",").filter(Boolean).length
