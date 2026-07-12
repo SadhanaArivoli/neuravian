@@ -164,6 +164,20 @@ _CITATIONS: list[dict[str, Any]] = [
         "doi": "10.1007/s12021-012-9160-3",
         "is_software_citation": True,
     },
+    {
+        "key": "alff", "tool": "ALFF", "pipeline_ids": ["alff-falff"],
+        "authors": "Zang YF, He Y, Zhu CZ, et al.", "year": 2007,
+        "title": "Altered baseline brain activity in children with ADHD revealed by resting-state functional MRI",
+        "journal": "Brain & Development", "volume": "29", "issue": "2", "pages": "83-91",
+        "doi": "10.1016/j.braindev.2006.07.002",
+    },
+    {
+        "key": "falff", "tool": "fALFF", "pipeline_ids": ["alff-falff"],
+        "authors": "Zou QH, Zhu CZ, Yang Y, et al.", "year": 2008,
+        "title": "An improved approach to detection of amplitude of low-frequency fluctuation for resting-state fMRI: fractional ALFF",
+        "journal": "Journal of Neuroscience Methods", "volume": "172", "issue": "1", "pages": "137-141",
+        "doi": "10.1016/j.jneumeth.2008.04.012",
+    },
 ]
 
 _PIPELINE_DISPLAY_NAMES: dict[str, str] = {
@@ -185,6 +199,7 @@ _PIPELINE_DISPLAY_NAMES: dict[str, str] = {
     "connectome-graph-analysis": "Connectome Graph Analysis",
     "nifti-inspector": "NIfTI Inspector",
     "statistical-map-explorer": "Statistical Map Explorer",
+    "alff-falff": "ALFF / fALFF Analysis",
 }
 
 
@@ -266,6 +281,7 @@ class ReportData:
 
     # Artifacts
     artifacts: list[ArtifactSummary]
+    alff_falff_sections: list[dict[str, Any]]
 
     # Figures (embedded)
     figures: list[FigureEmbed]
@@ -310,6 +326,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     run_summaries: list[RunSummary] = []
     all_artifacts: list[ArtifactSummary] = []
     figures: list[FigureEmbed] = []
+    alff_sections: list[dict[str, Any]] = []
     seen_pipeline_ids: set[str] = set()
 
     for run in runs_orm:
@@ -365,6 +382,19 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
                 # Collect PNG figures from output dir
                 out_path = Path(run.output_dir)
                 if out_path.exists():
+                    if manifest_id == "alff-falff":
+                        metadata_path = out_path / "alff_falff_metadata.json"
+                        if metadata_path.exists():
+                            try:
+                                md = json.loads(metadata_path.read_text(encoding="utf-8"))
+                                md["run_id"] = run.id
+                                alff_sections.append(md)
+                                warnings_list_from_run = md.get("warnings", [])
+                                for warning in warnings_list_from_run:
+                                    if warning:
+                                        md.setdefault("report_warnings", []).append(str(warning))
+                            except Exception as exc:
+                                log.warning("Could not parse ALFF/fALFF metadata for run %d: %s", run.id, exc)
                     for png in sorted(out_path.glob("*.png"))[:4]:  # max 4 per run
                         try:
                             data = png.read_bytes()
@@ -423,6 +453,8 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     if any(r.status == "failed" for r in run_summaries):
         n_failed = sum(1 for r in run_summaries if r.status == "failed")
         warnings_list.append(f"{n_failed} run(s) failed. Results from failed runs are excluded from this report.")
+    for section in alff_sections:
+        warnings_list.extend(f"ALFF/fALFF run {section['run_id']}: {w}" for w in section.get("warnings", []) if w)
 
     # ── Version info ──────────────────────────────────────────────────────────
     try:
@@ -464,6 +496,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
         failed_runs=status_counts.get("failed", 0),
         cancelled_runs=status_counts.get("cancelled", 0),
         artifacts=all_artifacts,
+        alff_falff_sections=alff_sections,
         figures=figures,
         methods_sections=methods_sections,
         software_table=software_table,
@@ -570,6 +603,16 @@ _METHODS_PROSE: dict[str, str] = {
         "were delineated using 6-connectivity connected-component labelling (scipy.ndimage). "
         "No random field theory, permutation testing, or inferential correction for multiple "
         "comparisons was applied; threshold selection was at the investigator's discretion."
+    ),
+    "alff-falff": (
+        "Voxelwise amplitude of low-frequency fluctuations (ALFF) and fractional ALFF "
+        "were computed from fMRIPrep-preprocessed BOLD data using a native NumPy/SciPy "
+        "FFT workflow (pipeline version {version}). Raw ALFF was the summed FFT amplitude "
+        "within the recorded low-frequency band; fALFF was that amplitude divided by "
+        "summed positive-frequency amplitude through Nyquist, excluding DC. Recorded "
+        "run metadata provide TR, frequency band, nuisance regressors, detrending, mask, "
+        "normalization, and software versions. No inferential statistics or scientific "
+        "interpretation were generated (Zang et al., 2007; Zou et al., 2008)."
     ),
 }
 
@@ -717,6 +760,24 @@ def render_markdown(data: ReportData) -> str:
                 f"| {r.execution_type} | {rt} | {r.status} | {r.artifact_count} |"
             )
         lines.append("")
+
+    if data.alff_falff_sections:
+        lines.append("## ALFF / fALFF Analysis\n")
+        for section in data.alff_falff_sections:
+            band = section.get("frequency_band", ["—", "—"])
+            lines += [
+                f"### Run #{section.get('run_id')}\n",
+                f"- **Frequency band:** {band[0]}–{band[1]} Hz",
+                f"- **TR:** {section.get('tr', '—')} s",
+                f"- **Nyquist frequency:** {section.get('nyquist_frequency', '—')} Hz",
+                f"- **Confound strategy:** {section.get('confound_strategy', '—')}",
+                f"- **Normalization:** {section.get('normalization', '—')}",
+                f"- **Runtime:** {section.get('runtime_seconds', '—')} s",
+                f"- **Mask voxels:** {section.get('mask_voxel_count', '—')}",
+                f"- **ALFF statistics:** `{json.dumps(section.get('alff_statistics', {}), sort_keys=True)}`",
+                f"- **fALFF statistics:** `{json.dumps(section.get('falff_statistics', {}), sort_keys=True)}`",
+                "",
+            ]
 
     if data.methods_sections:
         lines.append("## Methods\n")
@@ -893,6 +954,23 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
     else:
         methods_html = "<p class='empty'>No pipeline runs recorded.</p>"
 
+    if d.alff_falff_sections:
+        alff_parts = []
+        for section in d.alff_falff_sections:
+            band = section.get("frequency_band", ["—", "—"])
+            rows = [
+                ("Run", f"#{section.get('run_id')}"), ("Frequency band", f"{band[0]}–{band[1]} Hz"),
+                ("TR", f"{section.get('tr', '—')} s"), ("Nyquist", f"{section.get('nyquist_frequency', '—')} Hz"),
+                ("Confounds", section.get("confound_strategy", "—")), ("Normalization", section.get("normalization", "—")),
+                ("Runtime", f"{section.get('runtime_seconds', '—')} s"), ("Mask voxels", section.get("mask_voxel_count", "—")),
+                ("ALFF statistics", json.dumps(section.get("alff_statistics", {}), sort_keys=True)),
+                ("fALFF statistics", json.dumps(section.get("falff_statistics", {}), sort_keys=True)),
+            ]
+            alff_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
+        alff_html = "".join(alff_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
+    else:
+        alff_html = "<p class='empty'>No ALFF/fALFF runs exist for this dataset.</p>"
+
     # Software versions table
     if d.software_table:
         sw_rows = "\n".join(
@@ -982,6 +1060,7 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
         "run_cards_html": run_cards_html,
         "pipeline_table_html": pipeline_table_html,
         "methods_html": methods_html,
+        "alff_html": alff_html,
         "sw_table_html": sw_table_html,
         "citations_html": citations_html,
         "warnings_html": warnings_html,
@@ -1177,6 +1256,10 @@ figcaption {{ font-size: 0.82rem; color: #666; margin-top: 6px; text-align: cent
 <!-- Figures -->
 <h2>Figures</h2>
 {figs_html}
+
+<!-- ALFF/fALFF -->
+<h2>ALFF / fALFF Analysis</h2>
+{alff_html}
 
 <!-- Artifact Inventory -->
 <h2>Artifact Inventory</h2>

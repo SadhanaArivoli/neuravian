@@ -107,6 +107,7 @@ def _make_report_data(
         failed_runs=sum(1 for r in _runs if r.status == "failed"),
         cancelled_runs=0,
         artifacts=artifacts or [],
+        alff_falff_sections=[],
         figures=[],
         methods_sections=methods,
         software_table=sw,
@@ -118,6 +119,8 @@ def _make_report_data(
 # ── Citation registry tests ───────────────────────────────────────────────────
 
 class TestCitationRegistry:
+    def test_alff_falff_citations_present(self):
+        assert {c.key for c in _build_citations({"alff-falff"})} == {"alff", "falff"}
     def test_mriqc_citation_present(self):
         cits = _build_citations({"mriqc"})
         keys = {c.key for c in cits}
@@ -174,6 +177,9 @@ class TestCitationRegistry:
 # ── Methods prose tests ───────────────────────────────────────────────────────
 
 class TestMethodsProse:
+    def test_alff_methods_are_non_inferential(self):
+        sections = _build_methods_sections([_make_run(pipeline_id="alff-falff", display_name="ALFF / fALFF")], {})
+        assert "No inferential statistics" in sections[0]["text"]
     def test_mriqc_methods_contains_version(self):
         runs = [_make_run(pipeline_id="mriqc", version="24.0.2")]
         sections = _build_methods_sections(runs, {})
@@ -237,6 +243,17 @@ class TestSoftwareTable:
 # ── HTML renderer tests ───────────────────────────────────────────────────────
 
 class TestHtmlRenderer:
+    def test_alff_section_consistent_across_exports(self, tmp_path: Path):
+        data = _make_report_data(runs=[_make_run(pipeline_id="alff-falff", display_name="ALFF / fALFF")])
+        data.alff_falff_sections = [{"run_id":58,"frequency_band":[0.01,0.08],"tr":1.0,"nyquist_frequency":0.5,"confound_strategy":"motion6","normalization":"none","runtime_seconds":1.2,"mask_voxel_count":42,"alff_statistics":{"mean":1.1},"falff_statistics":{"mean":0.2},"warnings":[]}]
+        html = render_html(data); md = render_markdown(data); payload = json.loads(render_json(data))
+        assert "0.01–0.08 Hz" in html and "0.01–0.08 Hz" in md
+        assert payload["alff_falff_sections"][0]["confound_strategy"] == "motion6"
+        for name, content in [("study_report.html",html),("study_report.md",md),("study_report.json",render_json(data))]: (tmp_path/name).write_text(content)
+        archive = build_supplement_zip(data,tmp_path)
+        with zipfile.ZipFile(archive) as zf:
+            assert {"study_report.html","study_report.md","study_report.json"}.issubset(zf.namelist())
+
     def test_html_contains_dataset_name(self):
         data = _make_report_data()
         html = render_html(data)
