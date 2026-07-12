@@ -65,11 +65,17 @@ function OverviewTab({ report, datasetId }: { report: ReportSummary; datasetId: 
         <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Downloads</h3>
         <div className="flex flex-wrap gap-2">
           <DownloadButton href={reportDownloadUrl(datasetId, report.id, "html")} label="HTML" icon="📄" />
+          {report.pdf_path && (
+            <DownloadButton href={reportDownloadUrl(datasetId, report.id, "pdf")} label="PDF" icon="🖨" />
+          )}
           <DownloadButton href={reportDownloadUrl(datasetId, report.id, "md")} label="Markdown" icon="📝" />
           <DownloadButton href={reportDownloadUrl(datasetId, report.id, "json")} label="JSON" icon="🗂" />
           <DownloadButton href={reportDownloadUrl(datasetId, report.id, "zip")} label="Supplement ZIP" icon="🗜" />
           <PrintButton />
         </div>
+        {!report.pdf_path && (
+          <p className="text-xs text-gray-600 mt-2">PDF unavailable — use Print / Save PDF from the Preview tab.</p>
+        )}
       </div>
 
       <div className="rounded-lg border border-white/5 bg-surface-raised p-4">

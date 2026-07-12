@@ -6,6 +6,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error((detail as { detail?: string }).detail ?? res.statusText);
   }
+  if (res.status === 204) return undefined as unknown as T;
   return res.json() as Promise<T>;
 }
 
@@ -774,8 +775,28 @@ export interface ReportSummary {
   md_path: string | null;
   json_path: string | null;
   zip_path: string | null;
+  pdf_path: string | null;
   created_at: string;
   finished_at: string | null;
+}
+
+export interface ReportPipelineDiff {
+  pipeline: string;
+  change: "added" | "removed" | "modified";
+  details?: {
+    version?: { a: string | null; b: string | null };
+    artifact_count?: { a: number; b: number };
+    params?: Record<string, { a: unknown; b: unknown }>;
+  };
+}
+
+export interface ReportComparison {
+  report_a: { id: number; created_at: string; total_runs: number; success_runs: number };
+  report_b: { id: number; created_at: string; total_runs: number; success_runs: number };
+  runs: { added: number[]; removed: number[] };
+  pipelines: ReportPipelineDiff[];
+  warnings: { added: string[]; removed: string[] };
+  artifacts: { a: number; b: number; delta: number };
 }
 
 export function generateReport(datasetId: number): Promise<{ report_id: number; status: string; created_at: string }> {
@@ -790,7 +811,19 @@ export function getReport(datasetId: number, reportId: number): Promise<ReportSu
   return apiFetch<ReportSummary>(`/datasets/${datasetId}/reports/${reportId}`);
 }
 
-export function reportDownloadUrl(datasetId: number, reportId: number, fmt: "html" | "md" | "json" | "zip"): string {
+export function deleteReport(datasetId: number, reportId: number): Promise<void> {
+  return apiFetch(`/datasets/${datasetId}/reports/${reportId}`, { method: "DELETE" });
+}
+
+export function retryReport(datasetId: number, reportId: number): Promise<{ report_id: number; status: string }> {
+  return apiFetch(`/datasets/${datasetId}/reports/${reportId}/retry`, { method: "POST" });
+}
+
+export function compareReports(datasetId: number, a: number, b: number): Promise<ReportComparison> {
+  return apiFetch<ReportComparison>(`/datasets/${datasetId}/reports/compare?a=${a}&b=${b}`);
+}
+
+export function reportDownloadUrl(datasetId: number, reportId: number, fmt: "html" | "md" | "json" | "zip" | "pdf"): string {
   return `${BASE_URL}/datasets/${datasetId}/reports/${reportId}/download/${fmt}`;
 }
 

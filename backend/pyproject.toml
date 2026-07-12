@@ -29,6 +29,7 @@ dependencies = [
     "matplotlib>=3.11.0",
     "networkx>=3.3",
     "python-louvain>=0.16",
+    "playwright>=1.44.0",
 ]
 
 [project.scripts]

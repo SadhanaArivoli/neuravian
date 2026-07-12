@@ -475,3 +475,223 @@ class TestConditionalSections:
         data.artifacts = []
         html = render_html(data)
         assert "No resolved artifacts" in html
+
+
+
+# ── Module-level imports for new tests ────────────────────────────────────────
+
+from app.api.reports import _compare_reports, _generate_pdf, PDF_TIMEOUT_MS  # noqa: E402
+
+
+# ── PDF generation ─────────────────────────────────────────────────────────────
+
+class TestPdfGeneration:
+    def test_generate_pdf_with_playwright_produces_valid_file(self, tmp_path):
+        """End-to-end: playwright renders a minimal HTML to a valid PDF."""
+        try:
+            from playwright.sync_api import sync_playwright  # noqa: F401
+        except ImportError:
+            pytest.skip("playwright not installed")
+
+        html_file = tmp_path / "test.html"
+        html_file.write_text(
+            "<html><body><h1>NeuroForge Test</h1><p>PDF test.</p></body></html>"
+        )
+        pdf_file = tmp_path / "out.pdf"
+        err = _generate_pdf(html_file, pdf_file)
+        assert err is None, f"PDF generation failed: {err}"
+        assert pdf_file.exists()
+        assert pdf_file.stat().st_size > 1000
+        assert pdf_file.read_bytes()[:4] == b"%PDF"
+
+    def test_pdf_timeout_constant_is_sane(self):
+        assert PDF_TIMEOUT_MS >= 10_000
+
+    def test_generate_pdf_with_full_report_html(self, tmp_path):
+        """PDF generation works on a full-size report HTML."""
+        try:
+            from playwright.sync_api import sync_playwright  # noqa: F401
+        except ImportError:
+            pytest.skip("playwright not installed")
+
+        data = _make_report_data()
+        html_content = render_html(data)
+        html_file = tmp_path / "report.html"
+        html_file.write_text(html_content, encoding="utf-8")
+        pdf_file = tmp_path / "report.pdf"
+        err = _generate_pdf(html_file, pdf_file)
+        assert err is None, f"Full-report PDF failed: {err}"
+        assert pdf_file.stat().st_size > 10_000  # real reports are large
+        assert pdf_file.read_bytes()[:4] == b"%PDF"
+
+
+# ── Report comparison (unit tests — no app import) ───────────────────────────
+
+class TestReportComparison:
+    def _mock_report(self, rid, json_path):
+        r = MagicMock()
+        r.id = rid
+        r.json_path = str(json_path)
+        r.created_at = datetime(2026, 7, 12, tzinfo=UTC)
+        return r
+
+    def _write(self, path, runs, artifacts=None, warnings=None):
+        path.write_text(json.dumps({
+            "total_runs": len(runs),
+            "success_runs": sum(1 for r in runs if r.get("status") == "success"),
+            "runs": runs,
+            "artifacts": artifacts or [],
+            "warnings": warnings or [],
+        }), encoding="utf-8")
+
+    def test_identical_reports_no_diffs(self, tmp_path):
+        run = {"run_id": 1, "pipeline_id": "mriqc", "pipeline_version": "24.0.2",
+               "status": "success", "artifact_count": 3, "params": {}}
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [run])
+        self._write(pb, [run])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert result["runs"]["added"] == []
+        assert result["runs"]["removed"] == []
+        assert result["pipelines"] == []
+        assert result["warnings"]["added"] == []
+        assert result["artifacts"]["delta"] == 0
+
+    def test_added_run_detected(self, tmp_path):
+        run_a = {"run_id": 1, "pipeline_id": "mriqc", "pipeline_version": "24.0.2",
+                 "status": "success", "artifact_count": 3, "params": {}}
+        run_b = {"run_id": 2, "pipeline_id": "fmriprep", "pipeline_version": "23.2.0",
+                 "status": "success", "artifact_count": 5, "params": {}}
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [run_a])
+        self._write(pb, [run_a, run_b])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert 2 in result["runs"]["added"]
+        assert result["runs"]["removed"] == []
+
+    def test_removed_run_detected(self, tmp_path):
+        run = {"run_id": 1, "pipeline_id": "mriqc", "pipeline_version": "24.0.2",
+               "status": "success", "artifact_count": 3, "params": {}}
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [run])
+        self._write(pb, [])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert 1 in result["runs"]["removed"]
+        assert result["runs"]["added"] == []
+
+    def test_version_change_detected(self, tmp_path):
+        run_a = {"run_id": 1, "pipeline_id": "mriqc", "pipeline_version": "24.0.1",
+                 "status": "success", "artifact_count": 3, "params": {}}
+        run_b = {**run_a, "pipeline_version": "24.0.2"}
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [run_a])
+        self._write(pb, [run_b])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        modified = [p for p in result["pipelines"] if p["change"] == "modified"]
+        assert len(modified) == 1
+        assert modified[0]["details"]["version"]["a"] == "24.0.1"
+        assert modified[0]["details"]["version"]["b"] == "24.0.2"
+
+    def test_param_change_detected(self, tmp_path):
+        run_a = {"run_id": 1, "pipeline_id": "mriqc", "pipeline_version": "24.0.2",
+                 "status": "success", "artifact_count": 3,
+                 "params": {"participant_label": "sub-01"}}
+        run_b = {**run_a, "params": {"participant_label": "sub-02"}}
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [run_a])
+        self._write(pb, [run_b])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        modified = [p for p in result["pipelines"] if p["change"] == "modified"]
+        assert "participant_label" in modified[0]["details"]["params"]
+
+    def test_warning_added(self, tmp_path):
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [], warnings=[])
+        self._write(pb, [], warnings=["1 run(s) failed."])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert "1 run(s) failed." in result["warnings"]["added"]
+        assert result["warnings"]["removed"] == []
+
+    def test_warning_resolved(self, tmp_path):
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [], warnings=["1 run(s) failed."])
+        self._write(pb, [], warnings=[])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert "1 run(s) failed." in result["warnings"]["removed"]
+
+    def test_artifact_delta(self, tmp_path):
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        self._write(pa, [], artifacts=[{}, {}])
+        self._write(pb, [], artifacts=[{}, {}, {}])
+        result = _compare_reports(self._mock_report(1, pa), self._mock_report(2, pb))
+        assert result["artifacts"]["a"] == 2
+        assert result["artifacts"]["b"] == 3
+        assert result["artifacts"]["delta"] == 1
+
+
+# ── Failed-report management (live backend via httpx) ─────────────────────────
+
+import urllib.request  # noqa: E402
+import urllib.error  # noqa: E402
+
+BACKEND = "http://localhost:8000/api"
+
+
+def _http(method: str, url: str) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+class TestFailedReportManagementLive:
+    """Hit the real running backend — skipped if backend is unreachable."""
+
+    @pytest.fixture(autouse=True)
+    def _require_backend(self):
+        try:
+            _http("GET", f"{BACKEND}/health")
+        except Exception:
+            pytest.skip("backend not reachable at localhost:8000")
+
+    def test_delete_ready_report_returns_409(self):
+        status, _ = _http("DELETE", f"{BACKEND}/datasets/1/reports/7")
+        assert status == 409
+
+    def test_retry_ready_report_returns_409(self):
+        status, _ = _http("POST", f"{BACKEND}/datasets/1/reports/7/retry")
+        assert status == 409
+
+    def test_delete_nonexistent_report_returns_404(self):
+        status, _ = _http("DELETE", f"{BACKEND}/datasets/1/reports/99999")
+        assert status == 404
+
+    def test_retry_nonexistent_report_returns_404(self):
+        status, _ = _http("POST", f"{BACKEND}/datasets/1/reports/99999/retry")
+        assert status == 404
+
+    def test_compare_same_report_returns_400(self):
+        status, _ = _http("GET", f"{BACKEND}/datasets/1/reports/compare?a=7&b=7")
+        assert status == 400
+
+    def test_compare_non_ready_report_returns_409(self):
+        status, _ = _http("GET", f"{BACKEND}/datasets/1/reports/compare?a=2&b=7")
+        assert status == 409
+
+    def test_compare_two_ready_reports_returns_200(self):
+        status, body = _http("GET", f"{BACKEND}/datasets/1/reports/compare?a=4&b=7")
+        assert status == 200
+        d = json.loads(body)
+        assert "report_a" in d and "report_b" in d
+        assert "runs" in d and "pipelines" in d and "artifacts" in d
+
+    def test_pdf_download_returns_valid_pdf(self):
+        status, body = _http("GET", f"{BACKEND}/datasets/1/reports/7/download/pdf")
+        assert status == 200
+        assert body[:4] == b"%PDF"
+
+    def test_pdf_download_missing_for_old_report(self):
+        status, _ = _http("GET", f"{BACKEND}/datasets/1/reports/4/download/pdf")
+        assert status == 404

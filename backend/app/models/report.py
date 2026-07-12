@@ -17,6 +17,7 @@ class Report(Base):
     md_path: Mapped[str | None] = mapped_column(String(1024))
     json_path: Mapped[str | None] = mapped_column(String(1024))
     zip_path: Mapped[str | None] = mapped_column(String(1024))
+    pdf_path: Mapped[str | None] = mapped_column(String(1024))
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
