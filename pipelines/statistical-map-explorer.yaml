@@ -77,7 +77,7 @@ produces:
     label: Thresholded map
     description: Input map with sub-threshold voxels zeroed out.
     mime_type: application/gzip
-    artifact_type: nifti
+    artifact_type: statistical_map_thresholded
 
   - path: cluster_table.csv
     label: Cluster table (CSV)
@@ -85,13 +85,13 @@ produces:
       Per-cluster statistics: id, size, peak value, mean value,
       peak MNI coordinates (mm), center of mass (mm), bounding box (voxels).
     mime_type: text/csv
-    artifact_type: table
+    artifact_type: cluster_table_csv
 
   - path: cluster_table.json
     label: Cluster table (JSON)
     description: Machine-readable cluster table with run metadata.
     mime_type: application/json
-    artifact_type: data
+    artifact_type: cluster_table_json
 
   - path: cluster_overlay.png
     label: Cluster overlay figure
@@ -99,7 +99,7 @@ produces:
       Mosaic of axial slices showing the thresholded statistical map
       overlaid on the grayscale brain anatomy.
     mime_type: image/png
-    artifact_type: figure
+    artifact_type: cluster_overlay_png
 
   - path: cluster_report.html
     label: Cluster report (HTML)
@@ -107,7 +107,7 @@ produces:
       Self-contained HTML report with summary statistics, cluster overlay,
       cluster table, methods paragraph, and software versions.
     mime_type: text/html
-    artifact_type: report
+    artifact_type: cluster_report_html
 
   - path: cluster_metadata.json
     label: Run metadata (JSON)
@@ -115,7 +115,7 @@ produces:
       Provenance record: input file, threshold, direction, cluster count,
       image shape, voxel size, runtime, and library versions.
     mime_type: application/json
-    artifact_type: metadata
+    artifact_type: cluster_metadata_json
 
 known_errors:
   - pattern: "Input file not found"

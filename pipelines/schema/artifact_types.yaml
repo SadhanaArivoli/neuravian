@@ -213,3 +213,35 @@ artifact_types:
     label: "Graph Summary Figure"
     description: "Degree distribution histogram and hub ranking bar chart"
     extensions: [".png"]
+
+  # ── Statistical Map Explorer ─────────────────────────────────────────────────
+
+  statistical_map_thresholded:
+    label: "Thresholded Statistical Map"
+    description: "Input statistical NIfTI with sub-threshold voxels zeroed out"
+    extensions: [".nii.gz", ".nii"]
+
+  cluster_table_csv:
+    label: "Cluster Table CSV"
+    description: "Per-cluster statistics: size, peak, mean, MNI coordinates, center of mass, bounding box"
+    extensions: [".csv"]
+
+  cluster_table_json:
+    label: "Cluster Table JSON"
+    description: "Machine-readable cluster table with run provenance metadata"
+    extensions: [".json"]
+
+  cluster_overlay_png:
+    label: "Cluster Overlay Figure"
+    description: "Mosaic of axial slices showing thresholded statistical map overlaid on brain anatomy"
+    extensions: [".png"]
+
+  cluster_report_html:
+    label: "Cluster Report"
+    description: "Self-contained HTML cluster report with summary, overlay figure, cluster table, and methods"
+    extensions: [".html"]
+
+  cluster_metadata_json:
+    label: "Cluster Run Metadata"
+    description: "Provenance record: input, threshold, direction, cluster count, image shape, library versions"
+    extensions: [".json"]

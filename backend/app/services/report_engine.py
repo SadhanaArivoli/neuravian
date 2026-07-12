@@ -184,6 +184,7 @@ _PIPELINE_DISPLAY_NAMES: dict[str, str] = {
     "atlas-roi-extraction": "Atlas ROI Extraction",
     "connectome-graph-analysis": "Connectome Graph Analysis",
     "nifti-inspector": "NIfTI Inspector",
+    "statistical-map-explorer": "Statistical Map Explorer",
 }
 
 
@@ -561,6 +562,14 @@ _METHODS_PROSE: dict[str, str] = {
     "nifti-inspector": (
         "NIfTI image headers and voxel statistics were inspected using NeuroForge's "
         "built-in NIfTI Inspector."
+    ),
+    "statistical-map-explorer": (
+        "Statistical thresholding and cluster detection were performed using NeuroForge's "
+        "Statistical Map Explorer (version {version}). Suprathreshold voxels were identified "
+        "by applying an absolute threshold to the statistical map, and contiguous clusters "
+        "were delineated using 6-connectivity connected-component labelling (scipy.ndimage). "
+        "No random field theory, permutation testing, or inferential correction for multiple "
+        "comparisons was applied; threshold selection was at the investigator's discretion."
     ),
 }
 

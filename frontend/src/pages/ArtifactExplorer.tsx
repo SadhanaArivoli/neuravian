@@ -43,6 +43,12 @@ const TYPE_ICON: Record<string, string> = {
   fmriprep_dir: "FP",
   synthstrip_brain: "SS",
   synthstrip_mask: "BM",
+  statistical_map_thresholded: "SM",
+  cluster_table_csv: "CL",
+  cluster_table_json: "CL",
+  cluster_overlay_png: "CL",
+  cluster_report_html: "CL",
+  cluster_metadata_json: "CL",
 };
 
 function typeIcon(type: string) {
