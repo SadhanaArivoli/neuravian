@@ -15,11 +15,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "datasets",
-        sa.Column("project_id", sa.Integer(), sa.ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True),
-    )
+    # SQLite doesn't support ADD COLUMN with FK constraints via ALTER TABLE.
+    # Use batch mode (copy-and-move) to add project_id without a formal FK constraint.
+    # The application-level model enforces the relationship.
+    with op.batch_alter_table("datasets") as batch_op:
+        batch_op.add_column(
+            sa.Column("project_id", sa.Integer(), nullable=True)
+        )
+        batch_op.create_index("ix_datasets_project_id", ["project_id"])
 
 
 def downgrade() -> None:
-    op.drop_column("datasets", "project_id")
+    with op.batch_alter_table("datasets") as batch_op:
+        batch_op.drop_index("ix_datasets_project_id")
+        batch_op.drop_column("project_id")

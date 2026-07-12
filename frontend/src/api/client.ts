@@ -830,3 +830,189 @@ export function reportDownloadUrl(datasetId: number, reportId: number, fmt: "htm
 export function reportViewUrl(datasetId: number, reportId: number): string {
   return `${BASE_URL}/datasets/${datasetId}/reports/${reportId}/view`;
 }
+
+// ------------------------------------------------------------------ //
+// Projects                                                             //
+// ------------------------------------------------------------------ //
+
+export interface ProjectSummary {
+  id: number;
+  title: string;
+  description: string | null;
+  institution: string | null;
+  lab: string | null;
+  pi_name: string | null;
+  collaborators: string[];
+  tags: string[];
+  status: string;
+  dataset_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectRead extends ProjectSummary {
+  note_count: number;
+}
+
+export interface ProjectCreate {
+  title: string;
+  description?: string | null;
+  institution?: string | null;
+  lab?: string | null;
+  pi_name?: string | null;
+  collaborators?: string[];
+  tags?: string[];
+  status?: string;
+}
+
+export interface ProjectUpdate {
+  title?: string;
+  description?: string | null;
+  institution?: string | null;
+  lab?: string | null;
+  pi_name?: string | null;
+  collaborators?: string[];
+  tags?: string[];
+  status?: string;
+}
+
+export interface ProjectNote {
+  id: number;
+  project_id: number;
+  title: string;
+  content_md: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectStats {
+  dataset_count: number;
+  run_count: number;
+  success_run_count: number;
+  report_count: number;
+  note_count: number;
+  pipeline_breakdown: Record<string, number>;
+  storage_bytes: number;
+}
+
+export interface TimelineEvent {
+  event_type: string;
+  label: string;
+  details: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface PublicationCheckItem {
+  key: string;
+  label: string;
+  done: boolean;
+  detail: string | null;
+}
+
+export interface PublicationStatus {
+  checklist: PublicationCheckItem[];
+  completion_pct: number;
+}
+
+export interface ProjectDataset {
+  id: number;
+  name: string | null;
+  path: string;
+  validation_status: string;
+  created_at: string;
+}
+
+export interface SearchResults {
+  query: string;
+  total: number;
+  results: {
+    datasets: Array<{ id: number; name: string | null; path: string }>;
+    runs: Array<{ id: number; pipeline: string; status: string; created_at: string; dataset_id: number }>;
+    notes: Array<{ id: number; title: string; snippet: string; updated_at: string }>;
+    reports: Array<{ id: number; dataset_id: number; dataset_name: string; status: string; created_at: string }>;
+  };
+}
+
+export function fetchProjects(): Promise<ProjectSummary[]> {
+  return apiFetch<ProjectSummary[]>("/projects");
+}
+
+export function fetchProject(id: number): Promise<ProjectRead> {
+  return apiFetch<ProjectRead>(`/projects/${id}`);
+}
+
+export function createProject(payload: ProjectCreate): Promise<ProjectRead> {
+  return apiFetch<ProjectRead>("/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateProject(id: number, payload: ProjectUpdate): Promise<ProjectRead> {
+  return apiFetch<ProjectRead>(`/projects/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteProject(id: number): Promise<void> {
+  return apiFetch<void>(`/projects/${id}`, { method: "DELETE" });
+}
+
+export function fetchProjectDatasets(projectId: number): Promise<ProjectDataset[]> {
+  return apiFetch<ProjectDataset[]>(`/projects/${projectId}/datasets`);
+}
+
+export function assignDatasetToProject(projectId: number, datasetId: number): Promise<void> {
+  return apiFetch<void>(`/projects/${projectId}/datasets/${datasetId}`, { method: "POST" });
+}
+
+export function unassignDatasetFromProject(projectId: number, datasetId: number): Promise<void> {
+  return apiFetch<void>(`/projects/${projectId}/datasets/${datasetId}`, { method: "DELETE" });
+}
+
+export function fetchProjectNotes(projectId: number): Promise<ProjectNote[]> {
+  return apiFetch<ProjectNote[]>(`/projects/${projectId}/notes`);
+}
+
+export function createProjectNote(projectId: number, title: string, content_md: string): Promise<ProjectNote> {
+  return apiFetch<ProjectNote>(`/projects/${projectId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, content_md }),
+  });
+}
+
+export function updateProjectNote(projectId: number, noteId: number, payload: { title?: string; content_md?: string }): Promise<ProjectNote> {
+  return apiFetch<ProjectNote>(`/projects/${projectId}/notes/${noteId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteProjectNote(projectId: number, noteId: number): Promise<void> {
+  return apiFetch<void>(`/projects/${projectId}/notes/${noteId}`, { method: "DELETE" });
+}
+
+export function fetchProjectStats(projectId: number): Promise<ProjectStats> {
+  return apiFetch<ProjectStats>(`/projects/${projectId}/stats`);
+}
+
+export function fetchProjectTimeline(projectId: number): Promise<TimelineEvent[]> {
+  return apiFetch<TimelineEvent[]>(`/projects/${projectId}/timeline`);
+}
+
+export function fetchPublicationStatus(projectId: number): Promise<PublicationStatus> {
+  return apiFetch<PublicationStatus>(`/projects/${projectId}/publication-status`);
+}
+
+export function searchProject(projectId: number, q: string): Promise<SearchResults> {
+  return apiFetch<SearchResults>(`/projects/${projectId}/search?q=${encodeURIComponent(q)}`);
+}
+
+export function fetchManuscript(projectId: number): Promise<{ content: string; filename: string }> {
+  return apiFetch<{ content: string; filename: string }>(`/projects/${projectId}/manuscript`);
+}

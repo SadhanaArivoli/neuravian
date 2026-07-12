@@ -17,6 +17,8 @@ import ReportStudio from "./pages/ReportStudio";
 import ReportViewer from "./pages/ReportViewer";
 import ReportCompare from "./pages/ReportCompare";
 import StatisticalMapExplorer from "./pages/StatisticalMapExplorer";
+import Projects from "./pages/Projects";
+import ProjectDetail from "./pages/ProjectDetail";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
@@ -31,6 +33,8 @@ export default function App() {
         <main className="min-h-0 flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<Welcome />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/:id" element={<DatasetDetail />} />
             <Route path="/pipelines" element={<Pipelines />} />

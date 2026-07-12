@@ -7,6 +7,7 @@ import { StatusBadge } from "./StatusBadge";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
+  { to: "/projects", label: "Projects", end: false },
   { to: "/datasets", label: "Datasets", end: false },
   { to: "/pipelines", label: "Pipelines", end: false },
   { to: "/runs", label: "Runs", end: false },
