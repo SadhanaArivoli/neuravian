@@ -1,0 +1,23 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# These owners are automatically requested for review on pull requests.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: repo owner reviews everything
+* @SadhanaArivoli
+
+# Pipeline manifests — require owner review to maintain registry consistency
+/pipelines/*.yaml @SadhanaArivoli
+
+# Plugin schema — any change affects all plugins
+/pipelines/schema/ @SadhanaArivoli
+
+# Core backend services and execution engine
+/backend/app/services/ @SadhanaArivoli
+/backend/app/execution/ @SadhanaArivoli
+
+# Database migrations — irreversible, require extra care
+/backend/alembic/ @SadhanaArivoli
+
+# CI configuration
+/.github/workflows/ @SadhanaArivoli
