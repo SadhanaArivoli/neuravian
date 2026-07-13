@@ -4,7 +4,7 @@ All notable changes are documented here. NeuroForge follows [Semantic Versioning
 
 ## [Unreleased]
 
-## [0.1.0-alpha] — 2024
+## [0.1.0-alpha] — 2026-07-13
 
 Initial public release.
 
@@ -64,5 +64,7 @@ Initial public release.
 - SQLite local database with Alembic migrations
 - Docker Compose deployment (nginx + FastAPI)
 - GitHub Actions CI (backend pytest + frontend Vitest + TypeScript)
+- Plugin SDK: manifest-driven plugin discovery, JSON Schema validation, artifact type registration, PATH patching, `/plugins` UI page, `GET /api/plugins` endpoint
+- Example plugin: `plugins/image-statistics/` — reference implementation of all plugin features
 
 [0.1.0-alpha]: https://github.com/SadhanaArivoli/neuroforge/releases/tag/v0.1.0-alpha
