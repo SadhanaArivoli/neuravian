@@ -99,20 +99,35 @@ def _validate_chaining_fields(filename: str, data: dict[str, Any]) -> None:
 
 
 def load_all_manifests() -> dict[str, dict[str, Any]]:
-    """Return {pipeline_id: manifest_dict} for every valid .yaml in pipelines/."""
+    """Return {pipeline_id: manifest_dict} for core and all enabled plugin pipelines."""
     schema = _load_schema()
     registry: dict[str, dict[str, Any]] = {}
+
+    # Core manifests
     for yaml_path in sorted(_PIPELINES_DIR.glob("*.yaml")):
-        try:
-            manifest = _load_manifest(yaml_path, schema)
-        except ManifestError as exc:
-            # Reject the entire startup if any manifest is malformed.
-            raise
+        manifest = _load_manifest(yaml_path, schema)
         pid = manifest["id"]
         if pid in registry:
             raise ManifestError(f"Duplicate pipeline id '{pid}' in {yaml_path.name}")
         registry[pid] = manifest
         log.info("Loaded pipeline manifest: %s (%s)", pid, manifest["display_name"])
+
+    # Plugin manifests (lazy import avoids circular dependency at module level)
+    try:
+        from app.services.plugin_loader import iter_plugin_manifests
+        for pid, manifest in iter_plugin_manifests():
+            if pid in registry:
+                raise ManifestError(
+                    f"Plugin pipeline id '{pid}' conflicts with an existing pipeline"
+                )
+            registry[pid] = manifest
+            log.info(
+                "Loaded plugin pipeline manifest: %s (%s)",
+                pid, manifest.get("display_name", pid),
+            )
+    except ImportError:
+        pass
+
     return registry
 
 

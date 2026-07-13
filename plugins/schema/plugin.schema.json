@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NeuroForge Plugin Manifest",
+  "description": "Metadata file (plugin.yaml) required at the root of every NeuroForge plugin.",
+  "type": "object",
+  "required": ["id", "name", "version", "author", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "description": "Unique plugin identifier used as a namespace prefix for validation. Must not conflict with any other installed plugin."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable plugin name shown in the Plugins page."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$",
+      "description": "Semantic version string (e.g. '1.0.0' or '0.2.1-alpha')."
+    },
+    "author": {
+      "type": "string",
+      "description": "Plugin author or organization name."
+    },
+    "description": {
+      "type": "string",
+      "description": "One-paragraph description of what this plugin provides."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL to the plugin's documentation or repository."
+    },
+    "neuroforge_version": {
+      "type": "string",
+      "description": "Required NeuroForge version range (e.g. '>=0.1.0'). Informational only — not currently enforced."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier (e.g. 'Apache-2.0', 'MIT')."
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Python package requirements this plugin needs. Informational only — the user is responsible for installing them in the backend image or virtual environment."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Set to false to disable the plugin without removing it. Disabled plugins are shown in the Plugins page but their pipelines are not registered."
+    }
+  }
+}

@@ -38,10 +38,25 @@ def _load_artifact_types() -> dict[str, Any]:
         try:
             with _ARTIFACT_TYPES_PATH.open() as f:
                 data = yaml.safe_load(f)
-            _artifact_types_cache = data.get("artifact_types", {})
+            types: dict[str, Any] = data.get("artifact_types", {})
         except Exception as exc:
             log.warning("Could not load artifact_types.yaml: %s", exc)
-            _artifact_types_cache = {}
+            types = {}
+
+        # Merge plugin artifact types (lazy import to avoid circular deps)
+        try:
+            from app.services.plugin_loader import iter_plugin_artifact_types
+            for slug, defn in iter_plugin_artifact_types():
+                if slug in types:
+                    log.warning(
+                        "Plugin artifact type '%s' conflicts with a core type — skipped", slug
+                    )
+                else:
+                    types[slug] = defn
+        except ImportError:
+            pass
+
+        _artifact_types_cache = types
     return _artifact_types_cache
 
 
