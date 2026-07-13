@@ -131,29 +131,77 @@ artifact_types:
     description: "HTML report summarizing the seed ROI, atlas, correlation map statistics, and outputs"
     extensions: [".html"]
 
+  # Legacy artifact types — produced by group-FC runs before v0.1.1.
+  # Kept so that old run records remain resolvable.
   group_mean_matrix_csv:
-    label: "Group Mean Connectivity Matrix"
-    description: "Mean ROI-by-ROI connectivity matrix averaged across all input runs, as CSV"
+    label: "Group Mean Connectivity Matrix (legacy)"
+    description: "Legacy: raw-r mean matrix (pre-Fisher-z). Use group_mean_r_matrix_csv for new runs."
     extensions: [".csv"]
 
   group_mean_matrix_npy:
-    label: "Group Mean Connectivity Matrix (NPY)"
-    description: "Mean ROI-by-ROI connectivity matrix as a NumPy binary array"
+    label: "Group Mean Connectivity Matrix NPY (legacy)"
+    description: "Legacy: raw-r mean matrix as NumPy binary (pre-Fisher-z)."
     extensions: [".npy"]
 
   group_mean_heatmap_png:
-    label: "Group Mean Connectivity Heatmap"
-    description: "Heatmap PNG of the mean connectivity matrix"
+    label: "Group Mean Connectivity Heatmap (legacy)"
+    description: "Legacy: heatmap of raw-r mean matrix (pre-Fisher-z)."
     extensions: [".png"]
 
   group_std_matrix_csv:
-    label: "Group Std Connectivity Matrix"
-    description: "Standard deviation of the ROI-by-ROI connectivity matrices across runs, as CSV"
+    label: "Group Std Connectivity Matrix (legacy)"
+    description: "Legacy: raw-r standard deviation matrix (pre-Fisher-z)."
     extensions: [".csv"]
 
   group_std_heatmap_png:
-    label: "Group Std Connectivity Heatmap"
-    description: "Heatmap PNG of the across-run standard deviation connectivity matrix"
+    label: "Group Std Connectivity Heatmap (legacy)"
+    description: "Legacy: heatmap of raw-r std matrix (pre-Fisher-z)."
+    extensions: [".png"]
+
+  # Current Fisher-z artifact types (v0.1.1+)
+  group_mean_r_matrix_csv:
+    label: "Group Mean Connectivity Matrix (r)"
+    description: "Mean Pearson r matrix back-transformed from Fisher z-space via tanh(mean_z)"
+    extensions: [".csv"]
+
+  group_mean_r_matrix_npy:
+    label: "Group Mean Connectivity Matrix (r, NPY)"
+    description: "NumPy binary of the back-transformed mean r matrix"
+    extensions: [".npy"]
+
+  group_mean_r_heatmap_png:
+    label: "Group Mean Connectivity Heatmap (r)"
+    description: "Heatmap of the group mean correlation matrix in r-space"
+    extensions: [".png"]
+
+  group_mean_fisher_z_matrix_csv:
+    label: "Group Mean Connectivity Matrix (Fisher z)"
+    description: "Mean connectivity in Fisher z-space (arctanh); use for group statistical analyses"
+    extensions: [".csv"]
+
+  group_mean_fisher_z_matrix_npy:
+    label: "Group Mean Connectivity Matrix (Fisher z, NPY)"
+    description: "NumPy binary of the mean Fisher z matrix"
+    extensions: [".npy"]
+
+  group_mean_fisher_z_heatmap_png:
+    label: "Group Mean Connectivity Heatmap (Fisher z)"
+    description: "Heatmap of the group mean connectivity in Fisher z-space"
+    extensions: [".png"]
+
+  group_std_fisher_z_matrix_csv:
+    label: "Group Std Connectivity Matrix (Fisher z)"
+    description: "Sample standard deviation (ddof=1) in Fisher z-space across input runs"
+    extensions: [".csv"]
+
+  group_std_fisher_z_matrix_npy:
+    label: "Group Std Connectivity Matrix (Fisher z, NPY)"
+    description: "NumPy binary of the z-space standard deviation matrix"
+    extensions: [".npy"]
+
+  group_std_fisher_z_heatmap_png:
+    label: "Group Std Connectivity Heatmap (Fisher z)"
+    description: "Heatmap of across-run standard deviation in Fisher z-space"
     extensions: [".png"]
 
   group_summary_json:

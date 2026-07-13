@@ -20,11 +20,15 @@ inputs:
   - connectivity_matrix_csv
 
 outputs:
-  - group_mean_matrix_csv
-  - group_mean_matrix_npy
-  - group_mean_heatmap_png
-  - group_std_matrix_csv
-  - group_std_heatmap_png
+  - group_mean_r_matrix_csv
+  - group_mean_r_matrix_npy
+  - group_mean_r_heatmap_png
+  - group_mean_fisher_z_matrix_csv
+  - group_mean_fisher_z_matrix_npy
+  - group_mean_fisher_z_heatmap_png
+  - group_std_fisher_z_matrix_csv
+  - group_std_fisher_z_matrix_npy
+  - group_std_fisher_z_heatmap_png
   - group_summary_json
   - group_report_html
 
@@ -66,30 +70,55 @@ accepts:
     required: true
 
 produces:
-  - type: group_mean_matrix_csv
-    path_hint: "group_mean_connectivity_matrix.csv"
-    label: "Group Mean Connectivity Matrix"
-    description: "Mean connectivity matrix averaged across all input runs"
+  - type: group_mean_r_matrix_csv
+    path_hint: "group_mean_r_matrix.csv"
+    label: "Group Mean Connectivity Matrix (r)"
+    description: >
+      Primary result: mean Pearson correlation matrix back-transformed from
+      Fisher z-space via tanh(mean_z). Diagonal = 1. Use this for downstream
+      graph analysis and visualization.
 
-  - type: group_mean_matrix_npy
-    path_hint: "group_mean_connectivity_matrix.npy"
-    label: "Group Mean Connectivity Matrix (NPY)"
-    description: "NumPy binary array of the mean connectivity matrix"
+  - type: group_mean_r_matrix_npy
+    path_hint: "group_mean_r_matrix.npy"
+    label: "Group Mean Connectivity Matrix (r, NPY)"
+    description: "NumPy binary of the back-transformed mean r matrix"
 
-  - type: group_mean_heatmap_png
-    path_hint: "group_mean_connectivity_heatmap.png"
-    label: "Group Mean Heatmap"
-    description: "Heatmap PNG of the group mean connectivity matrix"
+  - type: group_mean_r_heatmap_png
+    path_hint: "group_mean_r_heatmap.png"
+    label: "Group Mean Heatmap (r)"
+    description: "Heatmap of the group mean correlation matrix (r-space)"
 
-  - type: group_std_matrix_csv
-    path_hint: "group_std_connectivity_matrix.csv"
-    label: "Group Std Connectivity Matrix"
-    description: "Standard deviation matrix across input runs"
+  - type: group_mean_fisher_z_matrix_csv
+    path_hint: "group_mean_fisher_z_matrix.csv"
+    label: "Group Mean Connectivity Matrix (Fisher z)"
+    description: >
+      Mean connectivity in Fisher z-space (arctanh of individual run r matrices).
+      Diagonal = 0. Use this for parametric group-level statistical analyses.
 
-  - type: group_std_heatmap_png
-    path_hint: "group_std_connectivity_heatmap.png"
-    label: "Group Std Heatmap"
-    description: "Heatmap PNG of the across-run standard deviation matrix"
+  - type: group_mean_fisher_z_matrix_npy
+    path_hint: "group_mean_fisher_z_matrix.npy"
+    label: "Group Mean Connectivity Matrix (Fisher z, NPY)"
+    description: "NumPy binary of the mean Fisher z matrix"
+
+  - type: group_mean_fisher_z_heatmap_png
+    path_hint: "group_mean_fisher_z_heatmap.png"
+    label: "Group Mean Heatmap (Fisher z)"
+    description: "Heatmap of the group mean connectivity in Fisher z-space"
+
+  - type: group_std_fisher_z_matrix_csv
+    path_hint: "group_std_fisher_z_matrix.csv"
+    label: "Group Std Connectivity Matrix (Fisher z)"
+    description: "Sample standard deviation (ddof=1) in Fisher z-space across input runs"
+
+  - type: group_std_fisher_z_matrix_npy
+    path_hint: "group_std_fisher_z_matrix.npy"
+    label: "Group Std Connectivity Matrix (Fisher z, NPY)"
+    description: "NumPy binary of the z-space standard deviation matrix"
+
+  - type: group_std_fisher_z_heatmap_png
+    path_hint: "group_std_fisher_z_heatmap.png"
+    label: "Group Std Heatmap (Fisher z)"
+    description: "Heatmap of across-run standard deviation in Fisher z-space"
 
   - type: group_summary_json
     path_hint: "group_summary.json"
@@ -128,3 +157,15 @@ known_errors:
     fix_hint: >
       Confirm that all selected runs used exactly the same atlas. Matrices
       must have identical row and column counts.
+
+  - pattern: "Confound strategy mismatch"
+    explanation: >
+      The selected runs used different confound-regression strategies and
+      cannot be aggregated. Averaging FC matrices with different nuisance
+      regression (especially global signal regression) produces scientifically
+      invalid group means because the strategies change the sign and magnitude
+      of correlation values.
+    fix_hint: >
+      Select only FC runs computed with the same confound-strategy. Check the
+      confound_strategy field on each run's metadata in Run Results. Re-run
+      the FC pipeline with a consistent strategy if needed.
