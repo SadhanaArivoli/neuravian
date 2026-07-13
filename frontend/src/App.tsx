@@ -19,6 +19,7 @@ import ReportCompare from "./pages/ReportCompare";
 import StatisticalMapExplorer from "./pages/StatisticalMapExplorer";
 import Projects from "./pages/Projects";
 import ProjectDetail from "./pages/ProjectDetail";
+import Plugins from "./pages/Plugins";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/workflows/library" element={<WorkflowLibrary />} />
             <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
             <Route path="/compare" element={<ComparisonStudio />} />
+            <Route path="/plugins" element={<Plugins />} />
             <Route path="/settings/remote-hosts" element={<RemoteHosts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/datasets/:id/graph" element={<WorkflowGraph />} />

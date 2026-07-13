@@ -20,6 +20,7 @@ const WIZARD_ITEMS = [
 ] as const;
 
 const SETTINGS_ITEMS = [
+  { to: "/plugins", label: "Plugins", end: false },
   { to: "/settings/remote-hosts", label: "Remote Hosts", end: false },
   { to: "/settings", label: "Settings", end: true },
 ] as const;

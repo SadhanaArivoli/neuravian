@@ -1016,3 +1016,29 @@ export function searchProject(projectId: number, q: string): Promise<SearchResul
 export function fetchManuscript(projectId: number): Promise<{ content: string; filename: string }> {
   return apiFetch<{ content: string; filename: string }>(`/projects/${projectId}/manuscript`);
 }
+
+// ------------------------------------------------------------------ //
+// Plugins                                                              //
+// ------------------------------------------------------------------ //
+
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  homepage: string | null;
+  license: string | null;
+  neuroforge_version: string | null;
+  dependencies: string[];
+  enabled: boolean;
+  status: "ok" | "disabled" | "error";
+  error: string | null;
+  pipeline_ids: string[];
+  artifact_type_slugs: string[];
+  plugin_dir: string;
+}
+
+export function fetchPlugins(): Promise<PluginInfo[]> {
+  return apiFetch<PluginInfo[]>("/plugins");
+}
