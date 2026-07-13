@@ -57,8 +57,9 @@ const MANIFESTS: Record<string, ManifestSlim> = {
   },
   "alff-falff": { id: "alff-falff", accepts: [{type:"fmriprep_derivatives",param:"fmriprep-dir"}], produces: [{type:"alff_map_nii"},{type:"falff_map_nii"}] },
   "seed-based-connectivity": { id: "seed-based-connectivity", accepts: [{type:"fmriprep_derivatives",param:"fmriprep-dir"}], produces: [{type:"seed_connectivity_map_nii"}] },
-  "statistical-map-explorer": { id: "statistical-map-explorer", accepts: [{type:"seed_connectivity_map_nii",param:"input-file"},{type:"alff_map_nii",param:"input-file"}], produces: [{type:"statistical_map_thresholded"}] },
-  "atlas-roi-extraction": { id: "atlas-roi-extraction", accepts: [{type:"nifti_skull_stripped",param:"input-file"},{type:"alff_map_nii",param:"input-file"}], produces: [{type:"roi_extraction_csv"}] },
+  "regional-homogeneity": { id: "regional-homogeneity", accepts: [{type:"fmriprep_derivatives",param:"fmriprep-dir"}], produces: [{type:"reho_map_nii"},{type:"reho_normalized_map_nii"}] },
+  "statistical-map-explorer": { id: "statistical-map-explorer", accepts: [{type:"seed_connectivity_map_nii",param:"input-file"},{type:"alff_map_nii",param:"input-file"},{type:"reho_map_nii",param:"input-file"}], produces: [{type:"statistical_map_thresholded"}] },
+  "atlas-roi-extraction": { id: "atlas-roi-extraction", accepts: [{type:"nifti_skull_stripped",param:"input-file"},{type:"alff_map_nii",param:"input-file"},{type:"reho_map_nii",param:"input-file"}], produces: [{type:"roi_extraction_csv"}] },
   "connectome-graph-analysis": { id: "connectome-graph-analysis", accepts: [{type:"connectivity_matrix_npy",param:"input-matrix"},{type:"connectivity_matrix_csv",param:"input-matrix"}], produces: [{type:"graph_metrics_json"}] },
   fastsurfer: {
     id: "fastsurfer",
