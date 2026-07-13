@@ -5,7 +5,15 @@ from app.services.pipeline import PipelineService
 
 router = APIRouter(tags=["pipelines"])
 
-_svc = PipelineService()
+# Initialized lazily on first request so plugin discovery (load_all_plugins)
+# in the FastAPI lifespan runs before the registry is built.
+_svc: PipelineService | None = None
+
+def _get_svc() -> PipelineService:
+    global _svc
+    if _svc is None:
+        _svc = PipelineService()
+    return _svc
 
 # Stable sort order for compute_profile — most usable locally first.
 _PROFILE_ORDER = {"local-ok": 0, "local-slow": 1, "local-unsafe": 2}
@@ -13,7 +21,7 @@ _PROFILE_ORDER = {"local-ok": 0, "local-slow": 1, "local-unsafe": 2}
 
 @router.get("/pipelines")
 def list_pipelines() -> list[dict[str, Any]]:
-    return _svc.list_all()
+    return _get_svc().list_all()
 
 
 @router.get("/pipelines/compatible")
@@ -29,7 +37,7 @@ def list_compatible_pipelines(
     """
     results: list[dict[str, Any]] = []
 
-    for manifest in _svc._registry.values():
+    for manifest in _get_svc()._registry.values():
         for slot in manifest.get("accepts", []):
             if slot.get("type") != artifact_type:
                 continue
@@ -59,7 +67,7 @@ def list_compatible_pipelines(
 
 @router.get("/pipelines/{pipeline_id}")
 def get_pipeline(pipeline_id: str) -> dict[str, Any]:
-    manifest = _svc.get_by_id(pipeline_id)
+    manifest = _get_svc().get_by_id(pipeline_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
     return manifest

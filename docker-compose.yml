@@ -9,6 +9,10 @@ services:
       - ./data:/app/data
       # Pipeline manifests live at the repo root, not inside backend/
       - ./pipelines:/pipelines:ro
+      # User-supplied plugins (read-only). Core example plugins ship in the
+      # image via the Dockerfile COPY; this mount lets users add their own
+      # plugins without rebuilding.
+      - ./plugins:/plugins-user:ro
       # Mount the host datasets directory read-only at /host-data.
       # Set HOST_DATASETS_DIR in .env (see .env.example).
       - ${HOST_DATASETS_DIR:-~/Documents}:/host-data:ro

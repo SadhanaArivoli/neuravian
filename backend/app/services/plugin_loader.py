@@ -41,10 +41,11 @@ log = logging.getLogger(__name__)
 
 # ── Schema paths ──────────────────────────────────────────────────────────────
 
+# The plugin schema lives alongside manifest.schema.json in pipelines/schema/.
 # In Docker the /pipelines volume is mounted. For local dev, the repo root is
 # three levels above this file: backend/app/services/plugin_loader.py
 _DOCKER_SCHEMA = Path("/pipelines/schema/plugin.schema.json")
-_LOCAL_SCHEMA = Path(__file__).parent.parent.parent.parent / "plugins" / "schema" / "plugin.schema.json"
+_LOCAL_SCHEMA = Path(__file__).parent.parent.parent.parent / "pipelines" / "schema" / "plugin.schema.json"
 _PLUGIN_SCHEMA_PATH = _DOCKER_SCHEMA if _DOCKER_SCHEMA.is_file() else _LOCAL_SCHEMA
 
 # ── Discovery paths ───────────────────────────────────────────────────────────
@@ -263,11 +264,17 @@ def _patch_path(plugin_dir: Path) -> None:
     if not backend_dir.is_dir():
         return
 
-    # Make all files in backend/ executable
+    # Make all files in backend/ executable.
+    # Skip silently on read-only mounts (volume mounted :ro) — the files
+    # should already have +x set in the repository.
     for f in backend_dir.iterdir():
         if f.is_file():
             current = f.stat().st_mode
-            f.chmod(current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            if not (current & stat.S_IXUSR):
+                try:
+                    f.chmod(current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                except OSError:
+                    log.debug("Could not set execute bit on %s (read-only mount?) — skipping", f)
 
     current_path = os.environ.get("PATH", "")
     str_dir = str(backend_dir.resolve())
