@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Link, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
@@ -56,6 +56,13 @@ export default function App() {
             <Route path="/datasets/:id/reports" element={<ReportStudio />} />
             <Route path="/datasets/:id/reports/compare" element={<ReportCompare />} />
             <Route path="/datasets/:id/reports/:reportId" element={<ReportViewer />} />
+            <Route path="*" element={
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
+                <p className="text-5xl font-bold text-gray-700">404</p>
+                <p className="text-lg text-gray-400">Page not found</p>
+                <Link to="/" className="text-sm text-accent hover:underline">← Back to Home</Link>
+              </div>
+            } />
           </Routes>
         </main>
       </div>
