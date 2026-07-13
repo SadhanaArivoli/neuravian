@@ -237,16 +237,17 @@ export const CITATION_DB: Citation[] = [
     tool: "Harvard-Oxford cortical atlas",
     pipelineIds: ["functional-connectivity"],
     atlasIds: ["harvard_oxford_cortical"],
+    // Primary paper: Frazier et al. 2005. Additional references: Makris et al. 2006,
+    // Desikan et al. 2006. All three appear in Nilearn's atlas documentation.
     authors:
-      "Desikan RS, Segonne F, Fischl B, Quinn BT, Dickerson BC, Blacker D, Buckner RL, Dale AM, Maguire RP, Hyman BT, Albert MS, Killiany RJ",
-    year: 2006,
+      "Frazier JA, Chiu S, Breeze JL, Makris N, Lange N, Kennedy DN, et al.",
+    year: 2005,
     title:
-      "An automated labeling system for subdividing the human cerebral cortex on MRI scans into gyral based regions of interest",
-    journal: "NeuroImage",
-    volume: "31",
-    issue: "3",
-    pages: "968–980",
-    doi: "10.1016/j.neuroimage.2006.01.021",
+      "Structural Brain Magnetic Resonance Imaging of Limbic and Thalamic Volumes in Pediatric Bipolar Disorder",
+    journal: "Am J Psychiatry",
+    volume: "162",
+    pages: "1256–1265",
+    doi: "10.1176/appi.ajp.162.7.1256",
     url: "https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_harvard_oxford.html",
   },
   {

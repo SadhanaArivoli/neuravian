@@ -141,6 +141,13 @@ tr:nth-child(even){{background:#fafafa}}
   derived from the NIfTI affine transform. Peak: voxel with the maximum absolute value.
   CoM: intensity-weighted center of mass.
 </div>
+<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:0.75em 1em;margin:0.75em 0;font-size:.88em;color:#664d03;">
+  <strong>&#9888; Descriptive results only.</strong>
+  Cluster sizes, peak values, and MNI coordinates reported here are <em>not</em> corrected
+  for multiple comparisons. No family-wise error (FWE), false discovery rate (FDR), or
+  permutation-based inference was applied. Do not interpret these values as statistically
+  significant without applying appropriate correction in your analysis.
+</div>
 {cluster_table_html}
 
 <h2>Methods</h2>

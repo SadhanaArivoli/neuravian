@@ -145,7 +145,7 @@ ATLAS_REGISTRY: dict[str, AtlasSpec] = {
         resolution="2 mm",
         label_source="Harvard-Oxford cortical label list",
         source="https://nilearn.github.io/stable/modules/generated/nilearn.datasets.fetch_atlas_harvard_oxford.html",
-        citation="Desikan et al. 2006; FSL Harvard-Oxford atlas",
+        citation="Frazier et al. 2005; Makris et al. 2006; Desikan et al. 2006; FSL Harvard-Oxford atlas",
     ),
 }
 

@@ -352,6 +352,8 @@ docker compose up
 | Application | `http://localhost:3000` |
 | API documentation | `http://localhost:8000/docs` |
 
+> **Security note.** NeuroForge mounts the host Docker socket and runs without authentication. It is designed for single-user local use. **Do not expose ports 3000 or 8000 to external networks or shared machines.** If you deploy NeuroForge on a shared computer or within a lab network, you are responsible for access controls at the OS or firewall level.
+
 ### Environment variables
 
 ```dotenv
