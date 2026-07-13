@@ -306,7 +306,7 @@ The test of a good platform is not whether it has the most features. It is wheth
 
 | Home | Pipelines |
 |------|-----------|
-| ![Home screen showing 20 pipelines, 3 compute profiles, and quick-start buttons](docs/screenshots/home.png) | ![Pipeline browser with category and input-type filters](docs/screenshots/pipelines.png) |
+| ![NeuroForge home screen showing pipeline count, compute profiles, and quick-start buttons](docs/screenshots/home.png) | ![Pipeline browser with category and input-type filters](docs/screenshots/pipelines.png) |
 
 | Workflow Builder | Workflow Library |
 |-----------------|-----------------|

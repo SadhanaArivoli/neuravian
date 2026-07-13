@@ -306,7 +306,7 @@ npm run dev   # http://localhost:5173 (proxies /api to :8000)
 
 GitHub Actions runs on every push and pull request:
 
-1. Backend: `uv run pytest` (537 tests)
+1. Backend: `uv run pytest` (538 tests)
 2. Frontend: `npx tsc --noEmit` + `npx vitest run` (279 tests) + `npx vite build`
 
 See [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).

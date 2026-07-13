@@ -16,7 +16,7 @@ abstract: >
 authors:
   - family-names: Arivoli
     given-names: Sadhana
-    orcid: ""
+    email: "arivolit@gmail.com"
 keywords:
   - neuroimaging
   - fMRI
@@ -26,4 +26,4 @@ keywords:
   - provenance
   - functional connectivity
   - research software
-date-released: "2024-01-01"
+date-released: "2026-07-13"
