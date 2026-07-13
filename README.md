@@ -318,6 +318,19 @@ The test of a good platform is not whether it has the most features. It is wheth
 
 ---
 
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Quickstart](docs/quickstart.md) | Get running in 15 minutes |
+| [Tutorial: First Analysis](docs/tutorial-first-analysis.md) | End-to-end fMRI workflow walkthrough |
+| [Architecture](docs/architecture.md) | System design, data model, Mermaid diagrams |
+| [Plugin Tutorial](docs/plugin-tutorial.md) | Build your first NeuroForge plugin |
+| [Plugin SDK Reference](docs/plugin-development.md) | Full plugin API and manifest reference |
+| [FAQ](docs/faq.md) | Common questions and troubleshooting |
+
+---
+
 ## Local Setup
 
 ### Requirements
@@ -473,17 +486,34 @@ The backend loads all manifests at startup. No pipeline logic is hardcoded in ap
 
 ## Architecture
 
+```mermaid
+graph TB
+    Browser["Browser\nhttp://localhost:3000"]
+
+    subgraph Docker["Docker Compose"]
+        FE["Frontend\nnginx + React SPA"]
+        BE["Backend\nFastAPI + SQLite"]
+        FE -->|"/api/** proxy"| BE
+    end
+
+    Browser --> FE
+
+    subgraph Host["Host (read-only mounts)"]
+        DS[("~/datasets")]
+        PL[("pipelines/ manifests")]
+        PG[("plugins/")]
+    end
+
+    BE -->|"read-only"| DS
+    BE -->|"read-only"| PL
+    BE -->|"read-only"| PG
+    BE -->|"read-write"| DB[("data/\nSQLite + derivatives")]
+    BE --> DC["Sibling containers\nMRIQC · FastSurfer · etc."]
 ```
-Docker Compose
-├── nginx  (port 3000)   — serves React build; proxies /api/** to backend
-└── backend (port 8000)  — FastAPI + SQLAlchemy + SQLite + Alembic
-     ├── Pipeline registry   — reads YAML manifests from /pipelines at startup
-     ├── Artifact registry   — resolves artifact types from manifest declarations
-     ├── Execution queue     — sequential in-process queue; one heavy job at a time
-     ├── Native executor     — subprocess-based for Python tools (Nilearn, nibabel, NetworkX)
-     ├── Docker executor     — Docker SDK for containerized tools (MRIQC, FastSurfer, etc.)
-     └── Stalled-run detector — periodic check; marks orphaned runs as interrupted
-```
+
+The backend loads all pipeline YAML manifests at startup — no pipeline logic is hardcoded. Plugins are discovered from `plugins/` (or `NEUROFORGE_PLUGINS_DIRS`) and merged into the same registry before the first request is served.
+
+For the full technical architecture including sequence diagrams, data model, and deployment details, see [`docs/architecture.md`](docs/architecture.md).
 
 ### Known Limitations
 
