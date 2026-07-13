@@ -1,5 +1,9 @@
 # NeuroForge
 
+[![CI](https://github.com/SadhanaArivoli/neuroforge/actions/workflows/ci.yml/badge.svg)](https://github.com/SadhanaArivoli/neuroforge/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)](CHANGELOG.md)
+
 **A local-first neuroimaging research platform that connects your datasets, pipelines, artifacts, methods, and publication outputs in one place.**
 
 Neuroimaging research is not hard because the science is unclear. It is hard because the infrastructure around the science — installation, formatting, execution, logging, comparison, and writing — absorbs enormous time and does not connect. NeuroForge is built to close that gap: not by replacing FSL, FreeSurfer, fMRIPrep, or Nilearn, but by giving those tools a shared workspace with reproducibility, traceability, and publication workflow built in from the start.
@@ -197,6 +201,8 @@ Future remote execution will be opt-in, researcher-configured, and will route on
 |----------|-------------|-----------------|
 | Functional Connectivity | Atlas-based Pearson correlation matrix from fMRIPrep BOLD (Nilearn) | `local-ok` |
 | Seed-Based Connectivity | Voxelwise seed connectivity z-map from one atlas ROI | `local-ok` |
+| ALFF / fALFF | Voxelwise amplitude and fractional amplitude of low-frequency fluctuations from fMRIPrep BOLD | `local-ok` |
+| Regional Homogeneity (ReHo) | Voxelwise Kendall's Coefficient of Concordance across 7/19/27-voxel neighborhoods | `local-ok` |
 | Group Functional Connectivity | Across-run mean and standard-deviation connectivity matrix | `local-ok` |
 | Atlas ROI Extraction | Per-ROI voxel statistics from any NIfTI input | `local-ok` |
 | Connectome Graph Analysis | Graph-theoretic metrics (NetworkX + Louvain) from a connectivity matrix | `local-ok` |
@@ -216,7 +222,7 @@ Future remote execution will be opt-in, researcher-configured, and will route on
 |---------|-------------|
 | Workflow Builder | Visual linear pipeline builder; validates step compatibility from artifact types |
 | Workflow Library | Save, load, export, and import named workflows; template promotion |
-| Workflow Templates | Pre-built starting points: BIDS+QC, fMRI Preprocessing, Functional Connectivity, Skull Strip+Segment, Seed FC → Statistical Map Explorer, and more |
+| Workflow Templates | Pre-built starting points: BIDS+QC, fMRI Preprocessing, Functional Connectivity, Skull Strip+Segment, Seed FC → Statistical Map Explorer, ALFF/fALFF, Regional Homogeneity, and more |
 | Execution Queue | Sequential in-process queue; cancel, retry, re-run, duplicate |
 | Stalled-run detection | Orphaned runs at restart are marked *interrupted* with a Retry button |
 
@@ -250,7 +256,7 @@ Future remote execution will be opt-in, researcher-configured, and will route on
 - BIDS validation and MRIQC quality control
 - Skull stripping (BrainChop, SynthStrip), segmentation (FastSurfer)
 - Import and management of fMRIPrep derivatives
-- Functional connectivity (atlas-based), seed connectivity, group connectivity
+- Functional connectivity (atlas-based), seed connectivity, ALFF/fALFF, regional homogeneity (ReHo/KCC), group connectivity
 - Atlas ROI extraction and connectome graph analysis
 - Statistical map thresholding and cluster analysis
 - NIfTI Inspector
@@ -293,6 +299,22 @@ NeuroForge is not competing with FSL, FreeSurfer, AFNI, fMRIPrep, Nilearn, or MR
 What NeuroForge does is address the layer above them: the coordination, the logging, the formatting, the comparison, the documentation, the publication workflow. It is built on the premise that reproducible, organized, transparent neuroimaging research should not require a systems administrator's skill set in addition to a neuroscientist's.
 
 The test of a good platform is not whether it has the most features. It is whether a researcher who finishes an analysis with it has everything they need to explain, defend, and reproduce that analysis in three months, or three years, without consulting their shell history.
+
+---
+
+## Screenshots
+
+| Home | Pipelines |
+|------|-----------|
+| ![Home screen showing 20 pipelines, 3 compute profiles, and quick-start buttons](docs/screenshots/home.png) | ![Pipeline browser with category and input-type filters](docs/screenshots/pipelines.png) |
+
+| Workflow Builder | Workflow Library |
+|-----------------|-----------------|
+| ![Workflow Studio showing ALFF/fALFF and Regional Homogeneity templates](docs/screenshots/workflows.png) | ![Saved workflow library with export controls](docs/screenshots/library.png) |
+
+| Run History | Datasets |
+|-------------|---------|
+| ![Runs page with status, pipeline names, and duration](docs/screenshots/runs.png) | ![Datasets page with BIDS dataset listing](docs/screenshots/datasets.png) |
 
 ---
 
@@ -389,7 +411,7 @@ neuroforge/
 │       └── pages/         — one file per route
 ├── pipelines/
 │   ├── schema/            — artifact_types.yaml, manifest.schema.json
-│   └── *.yaml             — one manifest per pipeline (18 pipelines)
+│   └── *.yaml             — one manifest per pipeline (20 pipelines)
 └── docker-compose.yml
 ```
 

@@ -74,9 +74,9 @@ def api_client(db_session):
 def test_translate_host_path_rewrites_mac_path():
     """The exact real-world case: paste a Mac path, get a /host-data path."""
     with patch("app.services.dataset.settings") as mock_settings:
-        mock_settings.host_datasets_mount = "/Users/arivolitirouvingadame/Documents"
+        mock_settings.host_datasets_mount = "/Users/testuser/Documents"
         result = _translate_host_path(
-            Path("/Users/arivolitirouvingadame/Documents/bids-examples/ds001")
+            Path("/Users/testuser/Documents/bids-examples/ds001")
         )
     assert result == Path("/host-data/bids-examples/ds001")
 
@@ -84,7 +84,7 @@ def test_translate_host_path_rewrites_mac_path():
 def test_translate_host_path_leaves_container_path_unchanged():
     """A path already inside /host-data should pass through unchanged."""
     with patch("app.services.dataset.settings") as mock_settings:
-        mock_settings.host_datasets_mount = "/Users/arivolitirouvingadame/Documents"
+        mock_settings.host_datasets_mount = "/Users/testuser/Documents"
         result = _translate_host_path(Path("/host-data/bids-examples/ds001"))
     # /host-data doesn't start with the host mount prefix, so no rewrite
     assert result == Path("/host-data/bids-examples/ds001")

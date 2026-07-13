@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use NeuroForge in your research, please cite it as below."
+type: software
+title: "NeuroForge: A Local-First Neuroimaging Research Platform"
+version: 0.1.0-alpha
+license: Apache-2.0
+repository-code: "https://github.com/SadhanaArivoli/neuroforge"
+abstract: >
+  NeuroForge is a local-first neuroimaging research platform that connects
+  datasets, pipelines, runs, artifacts, provenance records, and publication
+  outputs in a unified workspace. It wraps established neuroimaging tools
+  (FSL, FreeSurfer, fMRIPrep, MRIQC, Nilearn, and others) without
+  reimplementing their algorithms, providing artifact-typed pipeline chaining,
+  automatic methods generation, citation assembly, and reproducible study
+  reports.
+authors:
+  - family-names: Arivoli
+    given-names: Sadhana
+    orcid: ""
+keywords:
+  - neuroimaging
+  - fMRI
+  - MRI
+  - BIDS
+  - reproducibility
+  - provenance
+  - functional connectivity
+  - research software
+date-released: "2024-01-01"
