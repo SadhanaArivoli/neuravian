@@ -42,27 +42,14 @@ from nilearn import __version__ as nilearn_version
 from nilearn.maskers import NiftiLabelsMasker, NiftiMasker
 from nilearn.plotting import plot_glass_brain
 
+from app.tools.bids_utils import BoldSelection, select_bold_file
+from app.tools.confounds import select_confounds
 from app.tools.functional_connectivity import (
     ATLAS_REGISTRY,
-    BoldSelection,
     LoadedAtlas,
-    _load_atlas,
-    _load_confounds,
-    _select_bold,
+    load_atlas,
     normalize_atlas_id,
 )
-
-CONFOUND_COLUMNS = [
-    "trans_x",
-    "trans_y",
-    "trans_z",
-    "rot_x",
-    "rot_y",
-    "rot_z",
-    "white_matter",
-    "csf",
-    "global_signal",
-]
 
 
 def _extract_seed_timeseries(
@@ -248,7 +235,7 @@ def run(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     atlas_id = normalize_atlas_id(args.atlas_name)
-    loaded_atlas = _load_atlas(atlas_id, args.atlas_data_dir)
+    loaded_atlas = load_atlas(atlas_id, args.atlas_data_dir)
 
     seed_idx = args.seed_roi - 1  # convert to 0-based
     if seed_idx < 0:
@@ -266,7 +253,7 @@ def run(argv: list[str] | None = None) -> int:
     print(f"[neuroforge] Seed ROI: {args.seed_roi} — {seed_label}")
     print(f"[neuroforge] fMRIPrep derivatives: {fmriprep_dir}")
 
-    selection: BoldSelection = _select_bold(
+    selection: BoldSelection = select_bold_file(
         fmriprep_dir,
         args.subject_label,
         args.task_label,
@@ -278,7 +265,11 @@ def run(argv: list[str] | None = None) -> int:
     else:
         print("[neuroforge] No confounds file found; extracting raw time series.")
 
-    confounds = _load_confounds(selection.confounds_path)
+    # Use the same confound strategy as FC (motion6_wm_csf_gsr default).
+    image = nib.load(str(selection.bold_path))
+    n_vols = image.shape[3] if len(image.shape) == 4 else 0
+    cs = select_confounds(selection.confounds_path, "motion6_wm_csf_gsr", n_vols)
+    confounds = cs.values
 
     print("[neuroforge] Extracting seed ROI time series…")
     seed_ts = _extract_seed_timeseries(

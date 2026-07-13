@@ -43,8 +43,8 @@ from app.tools.functional_connectivity import (
     DEFAULT_ATLAS_ID,
     LEGACY_ATLAS_ALIASES,
     LoadedAtlas,
-    _load_atlas,
-    _network_from_label,
+    load_atlas,
+    network_from_label,
     normalize_atlas_id,
 )
 
@@ -165,7 +165,7 @@ def _roi_stats(
         return {
             "roi_number": roi_number,
             "roi_label": roi_label,
-            "network": _network_from_label(roi_label),
+            "network": network_from_label(roi_label),
             "voxel_count": 0,
             "nonzero_voxel_count": 0,
             "coverage_pct": 0.0,
@@ -192,7 +192,7 @@ def _roi_stats(
         row: dict[str, Any] = {
             "roi_number": roi_number,
             "roi_label": roi_label,
-            "network": _network_from_label(roi_label),
+            "network": network_from_label(roi_label),
             "voxel_count": voxel_count,
             "nonzero_voxel_count": nonzero_count,
             "coverage_pct": coverage_pct,
@@ -205,7 +205,7 @@ def _roi_stats(
         row = {
             "roi_number": roi_number,
             "roi_label": roi_label,
-            "network": _network_from_label(roi_label),
+            "network": network_from_label(roi_label),
             "voxel_count": voxel_count,
             "nonzero_voxel_count": nonzero_count,
             "coverage_pct": coverage_pct,
@@ -415,7 +415,7 @@ def run(argv: list[str]) -> int:
     # ── Load atlas ─────────────────────────────────────────────────────────────
     print(f"[neuroforge] Loading atlas: {atlas_id}")
     data_dir = str(_cache_dir / "nilearn_data")
-    loaded: LoadedAtlas = _load_atlas(atlas_id, data_dir)
+    loaded: LoadedAtlas = load_atlas(atlas_id, data_dir)
     atlas_img: nib.Nifti1Image = nib.load(loaded.labels_img)
 
     # ── Geometry check ─────────────────────────────────────────────────────────

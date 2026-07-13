@@ -14,7 +14,6 @@ import argparse
 import html
 import json
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,21 +41,19 @@ from nilearn.datasets import (
 )
 from nilearn.maskers import NiftiLabelsMasker
 
+from app.tools.bids_utils import (
+    BoldSelection,
+    bids_entity,
+    find_matching_confounds,
+    select_bold_file,
+)
+from app.tools.confounds import CONFOUND_STRATEGIES, ConfoundSelection, select_confounds
+
 
 DEFAULT_ATLAS_ID = "schaefer100_7"
 LEGACY_ATLAS_ALIASES = {"schaefer_100_7": DEFAULT_ATLAS_ID}
 CORRELATION_METHOD = "Pearson correlation"
-CONFOUND_COLUMNS = [
-    "trans_x",
-    "trans_y",
-    "trans_z",
-    "rot_x",
-    "rot_y",
-    "rot_z",
-    "white_matter",
-    "csf",
-    "global_signal",
-]
+DEFAULT_CONFOUND_STRATEGY = "motion6_wm_csf_gsr"
 
 
 @dataclass(frozen=True)
@@ -159,76 +156,10 @@ def normalize_atlas_id(atlas_id: str | None) -> str:
     return selected
 
 
-def _entity(path: Path, name: str) -> str | None:
-    match = re.search(rf"(?:^|_){re.escape(name)}-([^_]+)", path.name)
-    return match.group(1) if match else None
-
-
-def _prefix_for_confounds(path: Path) -> str:
-    stem = path.name
-    if stem.endswith(".nii.gz"):
-        stem = stem[:-7]
-    elif stem.endswith(".nii"):
-        stem = stem[:-4]
-    for marker in ("_space-", "_res-", "_desc-preproc_bold"):
-        idx = stem.find(marker)
-        if idx != -1:
-            stem = stem[:idx]
-            break
-    return stem
-
-
-def _matching_confounds(path: Path) -> Path | None:
-    prefix = _prefix_for_confounds(path)
-    candidates = sorted(path.parent.glob(f"{prefix}*_desc-confounds_timeseries.tsv"))
-    return candidates[0] if candidates else None
-
-
-def _select_bold(
-    fmriprep_dir: Path,
-    subject_label: str | None,
-    task_label: str | None,
-    run_label: str | None,
-) -> BoldSelection:
-    bolds = sorted(fmriprep_dir.glob("sub-*/func/*desc-preproc_bold.nii.gz"))
-    if not bolds:
-        raise FileNotFoundError(
-            "No fMRIPrep preprocessed BOLD files were found. Expected files like "
-            "sub-01/func/sub-01_task-rest_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz."
-        )
-
-    def keep(path: Path) -> bool:
-        return (
-            (not subject_label or _entity(path, "sub") == subject_label)
-            and (not task_label or _entity(path, "task") == task_label)
-            and (not run_label or _entity(path, "run") == run_label)
-        )
-
-    filtered = [path for path in bolds if keep(path)]
-    if not filtered:
-        raise FileNotFoundError(
-            "No preprocessed BOLD file matched the selected subject/task/run filters."
-        )
-
-    bold_path = filtered[0]
-    return BoldSelection(
-        bold_path=bold_path,
-        confounds_path=_matching_confounds(bold_path),
-        subject=_entity(bold_path, "sub"),
-        task=_entity(bold_path, "task"),
-        run=_entity(bold_path, "run"),
-    )
-
-
-def _load_confounds(path: Path | None) -> np.ndarray | None:
-    if path is None or not path.exists():
-        return None
-    frame = pd.read_csv(path, sep="\t")
-    selected = [col for col in CONFOUND_COLUMNS if col in frame.columns]
-    if not selected:
-        return None
-    confounds = frame[selected].replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    return confounds.to_numpy(dtype=float)
+# Backward-compat aliases — external modules should import from bids_utils directly.
+_entity = bids_entity
+_matching_confounds = find_matching_confounds
+_select_bold = select_bold_file
 
 
 def _decode_label(label: Any) -> str:
@@ -255,7 +186,7 @@ def _consecutive_label_values(labels: list[str]) -> list[int]:
     return list(range(1, len(labels) + 1))
 
 
-def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
+def load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
     normalized_id = normalize_atlas_id(atlas_id)
     spec = ATLAS_REGISTRY[normalized_id]
 
@@ -324,6 +255,9 @@ def _load_atlas(atlas_id: str, data_dir: str | None) -> LoadedAtlas:
     raise AssertionError(f"Unhandled atlas id: {normalized_id}")
 
 
+_load_atlas = load_atlas  # backward-compat alias
+
+
 def _write_matrix_csv(path: Path, matrix: np.ndarray, labels: list[str]) -> None:
     pd.DataFrame(matrix, index=labels, columns=labels).to_csv(path)
 
@@ -332,11 +266,14 @@ def _write_timeseries(path: Path, timeseries: np.ndarray, labels: list[str]) -> 
     pd.DataFrame(timeseries, columns=labels).to_csv(path, sep="\t", index=False)
 
 
-def _network_from_label(label: str) -> str | None:
+def network_from_label(label: str) -> str | None:
     parts = label.split("_")
     if len(parts) >= 3 and parts[0].endswith("Networks"):
         return parts[2]
     return None
+
+
+_network_from_label = network_from_label  # backward-compat alias
 
 
 def _voxel_counts(labels_img: str, label_values: list[int]) -> list[int]:
@@ -468,7 +405,7 @@ def run(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     atlas_id = normalize_atlas_id(args.atlas_name)
-    loaded_atlas = _load_atlas(atlas_id, args.atlas_data_dir)
+    loaded_atlas = load_atlas(atlas_id, args.atlas_data_dir)
 
     print(f"[neuroforge] Functional Connectivity using {loaded_atlas.spec.display_name}")
     print(f"[neuroforge] fMRIPrep derivatives: {fmriprep_dir}")

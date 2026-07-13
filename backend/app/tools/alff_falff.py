@@ -25,8 +25,8 @@ import scipy
 from scipy import signal
 from scipy.fft import rfft, rfftfreq
 
+from app.tools.bids_utils import bids_entity as _entity, find_matching_confounds as _matching_confounds
 from app.tools.confounds import select_confounds
-from app.tools.functional_connectivity import _entity, _matching_confounds
 
 PIPELINE_VERSION = "1.0.0"
 MIN_TIMEPOINTS = 50
