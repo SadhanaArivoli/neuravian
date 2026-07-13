@@ -1,0 +1,89 @@
+id: image-statistics
+display_name: "Image Statistics (plugin example)"
+description: >
+  Reads a NIfTI image and writes a JSON file with basic voxelwise statistics:
+  dimensions, voxel size (mm), intensity mean, standard deviation, minimum,
+  maximum, and non-zero voxel count. Uses nibabel and numpy — no extra
+  dependencies required. This pipeline ships as part of the image-statistics
+  example plugin and is a reference implementation for plugin developers.
+homepage: "https://github.com/neuroimaging-lab/neuroforge"
+category: quality_control
+input_type: nifti
+
+execution:
+  type: native
+  command: neuroforge-image-statistics
+
+dataset_positional: false
+
+compute_profile: local-ok
+
+inputs:
+  - any_nifti
+
+outputs:
+  - statistics_json
+
+parameters:
+  - name: input-file
+    type: file_path
+    required: true
+    positional_suffix: true
+    help: >
+      Full path to a NIfTI file (.nii or .nii.gz). The file is read
+      directly using nibabel. Any modality is accepted.
+
+  - name: output
+    cli_flag: "-o"
+    type: string
+    required: false
+    default: "{output_dir}/image_statistics.json"
+    help: >
+      Output path for the JSON statistics file.
+      Defaults to image_statistics.json inside the run output directory.
+
+  - name: mask
+    cli_flag: "--mask"
+    type: file_path
+    required: false
+    help: >
+      Optional binary brain mask (.nii or .nii.gz). When provided,
+      intensity statistics are computed only inside the mask (non-zero voxels).
+
+accepts:
+  - type: nifti_raw
+    param: input-file
+    label: "NIfTI image"
+    description: "Any raw NIfTI image to compute statistics for"
+
+  - type: nifti_skull_stripped
+    param: input-file
+    label: "Skull-stripped NIfTI"
+    description: "Skull-stripped NIfTI image to compute statistics for"
+
+produces:
+  - type: image_statistics_json
+    path_hint: "image_statistics.json"
+    label: "Image Statistics JSON"
+    description: "Voxelwise intensity statistics for the input image"
+
+max_runtime_hours: 0.1
+
+known_errors:
+  - pattern: "neuroforge-image-statistics.*not found|command not found"
+    explanation: >
+      The image-statistics plugin executable is not on PATH. This usually
+      means the plugin was not loaded correctly at startup.
+    fix_hint: >
+      Check the Plugins page in the NeuroForge UI. The image-statistics
+      plugin status should be "ok". If it shows an error, check the
+      backend logs for details. Restarting the backend container reloads
+      all plugins.
+
+  - pattern: "nibabel|numpy|ImportError"
+    explanation: >
+      nibabel or numpy is not installed in the backend Python environment.
+      Both packages are standard NeuroForge dependencies and should always
+      be present.
+    fix_hint: >
+      Rebuild the backend container with 'docker compose build backend'.

@@ -1,0 +1,16 @@
+id: image-statistics
+name: "Image Statistics"
+version: "0.1.0"
+author: "NeuroForge Contributors"
+description: >
+  Example NeuroForge plugin. Reads any NIfTI image and writes a JSON file
+  containing basic voxelwise statistics: dimensions, voxel size, mean
+  intensity, standard deviation, min, max, and non-zero voxel count.
+  Uses nibabel and numpy — no additional dependencies beyond the
+  standard NeuroForge backend image. Intended as a developer reference
+  for building real plugins.
+homepage: "https://github.com/neuroimaging-lab/neuroforge"
+license: "Apache-2.0"
+neuroforge_version: ">=0.1.0"
+dependencies: []
+enabled: true

@@ -1,0 +1,6 @@
+artifact_types:
+
+  image_statistics_json:
+    label: "Image Statistics"
+    description: "JSON file with voxelwise intensity statistics (mean, std, min, max, dimensions)"
+    extensions: [".json"]
