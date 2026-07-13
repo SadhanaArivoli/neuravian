@@ -398,6 +398,16 @@ def run(argv: list[str] | None = None) -> int:
     parser.add_argument("--subject-label", default=None)
     parser.add_argument("--task-label", default=None)
     parser.add_argument("--run-label", default=None)
+    parser.add_argument(
+        "--confound-strategy",
+        default=DEFAULT_CONFOUND_STRATEGY,
+        choices=list(CONFOUND_STRATEGIES.keys()),
+        help=(
+            "Nuisance-regressor strategy applied before connectivity estimation. "
+            "motion6_wm_csf_gsr includes global signal regression (GSR), which "
+            "changes correlation sign and magnitude — apply consistently across runs."
+        ),
+    )
     args = parser.parse_args(argv)
 
     started = perf_counter()
@@ -406,11 +416,13 @@ def run(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     atlas_id = normalize_atlas_id(args.atlas_name)
     loaded_atlas = load_atlas(atlas_id, args.atlas_data_dir)
+    confound_strategy: str = args.confound_strategy
 
     print(f"[neuroforge] Functional Connectivity using {loaded_atlas.spec.display_name}")
     print(f"[neuroforge] fMRIPrep derivatives: {fmriprep_dir}")
+    print(f"[neuroforge] Confound strategy: {confound_strategy}")
 
-    selection = _select_bold(
+    selection = select_bold_file(
         fmriprep_dir,
         args.subject_label,
         args.task_label,
@@ -420,15 +432,28 @@ def run(argv: list[str] | None = None) -> int:
     if selection.confounds_path:
         print(f"[neuroforge] Selected confounds: {selection.confounds_path}")
     else:
-        print(
-            "[neuroforge] No confounds file found; "
-            "extracting raw regional time series."
-        )
+        if confound_strategy != "none":
+            print(
+                f"[neuroforge] WARNING: confound strategy '{confound_strategy}' requested "
+                "but no confounds file was found. Proceeding without confound regression."
+            )
 
-    confounds = _load_confounds(selection.confounds_path)
     image = nib.load(str(selection.bold_path))
     if len(image.shape) != 4:
         raise ValueError(f"Selected BOLD file is not 4D: shape={image.shape}")
+    n_vols = int(image.shape[3])
+
+    # Resolve confounds — strict mode: fail loudly if requested columns are absent.
+    cs: ConfoundSelection = select_confounds(
+        selection.confounds_path,
+        confound_strategy,
+        n_vols,
+        strict=True,
+    )
+    if cs.used:
+        print(f"[neuroforge] Using {cs.n_regressors} confound regressors: {cs.used}")
+    elif confound_strategy != "none":
+        print("[neuroforge] No confound regressors applied (TSV not found).")
 
     masker = NiftiLabelsMasker(
         labels_img=loaded_atlas.labels_img,
@@ -439,7 +464,7 @@ def run(argv: list[str] | None = None) -> int:
         resampling_target="labels",
         reports=False,
     )
-    timeseries = masker.fit_transform(str(selection.bold_path), confounds=confounds)
+    timeseries = masker.fit_transform(str(selection.bold_path), confounds=cs.values)
     if timeseries.ndim != 2 or timeseries.shape[1] == 0:
         raise ValueError("Atlas extraction produced no ROI time series.")
     roi_labels = loaded_atlas.roi_labels[: timeseries.shape[1]]
@@ -497,7 +522,19 @@ def run(argv: list[str] | None = None) -> int:
         "subject": selection.subject,
         "task": selection.task,
         "run": selection.run,
-        "n_volumes": int(timeseries.shape[0]),
+        # ── Confound provenance ───────────────────────────────────────────────
+        "confound_strategy": confound_strategy,
+        "confounds_used": cs.used,
+        "confounds_missing": cs.missing,
+        "n_confound_regressors": cs.n_regressors,
+        "global_signal_included": cs.global_signal_included,
+        "detrending": "linear (NiftiLabelsMasker)",
+        "standardize": "zscore_sample (NiftiLabelsMasker)",
+        "scrubbing": "none",
+        # ── Timepoints ───────────────────────────────────────────────────────
+        "n_volumes": n_vols,
+        "n_volumes_before_cleaning": n_vols,
+        "n_volumes_after_cleaning": int(timeseries.shape[0]),
         "n_rois": int(timeseries.shape[1]),
         "roi_count": int(timeseries.shape[1]),
         "roi_statistics_generated": True,

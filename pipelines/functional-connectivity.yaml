@@ -63,6 +63,27 @@ parameters:
       Atlas used for ROI time-series extraction. The default remains Schaefer
       2018 with 100 parcels and 7 Yeo networks for backward compatibility.
 
+  - name: confound-strategy
+    type: select
+    required: false
+    default: motion6_wm_csf_gsr
+    options:
+      - none
+      - motion6
+      - motion24
+      - motion6_wm_csf
+      - motion6_wm_csf_gsr
+    advanced: false
+    help: >
+      Nuisance-regressor strategy applied before computing connectivity.
+      "none" — no regression; "motion6" — 6 rigid-body motion parameters;
+      "motion24" — Friston 24-parameter model (motion6 + derivatives + squares
+      + squared derivatives); "motion6_wm_csf" — motion6 plus white matter and
+      CSF signals; "motion6_wm_csf_gsr" — adds global signal regression (GSR).
+      WARNING: GSR changes the sign and magnitude of correlation values and
+      must be applied consistently across all runs that will be compared or
+      aggregated together.
+
   - name: atlas-data-dir
     type: directory_path
     required: false

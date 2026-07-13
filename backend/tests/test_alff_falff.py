@@ -35,10 +35,12 @@ def test_normalization():
     assert normalize_map(x,"zscore").std() == pytest.approx(1)
 
 
-def test_confound_selection_is_exact(tmp_path: Path):
+def test_confound_selection_partial_columns(tmp_path: Path):
+    # Only trans_x present — lenient mode uses available columns, reports missing.
     path=tmp_path/"conf.tsv"; pd.DataFrame({"trans_x":[0,1]}).to_csv(path,sep="\t",index=False)
     selected=select_confounds(path,"motion6",2)
-    assert selected.values is None and "trans_y" in selected.missing
+    assert selected.values is not None and selected.values.shape == (2, 1)
+    assert "trans_x" in selected.used and "trans_y" in selected.missing
 
 
 def _fixture(root: Path):
