@@ -388,6 +388,45 @@ GitHub Actions runs backend pytest, frontend type-checking, and frontend build o
 
 ---
 
+## Extending NeuroForge
+
+NeuroForge has a plugin SDK. External developers can add new pipelines without
+modifying NeuroForge's source code by dropping a plugin directory into `plugins/`.
+
+**Minimal plugin structure:**
+
+```
+plugins/
+  my-plugin/
+    plugin.yaml          # required: id, name, version, author, description
+    pipelines/
+      my-tool.yaml       # same schema as built-in pipeline manifests
+    artifact_types.yaml  # optional: register new artifact type slugs
+    backend/
+      my-tool-cli        # optional: native executable, auto-added to PATH
+```
+
+**At startup NeuroForge:**
+- Discovers all plugin directories
+- Validates `plugin.yaml` against the plugin JSON Schema
+- Validates each pipeline manifest against the core manifest schema
+- Registers new artifact types into the type vocabulary
+- Prepends `backend/` to `PATH` so native executables are found by the runner
+- Merges plugin pipelines into the Pipeline Library, Workflow Builder, and Run Next
+
+Plugin pipelines appear automatically in the UI alongside built-in pipelines —
+no code changes to NeuroForge required.
+
+**Example plugin:** `plugins/image-statistics/` ships as a working reference
+implementation that demonstrates every plugin feature.
+
+**Full SDK documentation:** [`docs/plugin-development.md`](docs/plugin-development.md)
+
+**Plugins page:** visible at `/plugins` in the NeuroForge UI — shows each
+plugin's status, registered pipeline IDs, and artifact type slugs.
+
+---
+
 ## Repository Structure
 
 ```
