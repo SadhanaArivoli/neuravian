@@ -9,6 +9,7 @@ description: >
   and does NOT compute connectivity itself.
 homepage: https://networkx.org/documentation/stable/reference/algorithms/index.html
 category: connectivity
+compute_profile: local-ok
 
 input_type: "matrix"
 inputs: []
