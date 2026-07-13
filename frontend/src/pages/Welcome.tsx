@@ -511,7 +511,7 @@ export default function Welcome() {
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-500">
             <a
-              href="https://github.com/sadhana-r/neuroforge"
+              href="https://github.com/SadhanaArivoli/neuroforge"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
