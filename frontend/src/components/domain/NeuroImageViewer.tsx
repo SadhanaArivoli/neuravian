@@ -13,6 +13,7 @@ import {
   selectDisplayProfile,
   type DisplayProfile,
 } from "../../lib/scientificDisplayProfiles";
+import { checkVolumeCompatibility, volumeGeometry } from "../../lib/volumeCompatibility";
 
 export interface NiivueLayer {
   url: string;
@@ -63,6 +64,7 @@ interface LayerViewState extends HistogramData {
   gamma: number;
   inverted: boolean;
   symmetric: boolean;
+  visible: boolean;
 }
 
 type InterpolationMode = "auto" | "smooth" | "nearest";
@@ -239,8 +241,16 @@ function canvasBlob(canvas: HTMLCanvasElement) {
   });
 }
 
+function orderUnderlayFirst(input: NiivueLayer[]) {
+  return input.slice(0, 4).sort((a, b) => {
+    const profileA = selectDisplayProfile({ artifactType: a.artifactType, name: a.name, url: a.url, metadata: a.metadata });
+    const profileB = selectDisplayProfile({ artifactType: b.artifactType, name: b.name, url: b.url, metadata: b.metadata });
+    return Number(profileB.id === "structural") - Number(profileA.id === "structural");
+  });
+}
+
 export default function NeuroImageViewer({
-  layers,
+  layers: requestedLayers,
   label,
   mapType,
   multiplanar = true,
@@ -256,6 +266,9 @@ export default function NeuroImageViewer({
   const nvRef = useRef<Niivue | null>(null);
   const volumeOptionsRef = useRef<VolumeOption[]>([]);
   const samplesRef = useRef<number[][]>([]);
+  const requestedLayerKey = useMemo(() => requestedLayers.map((layer) => layer.url).join("\0"), [requestedLayers]);
+  const syncedLayerKeyRef = useRef(requestedLayerKey);
+  const [layers, setLayers] = useState(() => orderUnderlayFirst(requestedLayers));
   const effectiveMapType = mapType ?? inferMapType(layers[0]);
   const profiles = useMemo(() => layers.map((layer, index) => selectDisplayProfile({
     artifactType: layer.artifactType,
@@ -289,6 +302,15 @@ export default function NeuroImageViewer({
   const [viewLayout, setViewLayout] = useState<ViewLayout>(multiplanar ? "multiplanar" : "axial");
   const [location, setLocation] = useState<ViewerLocation>({});
   const [jumpMm, setJumpMm] = useState<[number, number, number]>([0, 0, 0]);
+  const [underlayStatus, setUnderlayStatus] = useState("");
+  const [hasCompatibleUnderlay, setHasCompatibleUnderlay] = useState(false);
+
+  useEffect(() => {
+    if (syncedLayerKeyRef.current === requestedLayerKey) return;
+    syncedLayerKeyRef.current = requestedLayerKey;
+    setLayers(orderUnderlayFirst(requestedLayers));
+    setActiveLayer(0);
+  }, [requestedLayerKey]);
 
   const layerKey = useMemo(() => layers.map((layer) => layer.url).join("\0"), [layers]);
   const current = layerStates[activeLayer];
@@ -346,6 +368,7 @@ export default function NeuroImageViewer({
         gamma: 1,
         inverted: false,
         symmetric: profiles[index].signed,
+        visible: true,
       };
     });
     nextStates.forEach((state, index) => {
@@ -452,6 +475,35 @@ export default function NeuroImageViewer({
       };
       const samples = nv.volumes.map((volume) => finiteSamples(volume.img as NumericArray));
       samplesRef.current = samples;
+      const structuralIndex = profiles.findIndex((profile) => profile.id === "structural");
+      const requestedOverlayIndices = profiles
+        .map((profile, index) => profile.anatomicalUnderlay && index !== structuralIndex ? index : -1)
+        .filter((index) => index >= 0);
+      const blockedOverlays = new Map<number, string>();
+      if (requestedOverlayIndices.length && structuralIndex < 0) {
+        setUnderlayStatus("No anatomical underlay was supplied. Statistical rendering remains in 2D; no anatomy was guessed or resampled.");
+        setHasCompatibleUnderlay(false);
+      } else if (requestedOverlayIndices.length && structuralIndex >= 0) {
+        const underlayGeometry = volumeGeometry(nv.volumes[structuralIndex], layers[structuralIndex]?.metadata);
+        const results = requestedOverlayIndices.map((index) => {
+          const result = checkVolumeCompatibility(
+            underlayGeometry,
+            volumeGeometry(nv.volumes[index], layers[index]?.metadata),
+          );
+          if (!result.compatible) blockedOverlays.set(index, result.reason);
+          return { index, result };
+        });
+        if (blockedOverlays.size) {
+          setUnderlayStatus(`Overlay withheld: ${results.filter(({ result }) => !result.compatible).map(({ index, result }) => `${layers[index].name} — ${result.reason}`).join("; ")}. No resampling was performed.`);
+          setHasCompatibleUnderlay(false);
+        } else {
+          setUnderlayStatus(`Anatomical underlay enabled. ${results[0].result.reason}. No resampling was performed.`);
+          setHasCompatibleUnderlay(true);
+        }
+      } else {
+        setUnderlayStatus("");
+        setHasCompatibleUnderlay(false);
+      }
       const initialStates = layers.map((layer, index) => {
         const statistics = computeDisplayStatistics(samples[index], profiles[index]);
         const min = statistics.displayMin;
@@ -463,7 +515,7 @@ export default function NeuroImageViewer({
         return {
           ...calculateHistogram(samples[index], min, max),
           colormap,
-          opacity: layer.opacity ?? profiles[index].opacity,
+          opacity: blockedOverlays.has(index) ? 0 : layer.opacity ?? profiles[index].opacity,
           windowMode: "auto" as WindowMode,
           windowMin: min,
           windowMax: max,
@@ -472,9 +524,11 @@ export default function NeuroImageViewer({
           gamma: 1,
           inverted: false,
           symmetric: profiles[index].signed,
+          visible: true,
         };
       });
       nvRef.current = nv;
+      blockedOverlays.forEach((_reason, index) => nv.setOpacity(index, 0));
       setLayerStates(initialStates);
       setNearest(useNearest);
       setLoading(false);
@@ -571,8 +625,32 @@ export default function NeuroImageViewer({
   };
 
   const changeOpacity = (opacity: number) => {
-    nvRef.current?.setOpacity(activeLayer, opacity);
+    if (current?.visible) nvRef.current?.setOpacity(activeLayer, opacity);
     setLayerStates((states) => states.map((state, index) => index === activeLayer ? { ...state, opacity } : state));
+  };
+
+  const toggleLayerVisibility = (index: number, visible: boolean) => {
+    const state = layerStates[index];
+    if (!state) return;
+    nvRef.current?.setOpacity(index, visible ? state.opacity : 0);
+    setLayerStates((states) => states.map((item, itemIndex) => itemIndex === index ? { ...item, visible } : item));
+  };
+
+  const moveLayer = (from: number, to: number) => {
+    if (to < 0 || to >= layers.length) return;
+    setLayers((previous) => {
+      const next = [...previous];
+      const [layer] = next.splice(from, 1);
+      next.splice(to, 0, layer);
+      return next;
+    });
+    setActiveLayer(to);
+  };
+
+  const removeLayer = (index: number) => {
+    if (layers.length <= 1) return;
+    setLayers((previous) => previous.filter((_layer, layerIndex) => layerIndex !== index));
+    setActiveLayer((currentIndex) => Math.max(0, Math.min(currentIndex, layers.length - 2)));
   };
 
   const changeInterpolation = (mode: InterpolationMode) => {
@@ -659,7 +737,9 @@ export default function NeuroImageViewer({
         <div className="max-h-[42vh] shrink-0 overflow-y-auto border-b border-white/8 bg-slate-950/90 px-3 py-3 text-[11px] text-slate-300 xl:order-2 xl:max-h-none xl:w-[360px] xl:border-b-0 xl:border-l" data-testid="visualization-controls">
           <div className="grid gap-3">
             <div className="space-y-2">
-              {layers.length > 1 && <label className="block">Layer<select aria-label="Active volume layer" value={activeLayer} onChange={(event) => setActiveLayer(Number(event.target.value))} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs">{layers.map((layer, index) => <option key={layer.url} value={index}>{layer.name}</option>)}</select></label>}
+              {requestedLayers.length > 4 && <div role="status" className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-200">Only the first four layers are shown.</div>}
+              {layers.length > 1 && <div className="space-y-1" data-testid="layer-panel"><div className="text-[10px] uppercase tracking-wide text-slate-500">Layers</div>{layers.map((layer, index) => <div key={layer.url} className={`flex items-center gap-1 rounded px-1 py-1 ${activeLayer === index ? "bg-cyan-500/10" : "bg-white/[0.03]"}`}><input aria-label={`Show ${layer.name}`} type="checkbox" checked={layerStates[index]?.visible ?? true} onChange={(event) => toggleLayerVisibility(index, event.target.checked)} /><button type="button" onClick={() => setActiveLayer(index)} className="min-w-0 flex-1 truncate text-left" title={layer.name}>{layer.name}</button><button type="button" aria-label={`Move ${layer.name} down`} disabled={index === 0} onClick={() => moveLayer(index, index - 1)} className="px-1 disabled:opacity-25">↓</button><button type="button" aria-label={`Move ${layer.name} up`} disabled={index === layers.length - 1} onClick={() => moveLayer(index, index + 1)} className="px-1 disabled:opacity-25">↑</button><button type="button" aria-label={`Remove ${layer.name}`} onClick={() => removeLayer(index)} className="px-1 text-rose-300">×</button></div>)}</div>}
+              {underlayStatus && <div role="status" className={`rounded border p-2 text-[10px] ${hasCompatibleUnderlay ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-amber-500/25 bg-amber-500/10 text-amber-200"}`}>{underlayStatus}</div>}
               <div className="flex items-center justify-between"><span className="font-medium text-slate-200">{profiles[activeLayer].label}</span><span className="text-[9px] text-slate-500">{profiles[activeLayer].colorbarLabel}</span></div>
               <label className="block">Colormap<select aria-label="Colormap" value={current.colormap} disabled={isLabelProfile(profiles[activeLayer])} onChange={(event) => changeColormap(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs disabled:opacity-60">{isLabelProfile(profiles[activeLayer]) && <option value="roi_i256">Discrete ROI labels</option>}{VIEWER_COLORMAPS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
               <label className="flex items-center gap-2"><input aria-label="Invert colormap" type="checkbox" checked={current.inverted} onChange={(event) => updateTone({ inverted: event.target.checked })} /> Invert colormap</label>
@@ -689,7 +769,7 @@ export default function NeuroImageViewer({
               <label className="flex items-center justify-between">Color<input aria-label="Crosshair color" type="color" value={crosshairColor} onChange={(event) => { setCrosshairColor(event.target.value); nvRef.current?.setCrosshairColor(hexToRgba(event.target.value)); }} /></label>
               <div className="rounded bg-black/20 p-2 font-mono text-[10px] tabular-nums"><div>mm {location.mm?.slice(0, 3).map((value) => Number(value).toFixed(1)).join(", ") || "—"}</div><div>vox {location.vox?.slice(0, 3).map((value) => Math.round(Number(value))).join(", ") || "—"}</div><div>value {location.values?.[activeLayer] != null ? Number(location.values[activeLayer]).toPrecision(5) : "—"}</div></div>
               <div><span className="mb-1 block">Jump to mm</span><div className="flex gap-1">{([0, 1, 2] as const).map((index) => <input key={index} aria-label={`Jump ${["X", "Y", "Z"][index]} coordinate`} type="number" value={jumpMm[index]} onChange={(event) => setJumpMm((previous) => previous.map((value, item) => item === index ? Number(event.target.value) : value) as [number, number, number])} className="min-w-0 flex-1 rounded border border-white/10 bg-slate-900 px-1 py-1" />)}<button type="button" onClick={jumpToCoordinate} className="rounded bg-cyan-500/20 px-2 text-cyan-200">Go</button></div></div>
-              <div><span className="mb-1 block">Layout</span><div className="flex flex-wrap gap-1">{(["axial", "coronal", "sagittal", "multiplanar", "four-pane", "render"] as ViewLayout[]).map((layout) => { const renderDisabled = layout === "render" && profiles[activeLayer].threeD !== "volume" && layers.length < 2; return <button key={layout} type="button" disabled={renderDisabled} title={renderDisabled ? "3D requires a structural volume or compatible anatomical underlay" : undefined} onClick={() => changeLayout(layout)} className={`rounded px-2 py-1 capitalize disabled:cursor-not-allowed disabled:opacity-35 ${viewLayout === layout ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{layout === "multiplanar" ? "2D" : layout === "render" ? "3D" : layout.replace("-", " ")}</button>; })}</div></div>
+              <div><span className="mb-1 block">Layout</span><div className="flex flex-wrap gap-1">{(["axial", "coronal", "sagittal", "multiplanar", "four-pane", "render"] as ViewLayout[]).map((layout) => { const renderDisabled = layout === "render" && profiles[activeLayer].threeD !== "volume" && !hasCompatibleUnderlay; return <button key={layout} type="button" disabled={renderDisabled} title={renderDisabled ? "3D requires a structural volume or compatible anatomical underlay" : undefined} onClick={() => changeLayout(layout)} className={`rounded px-2 py-1 capitalize disabled:cursor-not-allowed disabled:opacity-35 ${viewLayout === layout ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{layout === "multiplanar" ? "2D" : layout === "render" ? "3D" : layout.replace("-", " ")}</button>; })}</div></div>
               <div className="grid grid-cols-2 gap-2"><label className="flex items-center gap-1"><input aria-label="Radiological convention" type="checkbox" checked={radiological} onChange={(event) => { setRadiological(event.target.checked); nvRef.current?.setRadiologicalConvention(event.target.checked); }} /> Radiological</label><label className="flex items-center gap-1"><input aria-label="Show orientation labels" type="checkbox" checked={showOrientation} onChange={(event) => { setShowOrientation(event.target.checked); nvRef.current?.setIsOrientationTextVisible(event.target.checked); }} /> Labels</label><label className="flex items-center gap-1"><input aria-label="Show colorbar" type="checkbox" checked={showColorbarState} onChange={(event) => { setShowColorbarState(event.target.checked); if (nvRef.current) { nvRef.current.opts.isColorbar = event.target.checked; nvRef.current.drawScene(); } }} /> Colorbar</label></div>
               <div><span className="block mb-1">Background</span><div className="flex gap-1"><button type="button" onClick={() => changeBackground("dark")} className={`rounded px-2 py-1 ${background === "dark" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Dark</button><button type="button" onClick={() => changeBackground("light")} className={`rounded px-2 py-1 ${background === "light" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Light</button></div></div>
               <label className="flex items-center gap-2"><input aria-label="Transparent export" type="checkbox" checked={transparentExport} onChange={(event) => setTransparentExport(event.target.checked)} /> Transparent PNG background</label>

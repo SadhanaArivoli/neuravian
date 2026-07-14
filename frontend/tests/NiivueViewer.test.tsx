@@ -24,6 +24,10 @@ vi.mock("@niivue/niivue", () => ({
           img: new Float32Array([-4, -2, 0, 1, 2, 4, 8, 12]),
           cal_min: -4,
           cal_max: 12,
+          dims: [3, 64, 64, 40],
+          pixDims: [1, 3, 3, 3],
+          matRAS: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          permRAS: [1, 2, 3],
           ...option,
         }));
       }),
@@ -188,6 +192,21 @@ describe("shared NIfTI viewer UI", () => {
     fireEvent.change(screen.getByLabelText("Jump X coordinate"), { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: "Go" }));
     expect(nv.mm2frac).toHaveBeenCalledWith([12, 0, 0, 1]);
+  });
+
+  it("gates anatomical underlays and exposes a shared multi-layer panel", async () => {
+    render(<NeuroImageViewer layers={[
+      structural[0],
+      { url: "/api/runs/71/files/seed_connectivity_map.nii.gz", name: "Seed map", artifactType: "seed_connectivity_map_nii" },
+    ]} label="Seed over anatomy" modal />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
+    expect(screen.getByTestId("layer-panel")).toBeInTheDocument();
+    expect(screen.getByText(/Anatomical underlay enabled/)).toBeInTheDocument();
+    expect(screen.getByText(/No resampling was performed/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Show Seed map"));
+    expect(latest().setOpacity).toHaveBeenLastCalledWith(1, 0);
+    expect(screen.getByRole("button", { name: "3D" })).toBeEnabled();
   });
 
   it("rerenders a separate high-resolution canvas for PNG export", async () => {
