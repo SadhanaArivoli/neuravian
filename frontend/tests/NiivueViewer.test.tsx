@@ -16,6 +16,7 @@ vi.mock("@niivue/niivue", () => ({
       opts: { backColor: [0.07, 0.07, 0.07, 1], crosshairWidth: 0.5 },
       volumes: [] as Array<Record<string, unknown>>,
       volScaleMultiplier: 1,
+      scene: { crosshairPos: [0.5, 0.5, 0.5] },
       attachToCanvas: vi.fn(),
       loadVolumes: vi.fn().mockImplementation(async (options: Array<Record<string, unknown>>) => {
         instance.volumes = options.map((option, index) => ({
@@ -29,10 +30,14 @@ vi.mock("@niivue/niivue", () => ({
       setOpacity: vi.fn(),
       setColormap: vi.fn(),
       setColormapNegative: vi.fn(),
+      setGamma: vi.fn(),
       setInterpolation: vi.fn(),
       setCrosshairColor: vi.fn(),
       setCrosshairWidth: vi.fn(),
       setSliceType: vi.fn(),
+      setRadiologicalConvention: vi.fn(),
+      setIsOrientationTextVisible: vi.fn(),
+      mm2frac: vi.fn((value) => value.slice(0, 3)),
       setPan2Dxyzmm: vi.fn(),
       updateGLVolume: vi.fn(),
       drawScene: vi.fn(),
@@ -53,9 +58,14 @@ function latest() {
     setOpacity: ReturnType<typeof vi.fn>;
     setColormap: ReturnType<typeof vi.fn>;
     setColormapNegative: ReturnType<typeof vi.fn>;
+    setGamma: ReturnType<typeof vi.fn>;
     setInterpolation: ReturnType<typeof vi.fn>;
     setCrosshairWidth: ReturnType<typeof vi.fn>;
     setPan2Dxyzmm: ReturnType<typeof vi.fn>;
+    setRadiologicalConvention: ReturnType<typeof vi.fn>;
+    setIsOrientationTextVisible: ReturnType<typeof vi.fn>;
+    setSliceType: ReturnType<typeof vi.fn>;
+    mm2frac: ReturnType<typeof vi.fn>;
     loadVolumes: ReturnType<typeof vi.fn>;
     attachToCanvas: ReturnType<typeof vi.fn>;
   };
@@ -88,7 +98,9 @@ describe("shared NIfTI viewer UI", () => {
   it("is the implementation used by both modal and inline shells", async () => {
     const modal = render(<NiivueViewer layers={structural} onClose={vi.fn()} />);
     expect(modal.getByTestId("shared-nifti-viewer")).toBeInTheDocument();
-    await waitFor(() => expect(modal.getByTestId("visualization-controls")).toBeInTheDocument());
+    await waitFor(() => expect(modal.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(modal.getByRole("button", { name: "Visualization ▾" }));
+    expect(modal.getByTestId("visualization-controls")).toBeInTheDocument();
     modal.unmount();
 
     render(<NiivuePanel layers={structural} label="Anatomy" />);
@@ -99,7 +111,8 @@ describe("shared NIfTI viewer UI", () => {
 
   it("updates colormap, opacity, windowing, interpolation, and reset live", async () => {
     render(<NeuroImageViewer layers={structural} label="ALFF" mapType="alff" modal />);
-    await waitFor(() => expect(screen.getByLabelText("Colormap")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     const nv = latest();
 
     fireEvent.change(screen.getByLabelText("Colormap"), { target: { value: "viridis" } });
@@ -108,7 +121,7 @@ describe("shared NIfTI viewer UI", () => {
     expect(nv.setOpacity).toHaveBeenCalledWith(0, 0.42);
     fireEvent.click(screen.getByRole("button", { name: "Robust 2–98%" }));
     expect(screen.getByTestId("intensity-histogram")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Nearest neighbor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nearest" }));
     expect(nv.setInterpolation).toHaveBeenLastCalledWith(true);
     fireEvent.click(screen.getByRole("button", { name: /Reset viewer/ }));
     expect(nv.setPan2Dxyzmm).toHaveBeenCalledWith([0, 0, 0, 1]);
@@ -117,6 +130,7 @@ describe("shared NIfTI viewer UI", () => {
   it("uses nearest-neighbor interpolation automatically for label maps", async () => {
     render(<NeuroImageViewer layers={[{ ...structural[0], isSegmentation: true }]} label="Labels" mapType="segmentation" modal />);
     await waitFor(() => expect(latest().setInterpolation).toHaveBeenCalledWith(true));
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     expect(screen.getByLabelText("Colormap")).toBeDisabled();
   });
 
@@ -127,7 +141,8 @@ describe("shared NIfTI viewer UI", () => {
       artifactType: "seed_connectivity_map_nii",
       pipelineId: "seed-based-connectivity",
     }]} label="Seed connectivity" modal />);
-    await waitFor(() => expect(screen.getByLabelText("Colormap")).toHaveValue("blue2red"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     const nv = latest();
     const volume = (nv.loadVolumes.mock.results[0] ? (mocks.instances[0].volumes as Array<Record<string, unknown>>)[0] : null);
     expect(nv.setColormap).toHaveBeenCalledWith("volume-0", "red");
@@ -142,7 +157,8 @@ describe("shared NIfTI viewer UI", () => {
 
   it("supports R, H, C, and I keyboard shortcuts", async () => {
     render(<NeuroImageViewer layers={structural} label="Stat map" mapType="t_map" modal />);
-    await waitFor(() => expect(screen.getByTestId("intensity-histogram")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     const nv = latest();
     fireEvent.keyDown(window, { key: "h" });
     expect(screen.queryByTestId("intensity-histogram")).not.toBeInTheDocument();
@@ -154,6 +170,26 @@ describe("shared NIfTI viewer UI", () => {
     expect(nv.setPan2Dxyzmm).toHaveBeenCalled();
   });
 
+  it("provides scientific tone, orientation, layout, and coordinate controls", async () => {
+    render(<NeuroImageViewer layers={structural} label="Anatomy" mapType="anatomical" modal />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
+    const nv = latest();
+
+    fireEvent.change(screen.getByLabelText("Gamma"), { target: { value: "1.5" } });
+    expect(nv.setGamma).toHaveBeenLastCalledWith(1.5);
+    fireEvent.click(screen.getByLabelText("Invert colormap"));
+    fireEvent.click(screen.getByLabelText("Radiological convention"));
+    expect(nv.setRadiologicalConvention).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByLabelText("Show orientation labels"));
+    expect(nv.setIsOrientationTextVisible).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "sagittal" }));
+    expect(nv.setSliceType).toHaveBeenLastCalledWith(2);
+    fireEvent.change(screen.getByLabelText("Jump X coordinate"), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+    expect(nv.mm2frac).toHaveBeenCalledWith([12, 0, 0, 1]);
+  });
+
   it("rerenders a separate high-resolution canvas for PNG export", async () => {
     const toDataUrl = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL");
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(new Blob(["png"], { type: "image/png" })));
@@ -162,7 +198,8 @@ describe("shared NIfTI viewer UI", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
     render(<NeuroImageViewer layers={structural} label="Publication map" modal />);
-    await waitFor(() => expect(screen.getByLabelText("Export resolution")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     fireEvent.change(screen.getByLabelText("Export resolution"), { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     await waitFor(() => expect(mocks.instances).toHaveLength(2));
