@@ -347,6 +347,16 @@ cp .env.example .env   # set HOST_DATASETS_DIR to your datasets folder
 docker compose up
 ```
 
+### Optional macOS desktop prototype
+
+The optional thin desktop launcher lives in `desktop/`. It starts and monitors
+this same Compose deployment, binds its desktop-owned ports to `127.0.0.1`, and
+opens the existing React application in a native window. It does not replace the
+manual command above and is not required for development, CI, plugins, pipeline
+execution, or server deployment. See
+[`desktop/README.md`](desktop/README.md) for prerequisites, build instructions,
+unsigned Gatekeeper behavior, and safe shutdown details.
+
 | | URL |
 |-|-----|
 | Application | `http://localhost:3000` |
