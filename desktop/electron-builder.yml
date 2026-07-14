@@ -1,0 +1,23 @@
+appId: org.neuroforge.desktop
+productName: NeuroForge
+copyright: Copyright © 2026 NeuroForge contributors
+asar: true
+directories:
+  output: dist
+files:
+  - build/**/*
+  - package.json
+extraResources:
+  - from: assets/neuroforge-logo.png
+    to: assets/neuroforge-logo.png
+mac:
+  category: public.app-category.education
+  icon: assets/NeuroForge.icns
+  target:
+    - target: dir
+      arch:
+        - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+artifactName: ${productName}-${version}-${arch}.${ext}

@@ -9,6 +9,8 @@ dist/
 # Node
 node_modules/
 frontend/dist/
+desktop/build/
+desktop/dist/
 
 # Local data volume
 data/

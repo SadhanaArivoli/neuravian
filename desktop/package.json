@@ -1,0 +1,22 @@
+{
+  "name": "neuroforge-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thin macOS desktop launcher for the existing NeuroForge Docker Compose application",
+  "main": "build/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-renderer.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "npm run build && electron .",
+    "dist:mac": "npm run build && electron-builder --mac dir --arm64 --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "43.1.1",
+    "electron-builder": "26.15.3",
+    "png2icons": "2.0.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

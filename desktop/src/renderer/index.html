@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>NeuroForge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="startup-shell" aria-labelledby="app-title">
+      <img class="logo" src="neuroforge-splash.png" alt="NeuroForge logo" />
+      <p class="kicker">LOCAL-FIRST NEUROIMAGING WORKSTATION</p>
+      <h1 id="app-title">NeuroForge</h1>
+      <p class="subtitle">Local-first neuroimaging workstation</p>
+      <section class="status-card" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <div>
+          <p class="status" id="startup-status">Checking system</p>
+          <p class="detail" id="startup-detail">Preparing the desktop launcher…</p>
+        </div>
+      </section>
+      <p class="privacy">NeuroForge is running locally. The desktop launcher does not upload your datasets.</p>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
