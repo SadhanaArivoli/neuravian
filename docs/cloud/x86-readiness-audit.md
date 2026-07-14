@@ -12,7 +12,9 @@ verification**. No cloud resources or emulated local runs were used.
 
 ## FastSurfer (`pipelines/fastsurfer.yaml`)
 
-- **Image:** `deepmi/fastsurfer:cpu-v2.5.4`; expected platform Linux amd64.
+- **Image:** FastSurfer CPU v2.5.4, frozen as
+  `deepmi/fastsurfer@sha256:34c8ff3eb96ad1d14eadbb0cd468ae6bae83072a5845dcb96d7dbc2f7109c14f`;
+  expected platform Linux amd64.
 - **Input:** one readable T1w `.nii` or `.nii.gz`, subject ID, and non-empty
   readable FreeSurfer license. It is not a BIDS positional pipeline.
 - **Command construction:** the Docker executor mounts T1 and license read-only
@@ -40,7 +42,9 @@ artifact registration. Building a Surface Viewer is explicitly out of scope.
 
 ## fMRIPrep (`pipelines/fmriprep.yaml`)
 
-- **Image/version:** `nipreps/fmriprep:25.2.5`; expected platform Linux amd64.
+- **Image/version:** fMRIPrep 25.2.5, frozen as
+  `nipreps/fmriprep@sha256:15cbf8dcd17440d26ff5e80e9f7313f1cb3c54f13673f1ec4aed4465e8e12d77`;
+  expected platform Linux amd64.
 - **Input:** valid BIDS root mounted read-only at `/data`, output at `/out`,
   analysis level `participant`, optional participant/task filters, and a
   read-only FreeSurfer license mount.

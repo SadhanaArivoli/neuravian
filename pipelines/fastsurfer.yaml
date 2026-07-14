@@ -33,7 +33,8 @@ input_type: nifti
 
 container:
   image: deepmi/fastsurfer
-  tag: cpu-v2.5.4
+  # CPU v2.5.4, frozen to the locally inspected Linux amd64 digest.
+  tag: "sha256:34c8ff3eb96ad1d14eadbb0cd468ae6bae83072a5845dcb96d7dbc2f7109c14f"
   engine: docker
 
 # FastSurfer takes a single T1w NIfTI file via --t1, not a BIDS directory.
@@ -200,9 +201,9 @@ known_errors:
       with the official cpu-v2.5.4 image — it indicates the wrong image tag was
       pulled, a corrupted Docker layer, or a custom image missing dependencies.
     fix_hint: >
-      Run: docker pull deepmi/fastsurfer:cpu-v2.5.4
+      Pull the digest recorded in verification/x86/image-lock.json.
       to re-pull the image. If you built a custom image, verify PyTorch is
-      installed: docker run --rm deepmi/fastsurfer:cpu-v2.5.4 python -c "import torch; print(torch.__version__)"
+      installed using the digest-pinned command in verification/x86/commands.
 
   - pattern: "FileNotFoundError.*\\.nii|No such file or directory.*\\.nii|t1 does not exist"
     explanation: >

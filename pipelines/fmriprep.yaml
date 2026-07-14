@@ -31,7 +31,8 @@ input_type: bids_dataset
 
 container:
   image: nipreps/fmriprep
-  tag: "25.2.5"
+  # Version 25.2.5, frozen to the locally inspected Linux amd64 digest.
+  tag: "sha256:15cbf8dcd17440d26ff5e80e9f7313f1cb3c54f13673f1ec4aed4465e8e12d77"
   engine: docker
 
 inputs:

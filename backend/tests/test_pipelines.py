@@ -238,7 +238,9 @@ def test_fmriprep_manifest_loads_without_error():
     manifest = _load_manifest(PIPELINES_DIR / "fmriprep.yaml", schema)
     assert manifest["id"] == "fmriprep"
     assert manifest["container"]["image"] == "nipreps/fmriprep"
-    assert manifest["container"]["tag"] == "25.2.5"
+    assert manifest["container"]["tag"] == (
+        "sha256:15cbf8dcd17440d26ff5e80e9f7313f1cb3c54f13673f1ec4aed4465e8e12d77"
+    )
     assert manifest["container"]["engine"] == "docker"
 
 

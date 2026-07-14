@@ -14,6 +14,9 @@ desktop/dist/
 
 # Prepared x86 verification fixture (CC0 source data; generated locally)
 verification/fixtures/prepared/
+verification/x86/evidence/
+verification/x86/work/
+verification/x86/*.zip
 
 # Local data volume
 data/
