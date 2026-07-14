@@ -11,6 +11,9 @@ import { DOCKER_INSTALL_URL, StartupController } from "./startup.js";
 import type { StartupUpdate } from "./types.js";
 import { loadWindowBounds, saveWindowBounds } from "./window-state.js";
 import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
+import { DesktopLogger, type StartupTrace } from "./logger.js";
+import { StartupStateStore } from "./state-store.js";
+import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -19,7 +22,10 @@ let repositoryRoot = "";
 let allowQuit = false;
 let quitInProgress = false;
 let applicationLoaded = false;
-let lastUpdate: StartupUpdate = { state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher." };
+let applicationLoadStarted = false;
+let logger: DesktopLogger | null = null;
+let rendererReadyTimer: NodeJS.Timeout | undefined;
+const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
 const captureState = process.env.NEUROFORGE_CAPTURE_STATE;
 
@@ -34,19 +40,59 @@ function assetPath(fileName: string): string {
 }
 
 function diagnosticsText(): string {
-  return formatDiagnostics({ update: lastUpdate, facts: startup?.facts, error: startup?.lastError });
+  return formatDiagnostics({ update: startupState.get(), facts: startup?.facts, error: startup?.lastError });
 }
 
 function publish(update: StartupUpdate): void {
-  lastUpdate = update;
+  startupState.set(update);
   mainWindow?.webContents.send("startup:update", update);
   installMenu();
-  if (update.state === "ready" && !applicationLoaded && mainWindow) {
-    applicationLoaded = true;
-    void mainWindow.loadURL(FRONTEND_URL);
+  if (update.state === "ready") {
+    if (rendererReadyTimer) clearTimeout(rendererReadyTimer);
+    rendererReadyTimer = setTimeout(() => {
+      if (!applicationLoadStarted) {
+        publish({
+          state: "failed", title: "Startup failed",
+          detail: "The startup shell did not acknowledge the Ready state before the renderer timeout.",
+          stage: "renderer ready acknowledgement", elapsedMs: STARTUP_TIMEOUTS.rendererLoadMs,
+          recoverable: true, browserAvailable: true,
+        });
+      }
+    }, STARTUP_TIMEOUTS.rendererLoadMs);
   }
   if (capturePath && captureState === update.state) {
-    setTimeout(() => { void captureWindow(capturePath); }, update.state === "checking-system" ? 100 : 800);
+    setTimeout(() => { void captureWindow(capturePath); }, update.state === "checking-system" ? 100 : 4_000);
+  }
+}
+
+function trace(event: StartupTrace): void {
+  void logger?.trace(event);
+}
+
+async function loadMainApplication(): Promise<void> {
+  if (!mainWindow || applicationLoaded || applicationLoadStarted) return;
+  applicationLoadStarted = true;
+  if (rendererReadyTimer) clearTimeout(rendererReadyTimer);
+  const attemptId = startupState.get().attemptId;
+  const startedAt = Date.now();
+  try {
+    await withTimeout(mainWindow.loadURL(FRONTEND_URL), "Renderer load", STARTUP_TIMEOUTS.rendererLoadMs);
+    applicationLoaded = true;
+    trace({ attemptId, stage: 19, name: "app URL loaded into main window", detail: FRONTEND_URL, elapsedMs: Date.now() - startedAt });
+    trace({ attemptId, stage: 20, name: "startup shell removed", elapsedMs: Date.now() - startedAt });
+    const visible = await mainWindow.webContents.executeJavaScript("Boolean(document.body && document.body.innerText.includes('NeuroForge'))", true).catch(() => false) as boolean;
+    if (!visible) throw new Error("The NeuroForge document loaded but its main UI was not visible.");
+    trace({ attemptId, stage: 21, name: "main NeuroForge UI visible", elapsedMs: Date.now() - startedAt });
+  } catch (error) {
+    applicationLoadStarted = false;
+    applicationLoaded = false;
+    await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html")).catch(() => undefined);
+    publish({
+      state: "failed", title: "Startup failed",
+      detail: error instanceof Error ? error.message : String(error),
+      stage: "main application load", elapsedMs: Date.now() - startedAt,
+      recoverable: true, browserAvailable: true,
+    });
   }
 }
 
@@ -60,6 +106,11 @@ async function openFolder(relative: string): Promise<void> {
   const target = path.join(repositoryRoot, relative);
   const error = await shell.openPath(target);
   if (error) await dialog.showMessageBox({ type: "error", title: "Could not open folder", message: error });
+}
+
+async function openDesktopLogs(): Promise<void> {
+  const error = await shell.openPath(logger?.directory ?? app.getPath("logs"));
+  if (error) await dialog.showMessageBox({ type: "error", title: "Could not open logs", message: error });
 }
 
 async function confirmNoActiveRun(action: string): Promise<boolean> {
@@ -92,6 +143,7 @@ async function stopServices(): Promise<void> {
   publish({ state: "shutting-down", title: "Shutting down", detail: "Stopping desktop-owned services without removing volumes or files." });
   await compose.stop();
   applicationLoaded = false;
+  applicationLoadStarted = false;
   await mainWindow?.loadFile(path.join(__dirname, "../renderer/index.html"));
   publish({ state: "failed", title: "Services stopped", detail: "NeuroForge services are stopped. Select Retry to start them again.", recoverable: true });
 }
@@ -100,6 +152,7 @@ async function restartServices(): Promise<void> {
   if (compose?.ownsServices && !(await confirmNoActiveRun("restart services"))) return;
   if (compose?.ownsServices) await compose.stop();
   applicationLoaded = false;
+  applicationLoadStarted = false;
   await mainWindow?.loadFile(path.join(__dirname, "../renderer/index.html"));
   void startup?.run();
 }
@@ -117,7 +170,7 @@ async function showAbout(): Promise<void> {
 }
 
 function installMenu(): void {
-  const statusLabel = lastUpdate.title;
+  const statusLabel = startupState.get().title;
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: "NeuroForge",
@@ -125,11 +178,11 @@ function installMenu(): void {
         { label: "About NeuroForge", click: () => { void showAbout(); } },
         { type: "separator" },
         { label: `NeuroForge: ${statusLabel}`, enabled: false },
-        { label: `Docker services: ${compose?.ownsServices ? "desktop-owned" : "not owned"}`, enabled: false },
+        { label: `Docker services: ${compose?.serviceOwnership ?? "none"}`, enabled: false },
         { type: "separator" },
         { label: "Open Data Folder", click: () => { void openFolder("data"); } },
         { label: "Open Derivatives Folder", click: () => { void openFolder("data/derivatives"); } },
-        { label: "Open Logs", click: () => { void openFolder("data/logs"); } },
+        { label: "Open Logs", click: () => { void openDesktopLogs(); } },
         { type: "separator" },
         { label: "Copy Diagnostics", click: () => clipboard.writeText(diagnosticsText()) },
         { label: "Restart Services", click: () => { void restartServices(); } },
@@ -186,6 +239,7 @@ async function requestQuit(): Promise<void> {
 }
 
 async function createWindow(): Promise<void> {
+  if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); return; }
   const stateFile = path.join(app.getPath("userData"), "window-state.json");
   const bounds = await loadWindowBounds(stateFile);
   mainWindow = new BrowserWindow({
@@ -195,6 +249,17 @@ async function createWindow(): Promise<void> {
       preload: path.join(__dirname, "../preload/index.js"), contextIsolation: true,
       nodeIntegration: false, sandbox: true, devTools: !app.isPackaged,
     },
+  });
+  trace({ stage: 2, name: "BrowserWindow created", detail: `${bounds.width}x${bounds.height}` });
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    if (level >= 2) trace({ stage: "renderer-console", name: level >= 3 ? "renderer error" : "renderer warning", detail: `${message} (${sourceId}:${line})` });
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    const url = mainWindow?.webContents.getURL() ?? "";
+    if (url.startsWith("file:")) {
+      trace({ attemptId: startupState.get().attemptId, stage: 4, name: "renderer startup shell loaded", detail: url });
+      mainWindow?.webContents.send("startup:update", startupState.get());
+    }
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("close", (event) => {
@@ -214,23 +279,48 @@ async function createWindow(): Promise<void> {
     }
   });
   await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
-  publish(lastUpdate);
+  publish(startupState.get());
   repositoryRoot = findRepositoryRoot(__dirname);
   compose = new DesktopCompose(repositoryRoot);
-  startup = new StartupController(repositoryRoot, compose, publish);
+  startup = new StartupController(
+    repositoryRoot,
+    compose,
+    publish,
+    (stage, name, detail, attemptId, elapsedMs) => trace({ stage, name, detail, attemptId, elapsedMs }),
+  );
   void startup.run();
 }
 
 ipcMain.handle("startup:retry", async () => {
   if (compose?.ownsServices) { await restartServices(); return true; }
-  return await startup?.run();
+  return await startup?.retry();
+});
+ipcMain.handle("startup:get-state", () => startupState.get());
+ipcMain.handle("startup:renderer-received", async (_event, update: StartupUpdate) => {
+  const current = startupState.get();
+  if (update.attemptId && current.attemptId && update.attemptId !== current.attemptId) return false;
+  if (update.state === "ready") {
+    trace({ attemptId: current.attemptId, stage: 18, name: "ready event received by renderer", elapsedMs: current.elapsedMs });
+    await loadMainApplication();
+  }
+  return true;
+});
+ipcMain.on("startup:trace", (_event, event: StartupTrace) => {
+  if (event.stage === 3 && applicationLoadStarted) return;
+  trace({ ...event, attemptId: startupState.get().attemptId });
 });
 ipcMain.handle("diagnostics:copy", () => { clipboard.writeText(diagnosticsText()); return true; });
+ipcMain.handle("logs:open", async () => { await openDesktopLogs(); return true; });
+ipcMain.handle("frontend:open-browser", async () => { await shell.openExternal(FRONTEND_URL); return true; });
+ipcMain.handle("docker:open-desktop", async () => await shell.openPath("/Applications/Docker.app"));
 ipcMain.handle("docker:install", async () => { await shell.openExternal(DOCKER_INSTALL_URL); return true; });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  app.setAppLogsPath();
+  logger = await DesktopLogger.create(app.getPath("logs"));
+  trace({ stage: 1, name: "Electron app ready", detail: `version=${app.getVersion()} architecture=${process.arch}` });
   installMenu();
-  void createWindow();
+  await createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
 });
 app.on("before-quit", (event) => { if (!allowQuit) { event.preventDefault(); void requestQuit(); } });

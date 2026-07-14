@@ -93,6 +93,7 @@ button:hover { border-color: #67e8f9; background: #202c43; }
 button:focus-visible { outline: 3px solid rgba(103, 232, 249, 0.42); outline-offset: 2px; }
 button.primary { border-color: #6d5de7; background: #6d5de7; color: white; }
 .feedback { min-height: 16px; margin: 9px 0 -10px; color: #67e8f9; font-size: 11px; }
+.failure-meta { margin: 10px 0 -8px; color: #9eabc0; font-size: 11px; }
 .status-card[data-error="true"] { border-color: #9e4660; background: rgba(74, 27, 44, 0.68); }
 .status-card[data-ready="true"] { border-color: #277b72; }
 .status-card[data-ready="true"] .spinner { animation: none; border-color: #45d5c5; background: #45d5c5; }

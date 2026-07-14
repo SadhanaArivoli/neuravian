@@ -29,6 +29,18 @@ The launcher checks the system, starts the repository's canonical
 override, waits for the backend and frontend, and then loads the existing React
 application in the native window. It uses the Compose project name
 `neuroforge-desktop` so it never assumes ownership of a manually started stack.
+If both services are already healthy, the launcher attaches immediately and
+marks them external; quitting that launcher process leaves them running.
+
+The main process owns the canonical startup state. The startup renderer queries
+that state when it loads and also subscribes to later changes, so a Ready event
+that occurred before listener registration cannot strand the window. Timestamped,
+sanitized stage logs are written to `~/Library/Logs/NeuroForge/startup.log`.
+
+Startup operations have centralized hard limits: system checks 10 seconds,
+Docker daemon 10 seconds, Compose start 30 seconds, backend health 60 seconds,
+frontend health 60 seconds, and renderer load/acknowledgement 30 seconds. A
+timeout produces a visible recoverable failure instead of an indefinite spinner.
 
 The override changes only published port bindings:
 
@@ -94,3 +106,5 @@ NeuroForge**; stopping an active run is never the default.
 
 See [prototype-verification.md](../docs/desktop/prototype-verification.md) for
 the regression matrix, output hashes, screenshots, and test totals.
+See [startup-state-fix.md](../docs/desktop/startup-state-fix.md) for the packaged
+app warm/cold startup regression and root-cause evidence.

@@ -23,8 +23,12 @@
       <div class="actions" id="startup-actions" hidden>
         <button type="button" class="primary" id="retry">Retry</button>
         <button type="button" id="copy-diagnostics">Copy diagnostics</button>
+        <button type="button" id="open-logs">Open logs</button>
+        <button type="button" id="open-browser" hidden>Open NeuroForge in browser</button>
+        <button type="button" id="open-docker" hidden>Open Docker Desktop</button>
         <button type="button" id="install-docker" hidden>Install Docker Desktop</button>
       </div>
+      <p class="failure-meta" id="failure-meta" hidden></p>
       <p class="feedback" id="feedback" aria-live="polite"></p>
       <p class="privacy">NeuroForge is running locally. The desktop launcher does not upload your datasets.</p>
     </main>

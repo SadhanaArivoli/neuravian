@@ -14,7 +14,14 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
     ipcRenderer.on("startup:update", listener);
     return () => ipcRenderer.removeListener("startup:update", listener);
   },
+  getStartupState: () => ipcRenderer.invoke("startup:get-state"),
+  reportStartupStateReceived: (update: StartupUpdate) => ipcRenderer.invoke("startup:renderer-received", update),
   retry: () => ipcRenderer.invoke("startup:retry"),
   copyDiagnostics: () => ipcRenderer.invoke("diagnostics:copy"),
+  openLogs: () => ipcRenderer.invoke("logs:open"),
+  openInBrowser: () => ipcRenderer.invoke("frontend:open-browser"),
+  openDockerDesktop: () => ipcRenderer.invoke("docker:open-desktop"),
   openDockerInstall: () => ipcRenderer.invoke("docker:install"),
 });
+
+ipcRenderer.send("startup:trace", { stage: 3, name: "preload loaded" });

@@ -1,7 +1,7 @@
-import os from "node:os";
 import path from "node:path";
 import { runCommand } from "./command.js";
 import type { CommandResult } from "./types.js";
+import { STARTUP_TIMEOUTS } from "./timeouts.js";
 
 export const DESKTOP_PROJECT_NAME = "neuroforge-desktop";
 
@@ -14,13 +14,16 @@ export function composeArguments(repositoryRoot: string): string[] {
 }
 
 export class DesktopCompose {
-  private owned = false;
+  private ownership: "none" | "owned" | "external" = "none";
   constructor(
     readonly repositoryRoot: string,
     private readonly command = runCommand,
   ) {}
 
-  get ownsServices(): boolean { return this.owned; }
+  get ownsServices(): boolean { return this.ownership === "owned"; }
+  get serviceOwnership(): "none" | "owned" | "external" { return this.ownership; }
+
+  attachExternal(): void { this.ownership = "external"; }
 
   private environment(): NodeJS.ProcessEnv {
     return { ...process.env, HOST_UID: String(process.getuid?.() ?? 0), HOST_GID: String(process.getgid?.() ?? 0) };
@@ -30,20 +33,20 @@ export class DesktopCompose {
     const result = await this.command("docker", [...composeArguments(this.repositoryRoot), "up", "--build", "--detach"], {
       cwd: this.repositoryRoot,
       env: this.environment(),
-      timeoutMs: 20 * 60_000,
+      timeoutMs: STARTUP_TIMEOUTS.composeStartMs,
     });
-    this.owned = true;
+    this.ownership = "owned";
     return result;
   }
 
   async stop(): Promise<CommandResult | undefined> {
-    if (!this.owned) return undefined;
+    if (!this.ownsServices) return undefined;
     const result = await this.command("docker", [...composeArguments(this.repositoryRoot), "stop"], {
       cwd: this.repositoryRoot,
       env: this.environment(),
       timeoutMs: 2 * 60_000,
     });
-    this.owned = false;
+    this.ownership = "none";
     return result;
   }
 

@@ -1,15 +1,43 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { DesktopCompose, composeArguments } from "../src/main/compose.js";
 import { formatDiagnostics, redactDiagnostics } from "../src/main/diagnostics.js";
 import { BACKEND_HEALTH_URL, FRONTEND_URL, HealthTimeoutError, waitForService } from "../src/main/health.js";
-import { StartupController } from "../src/main/startup.js";
+import { StartupController, type StartupDependencies } from "../src/main/startup.js";
+import { StartupStateStore } from "../src/main/state-store.js";
+import { DesktopLogger } from "../src/main/logger.js";
 import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 
 const root = "/tmp/neuroforge-fixture";
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
-  dockerVersion: "Docker 27", composeVersion: "Compose v2", repositoryRoot: root,
+  dockerVersion: "Docker 27", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
 };
+
+function composeMock() {
+  return {
+    start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
+    stop: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
+    attachExternal: vi.fn(),
+  } as unknown as DesktopCompose;
+}
+
+function dependencies(overrides: Partial<StartupDependencies> = {}): StartupDependencies {
+  return {
+    systemChecks: vi.fn(async () => facts),
+    wait: vi.fn(async () => undefined),
+    probe: vi.fn(async (url) => ({ healthy: false, url })),
+    now: (() => { let time = 0; return () => ++time; })(),
+    makeAttemptId: vi.fn(() => "attempt-1"),
+    ...overrides,
+  };
+}
+
+function controller(compose = composeMock(), updates: StartupUpdate[] = [], deps = dependencies()) {
+  return new StartupController(root, compose, (update) => updates.push(update), vi.fn(), deps);
+}
 
 describe("Compose orchestration", () => {
   it("uses the canonical Compose file plus localhost-only override", () => {
@@ -26,6 +54,7 @@ describe("Compose orchestration", () => {
       return { stdout: "ok", stderr: "", exitCode: 0 };
     });
     const compose = new DesktopCompose(root, command);
+    compose.attachExternal();
     expect(await compose.stop()).toBeUndefined();
     await compose.start();
     await compose.stop();
@@ -46,44 +75,153 @@ describe("health checks and startup", () => {
     })).rejects.toBeInstanceOf(HealthTimeoutError);
   });
 
-  it("uses localhost-only health and application URLs", () => {
-    expect(BACKEND_HEALTH_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
-    expect(FRONTEND_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
-    expect(BACKEND_HEALTH_URL).not.toContain("0.0.0.0");
+  it("uses the centralized canonical /api/health endpoint", () => {
+    expect(BACKEND_HEALTH_URL).toBe("http://127.0.0.1:8000/api/health");
+    expect(BACKEND_HEALTH_URL).not.toMatch(/:8000\/health$/);
+    expect(FRONTEND_URL).toBe("http://127.0.0.1:3000");
   });
 
-  it("performs a successful startup in order", async () => {
+  it("does not spin forever when /health would return 404", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(waitForService("backend", BACKEND_HEALTH_URL, { timeoutMs: 50, intervalMs: 1, fetcher })).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0][0]).toBe(BACKEND_HEALTH_URL);
+  });
+
+  it("cold-starts Compose and waits for backend then frontend", async () => {
     const updates: StartupUpdate[] = [];
-    const compose = { start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })) } as unknown as DesktopCompose;
+    const compose = composeMock();
     const wait = vi.fn(async () => undefined);
-    const controller = new StartupController(root, compose, (update) => updates.push(update), {
-      systemChecks: vi.fn(async () => facts), wait,
-    });
-    await expect(controller.run()).resolves.toBe(true);
+    const instance = controller(compose, updates, dependencies({ wait }));
+    await expect(instance.run()).resolves.toBe(true);
+    expect(compose.start).toHaveBeenCalledTimes(1);
     expect(updates.map((update) => update.state)).toEqual([
       "checking-system", "starting", "backend-starting", "frontend-starting", "ready",
     ]);
-    expect(wait).toHaveBeenNthCalledWith(1, "backend", BACKEND_HEALTH_URL);
-    expect(wait).toHaveBeenNthCalledWith(2, "frontend", FRONTEND_URL);
+    expect(wait.mock.calls[0].slice(0, 2)).toEqual(["backend", BACKEND_HEALTH_URL]);
+    expect(wait.mock.calls[1].slice(0, 2)).toEqual(["frontend", FRONTEND_URL]);
+  });
+
+  it("attaches immediately when backend and frontend already run", async () => {
+    const warmFacts = { ...facts, occupiedPorts: [8000, 3000] };
+    const compose = composeMock();
+    const updates: StartupUpdate[] = [];
+    const deps = dependencies({
+      systemChecks: vi.fn(async () => warmFacts),
+      probe: vi.fn(async (url) => ({ healthy: true, status: 200, url })),
+    });
+    await expect(controller(compose, updates, deps).run()).resolves.toBe(true);
+    expect(compose.attachExternal).toHaveBeenCalledTimes(1);
+    expect(compose.start).not.toHaveBeenCalled();
+    expect(updates.at(-1)).toMatchObject({ state: "ready", detail: expect.stringContaining("existing") });
+  });
+
+  it("handles a frontend that is ready before backend polling completes", async () => {
+    const wait = vi.fn(async () => undefined);
+    await controller(composeMock(), [], dependencies({
+      probe: vi.fn(async (url) => ({ healthy: url === FRONTEND_URL, status: url === FRONTEND_URL ? 200 : undefined, url })),
+      wait,
+    })).run();
+    expect(wait.mock.calls.map((call) => call[0])).toEqual(["backend", "frontend"]);
+  });
+
+  it("renders a visible recoverable failure with stage and elapsed time", async () => {
+    const updates: StartupUpdate[] = [];
+    await controller(composeMock(), updates, dependencies({
+      systemChecks: vi.fn(async () => { throw new Error("broken check"); }),
+    })).run();
+    expect(updates.at(-1)).toMatchObject({ state: "failed", recoverable: true, stage: "system checks" });
+    expect(updates.at(-1)?.elapsedMs).toBeGreaterThan(0);
   });
 
   it("allows retry after a failed attempt", async () => {
-    const compose = { start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })) } as unknown as DesktopCompose;
-    const systemChecks = vi.fn()
+    const checks = vi.fn()
       .mockRejectedValueOnce(new Error("temporary"))
       .mockResolvedValueOnce(facts);
-    const states: string[] = [];
-    const controller = new StartupController(root, compose, (update) => states.push(update.state), {
-      systemChecks, wait: vi.fn(async () => undefined),
-    });
-    await expect(controller.run()).resolves.toBe(false);
-    await expect(controller.run()).resolves.toBe(true);
-    expect(systemChecks).toHaveBeenCalledTimes(2);
-    expect(states.at(-1)).toBe("ready");
+    let attempt = 0;
+    const deps = dependencies({ systemChecks: checks, makeAttemptId: () => `attempt-${++attempt}` });
+    const instance = controller(composeMock(), [], deps);
+    await expect(instance.run()).resolves.toBe(false);
+    await expect(instance.retry()).resolves.toBe(true);
+    expect(checks).toHaveBeenCalledTimes(2);
+  });
+
+  it("deduplicates repeated startup and Retry requests", async () => {
+    let release!: (facts: SystemFacts) => void;
+    const pending = new Promise<SystemFacts>((resolve) => { release = resolve; });
+    const checks = vi.fn(async () => await pending);
+    const compose = composeMock();
+    const instance = controller(compose, [], dependencies({ systemChecks: checks }));
+    const first = instance.run();
+    const second = instance.run();
+    const retry = instance.retry();
+    expect(first).toBe(second);
+    expect(second).toBe(retry);
+    release(facts);
+    await first;
+    expect(checks).toHaveBeenCalledTimes(1);
+    expect(compose.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("renderer state replay", () => {
+  const ready: StartupUpdate = { state: "ready", title: "Ready", detail: "Healthy", attemptId: "a1" };
+
+  it("replays Ready to a renderer that subscribes late", () => {
+    const store = new StartupStateStore({ state: "checking-system", title: "Checking", detail: "Starting" });
+    store.set(ready);
+    const received: StartupUpdate[] = [];
+    store.subscribe((update) => received.push(update));
+    expect(received).toEqual([ready]);
+  });
+
+  it("returns current Ready state when the event preceded listener registration", () => {
+    const store = new StartupStateStore(ready);
+    expect(store.get()).toEqual(ready);
+  });
+
+  it("does not duplicate listeners after unsubscribe", () => {
+    const store = new StartupStateStore(ready);
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    unsubscribe();
+    store.set({ ...ready, detail: "updated" });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.listenerCount).toBe(0);
+  });
+
+  it("startup shell queries state and reports Ready before main URL switch", async () => {
+    const renderer = await readFile(new URL("../src/renderer/app.js", import.meta.url), "utf8");
+    const main = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+    expect(renderer).toContain("getStartupState().then(applyStartupUpdate)");
+    expect(renderer).toContain("reportStartupStateReceived(update)");
+    expect(main).toContain('ipcMain.handle("startup:get-state"');
+    expect(main).toContain("loadMainApplication()");
   });
 });
 
 describe("diagnostics privacy", () => {
+  it("writes concurrent startup traces in stage order and redacts private values", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "neuroforge-logger-"));
+    try {
+      const logger = await DesktopLogger.create(directory);
+      const writes = [
+        logger.trace({ stage: 1, name: "first" }),
+        logger.trace({ stage: 2, name: "second", detail: "/Users/alice/private token=abcd" }),
+        logger.trace({ stage: 3, name: "third" }),
+      ];
+      await Promise.all(writes);
+      const output = await readFile(logger.filePath, "utf8");
+      expect(output.match(/stage=\d/g)).toEqual(["stage=1", "stage=2", "stage=3"]);
+      expect(output).not.toContain("alice");
+      expect(output).not.toContain("abcd");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("redacts home paths and credentials", () => {
     const value = redactDiagnostics("/Users/alice/private token=abcd password=hunter2", "/Users/alice");
     expect(value).toContain("~/private");

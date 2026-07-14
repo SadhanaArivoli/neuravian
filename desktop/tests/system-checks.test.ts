@@ -25,9 +25,9 @@ describe("system checks", () => {
   it("reports a stopped Docker daemon", async () => await expectKind("daemon", "docker-stopped"));
   it("reports Docker Compose missing", async () => await expectKind("compose", "compose-missing"));
 
-  it("reports a required port conflict", async () => {
-    await expect(runSystemChecks(root, { command: runner(undefined), portAvailable: async (port) => port !== 8000 }))
-      .rejects.toMatchObject({ kind: "port-conflict" });
+  it("records occupied ports for warm-stack detection", async () => {
+    const facts = await runSystemChecks(root, { command: runner(undefined), portAvailable: async (port) => port !== 8000 });
+    expect(facts.occupiedPorts).toEqual([8000]);
   });
 
   it("returns local system facts when every check passes", async () => {
@@ -36,5 +36,6 @@ describe("system checks", () => {
     expect(facts.composeVersion).toContain("Compose");
     expect(facts.memoryGiB).toBeGreaterThan(0);
     expect(facts.diskAvailableGiB).toBeGreaterThan(0);
+    expect(facts.occupiedPorts).toEqual([]);
   });
 });

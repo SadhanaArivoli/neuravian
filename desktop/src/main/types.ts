@@ -15,8 +15,13 @@ export interface StartupUpdate {
   state: StartupState;
   title: string;
   detail: string;
+  attemptId?: string;
+  stage?: string;
+  elapsedMs?: number;
   recoverable?: boolean;
   dockerInstallUrl?: string;
+  browserAvailable?: boolean;
+  dockerRelevant?: boolean;
 }
 
 export interface SystemFacts {
@@ -27,6 +32,7 @@ export interface SystemFacts {
   dockerVersion: string;
   composeVersion: string;
   repositoryRoot: string;
+  occupiedPorts: number[];
 }
 
 export interface CommandResult {
