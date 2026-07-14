@@ -27,43 +27,9 @@ import {
   type PreviewKind,
 } from "../lib/dashboardStats";
 import { parseConnectivityMatrixCsv } from "../lib/connectivityMatrix";
+import { artifactIcon, WorkbenchIcons } from "../lib/iconRegistry";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const TYPE_ICON: Record<string, string> = {
-  mriqc_report: "QC",
-  freesurfer_dir: "FS",
-  connectivity_matrix_csv: "CN",
-  connectivity_matrix_png: "CN",
-  connectivity_matrix_npy: "CN",
-  roi_statistics_csv: "ROI",
-  roi_statistics_json: "ROI",
-  bids_dataset_validated: "BD",
-  skull_stripped_brain: "SS",
-  brain_mask: "BM",
-  fmriprep_dir: "FP",
-  synthstrip_brain: "SS",
-  synthstrip_mask: "BM",
-  statistical_map_thresholded: "SM",
-  cluster_table_csv: "CL",
-  cluster_table_json: "CL",
-  cluster_overlay_png: "CL",
-  cluster_report_html: "CL",
-  cluster_metadata_json: "CL",
-  alff_map_nii: "AL",
-  falff_map_nii: "FA",
-  alff_normalized_map_nii: "AL",
-  falff_normalized_map_nii: "FA",
-  alff_histogram_png: "AL",
-  falff_histogram_png: "FA",
-  alff_spectral_summary_png: "SP",
-  alff_falff_metadata_json: "MD",
-  alff_falff_report_html: "RP",
-};
-
-function typeIcon(type: string) {
-  return TYPE_ICON[type] ?? type.slice(0, 2).toUpperCase();
-}
 
 const STATUS_DOT: Record<string, string> = {
   success: "bg-green-500",
@@ -355,6 +321,7 @@ function ArtifactRow({
   const filename = artifact.path.split("/").pop() ?? artifact.path;
   const isInspectable = NIFTI_INSPECTABLE_TYPES.has(artifact.type) && !artifact.is_directory;
   const isAnalyzable = ATLAS_ROI_TYPES.has(artifact.type) && !artifact.is_directory;
+  const ArtifactIcon = artifactIcon(artifact.type, artifact.path);
 
   return (
     <div
@@ -363,8 +330,8 @@ function ArtifactRow({
       }`}
     >
       {/* Type icon */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-overlay text-xs font-bold text-gray-400">
-        {typeIcon(artifact.type)}
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-surface-overlay text-violet-300 shadow-inner shadow-white/[0.03]">
+        <ArtifactIcon className="h-5 w-5" aria-hidden="true" />
       </div>
 
       {/* Main content */}
@@ -431,18 +398,20 @@ function ArtifactRow({
         {kind !== "none" && (
           <button
             onClick={() => onPreview(artifact)}
-            className="rounded px-2 py-1 text-xs text-accent border border-accent/30 hover:bg-accent/10 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-accent border border-accent/30 hover:bg-accent/10 transition-colors"
           >
+            <WorkbenchIcons.viewer className="h-3.5 w-3.5" aria-hidden="true" />
             Preview
           </button>
         )}
         <a
           href={fileUrl}
           download={filename}
-          className="rounded px-2 py-1 text-xs text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-200 transition-colors"
-          title="Download"
+          className="inline-flex items-center rounded px-2 py-1 text-xs text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-200 transition-colors"
+          title="Download artifact"
+          aria-label={`Download ${artifact.label}`}
         >
-          ↓
+          <WorkbenchIcons.download className="h-3.5 w-3.5" aria-hidden="true" />
         </a>
         <button
           onClick={() => onLineage(artifact)}

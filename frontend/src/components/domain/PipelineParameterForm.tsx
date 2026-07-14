@@ -46,7 +46,7 @@ function MultiRunSelector({
 
   if (fcRuns.length === 0) {
     return (
-      <div className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500">
+      <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-gray-400">
         No successful functional-connectivity runs found. Run the Functional
         Connectivity pipeline first.
       </div>
@@ -55,7 +55,7 @@ function MultiRunSelector({
 
   return (
     <div className="space-y-1.5">
-      <div className="rounded border border-gray-200 bg-white divide-y divide-gray-100 max-h-64 overflow-y-auto">
+      <div className="max-h-64 divide-y divide-white/5 overflow-y-auto rounded-lg border border-white/10 bg-surface-raised">
         {fcRuns.map((run) => {
           const checked = selectedIds.has(run.id);
           const date = run.finished_at
@@ -66,16 +66,16 @@ function MultiRunSelector({
             <label
               key={run.id}
               className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
-                checked ? "bg-blue-50" : "hover:bg-gray-50"
+                checked ? "bg-accent/15" : "hover:bg-white/5"
               }`}
             >
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 rounded border-white/20 bg-surface-overlay text-accent focus:ring-accent"
                 checked={checked}
                 onChange={() => toggle(run.id)}
               />
-              <span className={`text-sm ${checked ? "text-blue-700 font-medium" : "text-gray-700"}`}>
+              <span className={`text-sm ${checked ? "font-medium text-violet-200" : "text-gray-300"}`}>
                 Run #{run.id}
               </span>
               <span className="text-xs text-gray-400 ml-auto">{date}</span>
@@ -116,7 +116,7 @@ function HelpTooltip({ text }: { text: string }) {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onClick={() => setOpen((v) => !v)}
-        className="text-gray-400 hover:text-blue-500 focus:outline-none transition-colors"
+        className="rounded text-gray-500 transition-colors hover:text-violet-300 focus:outline-none"
         aria-label="Help"
       >
         {/* Info circle icon */}
@@ -135,7 +135,7 @@ function HelpTooltip({ text }: { text: string }) {
       </button>
       {open && (
         <div
-          className="absolute left-5 top-0 z-50 w-72 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
+          className="absolute left-5 top-0 z-50 w-72 rounded-lg border border-white/10 bg-surface-raised p-3 text-xs leading-relaxed text-gray-200 shadow-2xl shadow-black/50"
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
@@ -158,7 +158,7 @@ function ParameterField({
   onChange: (val: string | boolean | string[]) => void;
 }) {
   const baseInput =
-    "w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
+    "w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 placeholder:text-gray-500 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25";
 
   // Special case: multi-run selector for group FC input
   if (param.name === "input-run-ids") {
@@ -179,7 +179,7 @@ function ParameterField({
           name={param.name}
           checked={value as boolean}
           onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className="h-4 w-4 rounded border-white/20 bg-surface-overlay text-accent focus:ring-accent"
         />
         <span className="text-sm text-gray-200">Enabled</span>
       </label>
@@ -218,8 +218,8 @@ function ParameterField({
                 key={opt}
                 className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm cursor-pointer transition-colors select-none ${
                   checked
-                    ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
-                    : "border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50"
+                    ? "border-accent/60 bg-accent/15 font-medium text-violet-200"
+                    : "border-white/12 bg-white/[0.035] text-gray-400 hover:border-white/25 hover:bg-white/[0.06]"
                 }`}
               >
                 <input
@@ -619,7 +619,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           onChange={(e) =>
             setSelectedDatasetId(e.target.value ? Number(e.target.value) : "")
           }
-          className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           required
         >
           <option value="">— choose a dataset —</option>
@@ -659,7 +659,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           <select
             value={remoteHostId ?? ""}
             onChange={(e) => setRemoteHostId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           >
             <option value="">Local (this machine)</option>
             {enabledHosts.map((h) => (
@@ -676,7 +676,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
         </div>
       )}
 
-      <hr className="border-gray-200" />
+      <hr className="border-white/8" />
 
       {/* Basic parameters */}
       {basicParams.map((param) => {
@@ -702,7 +702,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           <button
             type="button"
             onClick={() => setShowAdvanced((s) => !s)}
-            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors"
+            className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] px-4 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-white/20 hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-accent/40"
             aria-expanded={showAdvanced}
           >
             <span>Advanced options</span>
@@ -754,7 +754,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       {warnings.map((w) => (
         <div
           key={w.key}
-          className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"
+          className="flex gap-2.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -774,7 +774,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
 
       {/* Submit error */}
       {submitError && (
-        <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {submitError}
         </p>
       )}
@@ -783,7 +783,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
         <button
           type="submit"
           disabled={createRun.isPending}
-          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-accent/15 transition-all hover:-translate-y-px hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           {createRun.isPending ? "Starting…" : "Start run"}
         </button>

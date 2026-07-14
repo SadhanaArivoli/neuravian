@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FlaskConical } from "lucide-react";
 import {
   useCreateProject,
   useDeleteProject,
   useProjects,
 } from "../hooks/useProjects";
 import type { ProjectCreate } from "../api/client";
+import { EmptyState } from "../components/primitives/EmptyState";
+import { WorkbenchIcons } from "../lib/iconRegistry";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -255,19 +256,13 @@ export default function Projects() {
       {error && <p className="text-sm text-red-400">{(error as Error).message}</p>}
 
       {!isLoading && !error && (projects ?? []).length === 0 && (
-        <div className="rounded-xl border border-white/8 bg-surface-raised px-8 py-16 text-center">
-          <FlaskConical className="mx-auto mb-4 h-10 w-10 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-200 mb-2">No research projects yet</h2>
-          <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
-            Create a project to organize your datasets, analyses, notes, and manuscript drafts in one place.
-          </p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
-          >
-            Create your first project
-          </button>
-        </div>
+        <EmptyState
+          icon={<WorkbenchIcons.project className="h-8 w-8 text-violet-300" aria-hidden="true" />}
+          title="No research projects yet"
+          description="Create a project to organize datasets, analyses, notes, and publication outputs in one reproducible workspace."
+          action={<button onClick={() => setShowCreate(true)} className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover">Create your first project</button>}
+          hint="Projects keep scientific context and provenance together without moving source imaging data."
+        />
       )}
 
       {!isLoading && filtered.length > 0 && (

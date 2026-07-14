@@ -19,7 +19,7 @@ export default function Datasets() {
     <div className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-semibold">Datasets</h2>
+          <h1 className="text-2xl font-semibold">Datasets</h1>
           <p className="text-sm text-muted mt-1">
             Import a BIDS dataset folder to validate and index it.
           </p>

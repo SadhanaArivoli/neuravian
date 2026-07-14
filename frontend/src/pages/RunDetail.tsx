@@ -100,6 +100,7 @@ export default function RunDetail() {
   const [lastActivityAt, setLastActivityAt] = useState<Date | null>(null);
   const [silentSeconds, setSilentSeconds] = useState(0);
   const [progress, setProgress] = useState<RunProgress | null>(run?.progress ?? null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -149,6 +150,12 @@ export default function RunDetail() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logLines]);
 
+  useEffect(() => {
+    if (run?.status === "pending" || run?.status === "running" || run?.status === "queued") {
+      setLogsOpen(true);
+    }
+  }, [run?.status]);
+
   if (!run) {
     return (
       <div className="p-8">
@@ -160,9 +167,9 @@ export default function RunDetail() {
   const isActive = run.status === "pending" || run.status === "running" || run.status === "queued";
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="mx-auto max-w-7xl p-5 sm:p-8">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link to="/runs" className="text-sm text-gray-400 hover:text-gray-200 transition-colors">
           ← All runs
         </Link>
@@ -174,7 +181,7 @@ export default function RunDetail() {
       </div>
 
       {/* Meta */}
-      <div className="grid grid-cols-2 gap-4 mb-6 rounded-lg border border-white/10 bg-surface-raised p-4 text-sm">
+      <div className="mb-6 grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-surface-raised p-4 text-sm shadow-xl shadow-black/10 sm:grid-cols-2">
         <div>
           <span className="text-gray-500 text-xs uppercase tracking-wide">Pipeline</span>
           <p className="mt-0.5 font-medium text-gray-200">{run.pipeline_manifest_id} {run.pipeline_version}</p>
@@ -266,10 +273,21 @@ export default function RunDetail() {
         <RunProvenance runId={run.id} />
       </details>
 
+      {/* Successful runs lead with scientific results; logs remain available as diagnostics. */}
+      {run.status === "success" && <RunResults runId={run.id} />}
+
       {/* Live log console */}
-      <div className="rounded-lg border border-white/10 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-white/10 bg-surface-overlay px-4 py-2">
-          <span className="text-xs text-gray-400 font-mono">stdout / stderr</span>
+      <details
+        open={logsOpen}
+        onToggle={(event) => setLogsOpen(event.currentTarget.open)}
+        className="mt-6 overflow-hidden rounded-xl border border-white/10 bg-[#0d0d14] shadow-xl shadow-black/10"
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between bg-surface-overlay px-4 py-3 transition-colors hover:bg-white/[0.07]">
+          <span className="flex items-center gap-2 text-xs font-medium text-gray-300">
+            <span aria-hidden="true" className={`text-gray-500 transition-transform ${logsOpen ? "rotate-90" : ""}`}>›</span>
+            Execution log
+            <span className="font-mono text-[10px] text-gray-500">stdout / stderr</span>
+          </span>
           <span className="text-xs text-gray-500">
             {wsStatus === "connected" && isActive ? (
               <span className="flex items-center gap-1.5">
@@ -284,8 +302,8 @@ export default function RunDetail() {
               "connecting…"
             )}
           </span>
-        </div>
-        <div className="bg-[#0d0d14] h-96 overflow-y-auto p-4 font-mono text-xs text-gray-300">
+        </summary>
+        <div className={`${isActive ? "h-80" : "h-64"} overflow-y-auto border-t border-white/8 bg-[#0a0a10] p-4 font-mono text-xs text-gray-300`}>
           {logLines.length === 0 && (
             <span className="text-gray-600">
               {run.status === "pending" || run.status === "queued"
@@ -309,10 +327,7 @@ export default function RunDetail() {
           )}
           <div ref={logEndRef} />
         </div>
-      </div>
-
-      {/* Results viewer */}
-      {run.status === "success" && <RunResults runId={run.id} />}
+      </details>
     </div>
   );
 }

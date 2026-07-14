@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { BarChart2, FileText, FileCode, Archive } from "lucide-react";
+import { ArrowRight, BarChart2, FileText, FileCode, Archive, RotateCcw, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   generateReport,
@@ -151,14 +151,14 @@ function ReportCard({
                 disabled={retry.isPending}
                 className="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
               >
-                {retry.isPending ? "Retrying…" : "↺ Retry"}
+                {retry.isPending ? "Retrying…" : <><RotateCcw className="mr-1 inline h-3 w-3" aria-hidden="true" />Retry</>}
               </button>
               <button
                 onClick={() => del.mutate()}
                 disabled={del.isPending}
                 className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
               >
-                {del.isPending ? "Deleting…" : "✕ Delete"}
+                {del.isPending ? "Deleting…" : <><Trash2 className="mr-1 inline h-3 w-3" aria-hidden="true" />Delete</>}
               </button>
             </>
           )}
@@ -167,7 +167,7 @@ function ReportCard({
               to={`/datasets/${datasetId}/reports/${report.id}`}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
             >
-              View →
+              View <ArrowRight className="ml-1 inline h-3 w-3" aria-hidden="true" />
             </Link>
           )}
         </div>
@@ -292,7 +292,7 @@ export default function ReportStudio() {
     <div className="p-8 max-w-3xl">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-semibold">Study Report Studio</h2>
+          <h1 className="text-2xl font-semibold">Study Report Studio</h1>
           <p className="text-sm text-gray-400 mt-1">
             Generate a publication-ready report for this dataset.
           </p>

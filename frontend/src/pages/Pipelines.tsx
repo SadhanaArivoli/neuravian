@@ -9,6 +9,7 @@ import type {
 } from "../api/client";
 import PipelineParameterForm from "../components/domain/PipelineParameterForm";
 import { usePipeline, usePipelines } from "../hooks/usePipelines";
+import { pipelineIcon, WorkbenchIcons } from "../lib/iconRegistry";
 
 // ── Badge configs ─────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ function PipelineCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const PipelineIcon = pipelineIcon(pipeline.category ?? "", pipeline.id);
   return (
     <button
       onClick={onSelect}
@@ -103,6 +105,9 @@ function PipelineCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-violet-300">
+          <PipelineIcon className="h-[18px] w-[18px]" aria-hidden="true" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-gray-100 text-sm">{pipeline.display_name}</h3>
@@ -428,10 +433,8 @@ export default function Pipelines() {
           <PipelineDetail pipelineId={selectedId} prefill={activePrefill} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="h-10 w-10 rounded-xl border border-white/10 bg-surface-raised flex items-center justify-center text-accent">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
-              </svg>
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-surface-raised text-accent shadow-xl shadow-black/20">
+              <WorkbenchIcons.pipeline className="h-6 w-6" aria-hidden="true" />
             </div>
             <div>
               <p className="text-sm font-medium text-gray-300">Select a pipeline</p>

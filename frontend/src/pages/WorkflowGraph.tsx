@@ -35,22 +35,7 @@ import {
   type RunNodeData,
   type StatusFilter,
 } from "../lib/workflowGraph";
-
-// ── Category metadata (2-letter code + colour) ───────────────────────────────
-
-const CAT_META: Record<string, { icon: string; color: string }> = {
-  conversion:       { icon: "CV", color: "text-cyan-300"   },
-  validation:       { icon: "VA", color: "text-green-300"  },
-  quality_control:  { icon: "QC", color: "text-amber-300"  },
-  segmentation:     { icon: "SG", color: "text-violet-300" },
-  preprocessing:    { icon: "PR", color: "text-orange-300" },
-  deidentification: { icon: "DI", color: "text-red-300"    },
-  connectivity:     { icon: "CN", color: "text-sky-300"    },
-};
-
-function catMeta(id: string) {
-  return CAT_META[id] ?? { icon: id.slice(0, 2).toUpperCase(), color: "text-gray-400" };
-}
+import { WorkbenchIcons, pipelineIcon } from "../lib/iconRegistry";
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -94,7 +79,7 @@ function runtime(run: RunSummary): string | null {
 
 function RunNode({ data, selected }: NodeProps) {
   const { run } = data as RunNodeData;
-  const meta = catMeta(run.pipeline_manifest_id);
+  const PipelineIcon = pipelineIcon(run.pipeline_manifest_id, run.pipeline_manifest_id);
   const rt = runtime(run);
   const borderBase = STATUS_STYLES[run.status] ?? STATUS_STYLES.pending;
 
@@ -111,9 +96,9 @@ function RunNode({ data, selected }: NodeProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-surface-overlay text-[10px] font-bold ${meta.color}`}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-surface-overlay text-cyan-300"
             >
-              {meta.icon}
+              <PipelineIcon className="h-4 w-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold text-white leading-tight">
@@ -171,7 +156,7 @@ function DatasetNode({ data, selected }: NodeProps) {
       >
         <div className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/15 text-[10px] font-bold text-accent">
-            DS
+            <WorkbenchIcons.dataset className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold text-white">
@@ -186,7 +171,7 @@ function DatasetNode({ data, selected }: NodeProps) {
   );
 }
 
-function ReportNode({data}:NodeProps){const {report}=data as ReportNodeData;return <><Handle type="target" position={Position.Top} className="!bg-purple-400/50"/><Link to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="block w-[220px] rounded-xl border border-purple-500/40 bg-purple-900/20 p-3.5"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-purple-500/20 text-[10px] font-bold text-purple-300">RP</span><div><p className="text-xs font-semibold text-white">Study Report #{report.id}</p><p className="text-[10px] text-purple-300">Publication exports ready</p></div></div></Link></>}
+function ReportNode({data}:NodeProps){const {report}=data as ReportNodeData;return <><Handle type="target" position={Position.Top} className="!bg-purple-400/50"/><Link to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="block w-[220px] rounded-xl border border-purple-500/40 bg-purple-900/20 p-3.5"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-purple-500/20 text-purple-300"><WorkbenchIcons.report className="h-4 w-4" aria-hidden="true" /></span><div><p className="text-xs font-semibold text-white">Study Report #{report.id}</p><p className="text-[10px] text-purple-300">Publication exports ready</p></div></div></Link></>}
 
 const NODE_TYPES = { runNode: RunNode, datasetNode: DatasetNode, reportNode: ReportNode };
 
@@ -507,6 +492,15 @@ function GraphInner({
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(builtEdges);
 
+  const initialFocusNodes = useMemo(() => {
+    if (highlightId) {
+      const highlighted = builtNodes.find((node) => node.id === `run-${highlightId}`);
+      if (highlighted) return [highlighted];
+    }
+    const recentIds = new Set(visibleRuns.slice(-8).map((run) => `run-${run.id}`));
+    return builtNodes.filter((node) => node.id.startsWith("dataset-") || recentIds.has(node.id));
+  }, [builtNodes, highlightId, visibleRuns]);
+
   // Sync state when the filtered graph changes, then fit view
   useEffect(() => {
     setNodes(builtNodes);
@@ -515,12 +509,12 @@ function GraphInner({
     let raf1: number, raf2: number;
     raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        fitView({ padding: 0.2, duration: 400 });
+        fitView({ nodes: initialFocusNodes, padding: highlightId ? 1.2 : 0.25, duration: 400, maxZoom: 0.85 });
       });
     });
     return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [builtNodes, builtEdges]);
+  }, [builtNodes, builtEdges, initialFocusNodes, highlightId, fitView, setEdges, setNodes]);
 
   const selectedRun = useMemo(
     () => (selectedRunId != null ? allRuns.find((r) => r.id === selectedRunId) ?? null : null),
@@ -548,6 +542,19 @@ function GraphInner({
       })),
     [nodes, selectedRunId],
   );
+
+  const decoratedEdges = useMemo(() => {
+    if (selectedRunId == null) return edges;
+    const selectedNode = `run-${selectedRunId}`;
+    return edges.map((edge) => {
+      const connected = edge.source === selectedNode || edge.target === selectedNode;
+      return {
+        ...edge,
+        animated: connected,
+        style: { ...edge.style, opacity: connected ? 0.95 : 0.1 },
+      };
+    });
+  }, [edges, selectedRunId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -577,13 +584,13 @@ function GraphInner({
           ) : (
             <ReactFlow
               nodes={decoratedNodes}
-              edges={edges}
+              edges={decoratedEdges}
               nodeTypes={NODE_TYPES}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={handleNodeClick}
               onPaneClick={() => setSelectedRunId(null)}
-              onInit={(rf) => requestAnimationFrame(() => requestAnimationFrame(() => rf.fitView({ padding: 0.2, duration: 400 })))}
+              onInit={(rf) => requestAnimationFrame(() => requestAnimationFrame(() => rf.fitView({ nodes: initialFocusNodes, padding: highlightId ? 1.2 : 0.25, duration: 400, maxZoom: 0.85 })))}
               minZoom={0.1}
               maxZoom={2}
               proOptions={{ hideAttribution: true }}

@@ -37,7 +37,7 @@ function PrintButton() {
       }}
       className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-surface-raised px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-white/25 hover:text-white transition-colors"
     >
-      🖨 Print / Save PDF
+      <Printer className="h-3.5 w-3.5" aria-hidden="true" /> Print / Save PDF
     </button>
   );
 }
@@ -231,7 +231,7 @@ export default function ReportViewer() {
           <Link to={`/datasets/${datasetId}/reports`} className="text-xs text-gray-500 hover:text-gray-300">
             ← Reports
           </Link>
-          <h2 className="text-2xl font-semibold mt-1">Study Report #{report.id}</h2>
+          <h1 className="text-2xl font-semibold mt-1">Study Report #{report.id}</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Dataset #{report.dataset_id} · Generated {new Date(report.created_at).toLocaleString()}
           </p>

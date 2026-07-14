@@ -216,7 +216,7 @@ function MethodsTab({
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="max-w-[78ch] space-y-3">
           {methodsText.split("\n\n").map((para, i) => (
             <p key={i} className="text-sm leading-relaxed text-gray-200">
               {para}

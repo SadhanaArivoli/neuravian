@@ -4,40 +4,42 @@ import { AboutDialog } from "../onboarding/AboutDialog";
 import { useOnboarding } from "../../context/OnboardingContext";
 import { useHealth } from "../../hooks/useHealth";
 import { StatusBadge } from "./StatusBadge";
+import { WorkbenchIcons } from "../../lib/iconRegistry";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Home", end: true },
-  { to: "/projects", label: "Projects", end: false },
-  { to: "/datasets", label: "Datasets", end: false },
-  { to: "/pipelines", label: "Pipelines", end: false },
-  { to: "/runs", label: "Runs", end: false },
-  { to: "/workflows/new", label: "Workflows", end: true },
-  { to: "/workflows/library", label: "Library", end: false },
+  { to: "/", label: "Home", end: true, icon: WorkbenchIcons.home },
+  { to: "/projects", label: "Projects", end: false, icon: WorkbenchIcons.project },
+  { to: "/datasets", label: "Datasets", end: false, icon: WorkbenchIcons.dataset },
+  { to: "/pipelines", label: "Pipelines", end: false, icon: WorkbenchIcons.pipeline },
+  { to: "/runs", label: "Runs", end: false, icon: WorkbenchIcons.activity },
+  { to: "/workflows/new", label: "Workflows", end: true, icon: WorkbenchIcons.workflow },
+  { to: "/workflows/library", label: "Library", end: false, icon: WorkbenchIcons.library },
 ] as const;
 
 const WIZARD_ITEMS = [
-  { to: "/wizard/dcm2bids", label: "DICOM Wizard", end: false },
+  { to: "/wizard/dcm2bids", label: "DICOM Wizard", end: false, icon: WorkbenchIcons.wizard },
 ] as const;
 
 const SETTINGS_ITEMS = [
-  { to: "/plugins", label: "Plugins", end: false },
-  { to: "/settings/remote-hosts", label: "Remote Hosts", end: false },
-  { to: "/settings", label: "Settings", end: true },
+  { to: "/plugins", label: "Plugins", end: false, icon: WorkbenchIcons.plugin },
+  { to: "/settings/remote-hosts", label: "Remote Hosts", end: false, icon: WorkbenchIcons.network },
+  { to: "/settings", label: "Settings", end: true, icon: WorkbenchIcons.settings },
 ] as const;
 
-function NavItem({ to, label, end }: { to: string; label: string; end: boolean }) {
+function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; end: boolean; icon: typeof WorkbenchIcons.home }) {
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
-        `rounded-md px-3 py-2 text-sm transition-colors ${
+        `flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
             ? "bg-accent/20 text-accent font-medium"
             : "text-gray-400 hover:bg-surface-overlay hover:text-gray-100"
         }`
       }
     >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {label}
     </NavLink>
   );
@@ -115,9 +117,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           onClick={() => { restart(); onClose(); }}
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0 text-gray-500">
-            <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z" />
-          </svg>
+          <WorkbenchIcons.reset className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
           Restart Onboarding
         </button>
 
@@ -126,9 +126,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           onClick={() => setShowShortcuts(true)}
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0 text-gray-500">
-            <path d="M0 2.75A2.75 2.75 0 0 1 2.75 0h10.5A2.75 2.75 0 0 1 16 2.75v10.5A2.75 2.75 0 0 1 13.25 16H2.75A2.75 2.75 0 0 1 0 13.25ZM2.75 1.5c-.69 0-1.25.56-1.25 1.25v10.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25V2.75c0-.69-.56-1.25-1.25-1.25ZM3.5 4.25a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm4 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm-4 4a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 3.5 8.25Zm4 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75Zm-4 4a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75Z" />
-          </svg>
+          <WorkbenchIcons.keyboard className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
           Keyboard Shortcuts
         </button>
 
@@ -142,9 +140,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           onClick={onClose}
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 shrink-0 text-gray-500">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-          </svg>
+          <WorkbenchIcons.github className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
           GitHub
         </a>
 
@@ -156,9 +152,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           onClick={onClose}
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0 text-gray-500">
-            <path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" /><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z" />
-          </svg>
+          <WorkbenchIcons.info className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
           Release Notes
         </a>
 
@@ -169,9 +163,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           onClick={() => setShowAbout(true)}
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0 text-gray-500">
-            <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
-          </svg>
+          <WorkbenchIcons.info className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
           About NeuroForge
         </button>
       </div>
@@ -188,17 +180,17 @@ export function Sidebar() {
   return (
     <aside className="flex shrink-0 flex-col gap-3 border-b border-white/5 bg-surface-raised px-3 py-3 md:h-screen md:w-52 md:border-b-0 md:border-r md:py-4">
       <div className="px-2 md:mb-3">
-        <h1 className="text-lg font-semibold tracking-tight text-white">NeuroForge</h1>
+        <div className="text-lg font-semibold tracking-tight text-white">NeuroForge</div>
         <p className="mt-0.5 hidden text-xs text-muted sm:block">Neuroimaging orchestrator</p>
       </div>
 
       <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-        {NAV_ITEMS.map(({ to, label, end }) => (
-          <NavItem key={to} to={to} label={label} end={end} />
+        {NAV_ITEMS.map(({ to, label, end, icon }) => (
+          <NavItem key={to} to={to} label={label} end={end} icon={icon} />
         ))}
 
         <SectionLabel>Wizards</SectionLabel>
-        {WIZARD_ITEMS.map(({ to, label, end }) => (
+        {WIZARD_ITEMS.map(({ to, label, end, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -211,16 +203,14 @@ export function Sidebar() {
               }`
             }
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
-              <path fillRule="evenodd" d="M7.89 1.077a.75.75 0 0 1 .22 0l4.25.85a.75.75 0 0 1 .59.98l-1.5 4.5a.75.75 0 0 1-.71.51H9.25a.75.75 0 0 1-.71-.51L7.04 2.907a.75.75 0 0 1 .59-.98l.26-.05ZM8 2.675l-.97 2.9h1.94L8 2.675ZM2.625 7a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .53 1.28l-1.72 1.72H6.5a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1-.53-1.28l1.72-1.72h-.315A.75.75 0 0 1 2.625 7Zm7.25 2a.75.75 0 0 1 .75-.75h2.75a.75.75 0 0 1 .55 1.26l-1.9 2.24H13.5a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1-.55-1.26l1.9-2.24H9.875A.75.75 0 0 1 9.875 9Z" clipRule="evenodd" />
-            </svg>
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {label}
           </NavLink>
         ))}
 
         <SectionLabel>Settings</SectionLabel>
-        {SETTINGS_ITEMS.map(({ to, label, end }) => (
-          <NavItem key={to} to={to} label={label} end={end} />
+        {SETTINGS_ITEMS.map(({ to, label, end, icon }) => (
+          <NavItem key={to} to={to} label={label} end={end} icon={icon} />
         ))}
       </nav>
 

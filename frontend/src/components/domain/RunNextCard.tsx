@@ -9,15 +9,15 @@ import { usePipelines } from "../../hooks/usePipelines";
 const PROFILE_BADGE: Record<ComputeProfile, { label: string; className: string }> = {
   "local-ok": {
     label: "Local OK",
-    className: "bg-green-100 text-green-700 border border-green-200",
+    className: "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
   },
   "local-slow": {
     label: "Slow locally",
-    className: "bg-amber-100 text-amber-700 border border-amber-200",
+    className: "border border-amber-500/20 bg-amber-500/10 text-amber-300",
   },
   "local-unsafe": {
     label: "Cloud recommended",
-    className: "bg-red-100 text-red-700 border border-red-200",
+    className: "border border-red-500/20 bg-red-500/10 text-red-300",
   },
 };
 
@@ -112,9 +112,9 @@ export default function RunNextCard({ artifacts, runId }: Props) {
   }
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <section className="mt-6 overflow-hidden rounded-xl border border-white/10 bg-surface-raised shadow-xl shadow-black/10" aria-labelledby="run-next-heading">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+      <div className="flex items-center gap-2 border-b border-white/8 bg-white/[0.035] px-4 py-3">
         <svg
           className="h-4 w-4 text-accent shrink-0"
           viewBox="0 0 20 20"
@@ -128,29 +128,29 @@ export default function RunNextCard({ artifacts, runId }: Props) {
           />
         </svg>
         <div>
-          <span className="text-sm font-semibold text-gray-800">Run Next</span>
-          <span className="ml-2 text-xs text-gray-500">
+          <span id="run-next-heading" className="text-sm font-semibold text-gray-100">Run Next</span>
+          <span className="ml-2 text-xs text-gray-400">
             These pipelines can use outputs from this run.
           </span>
         </div>
       </div>
 
       {/* Pipeline list */}
-      <ul className="divide-y divide-gray-100">
+      <ul className="divide-y divide-white/5">
         {compatible.map((p) => (
           <li
             key={p.pipeline_id}
-            className="flex items-center justify-between gap-3 px-4 py-3"
+            className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-white/[0.025]"
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-gray-800 truncate">
+                <span className="truncate text-sm font-medium text-gray-200">
                   {p.display_name}
                 </span>
                 <ComputeProfileBadge profile={p.compute_profile} />
               </div>
               {p.accept_label && (
-                <p className="mt-0.5 text-xs text-gray-500 truncate">
+                <p className="mt-0.5 truncate text-xs text-gray-400">
                   Uses {p.accept_label}
                 </p>
               )}
@@ -159,13 +159,13 @@ export default function RunNextCard({ artifacts, runId }: Props) {
             <button
               type="button"
               onClick={() => handleConfigure(p.pipeline_id, p)}
-              className="shrink-0 rounded border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
+              className="shrink-0 rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-violet-200 transition-colors hover:bg-accent/20"
             >
               Configure →
             </button>
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }

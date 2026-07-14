@@ -330,7 +330,7 @@ export default function StatisticalMapExplorer() {
         >
           ← Dataset
         </Link>
-        <h2 className="text-2xl font-semibold mt-1">Statistical Map Explorer</h2>
+        <h1 className="text-2xl font-semibold mt-1">Statistical Map Explorer</h1>
         <p className="text-sm text-gray-400 mt-0.5">
           Threshold, cluster, and summarise statistical NIfTI maps.
           Supports z-maps, t-maps, beta maps, contrast maps, and seed connectivity maps.
