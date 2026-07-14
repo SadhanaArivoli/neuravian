@@ -276,6 +276,16 @@ const PROSE_TEMPLATES: Record<
     const n = run.params?.["n-rois"] ?? run.params?.n_rois ?? atlasMeta?.rois ?? NOT_RECORDED;
     const networkText = atlasMeta?.networks ? ` across ${atlasMeta.networks} networks` : "";
     const measure = run.params?.measure ?? "Pearson correlation";
+    const strategy = String(run.params?.["confound-strategy"] ?? run.params?.confound_strategy ?? NOT_RECORDED);
+    const hasGsr = strategy === "motion6_wm_csf_gsr" || strategy === "motion6_wm_csf_global";
+    const strategyText = strategy !== NOT_RECORDED
+      ? ` Nuisance regression used the '${strategy}' strategy` +
+        (hasGsr ? " (including global signal regression, GSR)" : "") +
+        ". Time-series were linearly detrended and z-score standardized (zscore_sample) by NiftiLabelsMasker."
+      : "";
+    const gsrNote = hasGsr
+      ? " Note: global signal regression was applied, which removes the mean signal across all brain voxels. This changes the sign and magnitude of correlation values and must be applied consistently across all runs that will be compared."
+      : "";
     return (
       `Functional connectivity was computed using Nilearn ` +
       `(v${run.pipeline_version || NOT_RECORDED}) ` +
@@ -283,8 +293,10 @@ const PROSE_TEMPLATES: Record<
       `A ${measure} matrix was constructed using the ${atlas} atlas` +
       (n !== NOT_RECORDED ? ` (${n} ROIs${networkText})` : "") +
       `. Time-series were extracted from the fMRIPrep-preprocessed BOLD data ` +
-      `and connectivity was estimated as pairwise ${measure} coefficients. ` +
-      `Per-ROI descriptive statistics were generated for the selected atlas` +
+      `and connectivity was estimated as pairwise ${measure} coefficients.` +
+      strategyText +
+      gsrNote +
+      ` Per-ROI descriptive statistics were generated for the selected atlas` +
       (n !== NOT_RECORDED ? ` (${n} ROIs)` : "") +
       `.`
     );
@@ -392,10 +404,15 @@ const PROSE_TEMPLATES: Record<
       `Group-level functional connectivity was computed using Nilearn ` +
       `(v${run.pipeline_version || NOT_RECORDED}) ` +
       `executed ${executionDescription(run)}${runtimeDescription(run)}. ` +
-      `Individual ROI-by-ROI connectivity matrices from ${runsText} were aggregated ` +
-      `by computing the element-wise arithmetic mean and sample standard deviation ` +
-      `(ddof=1) across all input matrices. All input matrices were verified to share ` +
-      `the same atlas, ROI count, and correlation method prior to aggregation. ` +
+      `Individual ROI-by-ROI Pearson correlation matrices from ${runsText} were aggregated ` +
+      `using the Fisher r-to-z transform (Fisher, 1915, 1921). ` +
+      `Each individual correlation matrix was clipped to (−1 + ε, 1 − ε) with ε = 1×10⁻⁶ ` +
+      `and transformed element-wise via z = arctanh(r). ` +
+      `The arithmetic mean and sample standard deviation (ddof=1) were computed in z-space. ` +
+      `The mean was back-transformed to Pearson r via mean_r = tanh(mean_z). ` +
+      `Diagonal entries (self-connectivity) are set to 0 in z-space and 1 in r-space. ` +
+      `All input matrices were verified to share the same atlas, ROI count, ` +
+      `correlation method, and confound-regression strategy prior to aggregation. ` +
       `Reported statistics are descriptive only and do not include inferential tests.`
     );
   },

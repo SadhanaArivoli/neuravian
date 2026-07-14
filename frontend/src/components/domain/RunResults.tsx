@@ -274,6 +274,16 @@ interface ConnectivityMetadata {
   correlation_max?: number;
   correlation_mean?: number;
   roi_labels?: string[];
+  // Confound provenance (added in Fisher-z milestone)
+  confound_strategy?: string;
+  confounds_used?: string[];
+  confounds_missing?: string[];
+  n_confound_regressors?: number;
+  global_signal_included?: boolean;
+  detrending?: boolean;
+  standardize?: string;
+  n_volumes_before_cleaning?: number;
+  n_volumes_after_cleaning?: number;
 }
 
 interface AlffMetadata {
@@ -595,11 +605,19 @@ interface GroupFCSummary {
   n_rois?: number;
   correlation_method?: string;
   nilearn_version?: string;
+  confound_strategy?: string;
+  // Fisher-z fields (v0.1.1+)
+  fisher_z_applied?: boolean;
+  aggregation_space?: string;
+  mean_r_min?: number;
+  mean_r_max?: number;
+  mean_r_mean?: number;
   mean_z_min?: number;
   mean_z_max?: number;
   mean_z_mean?: number;
   mean_z_std?: number;
   std_z_max?: number;
+  std_z_mean?: number;
   warnings?: string[];
   runtime_seconds?: number;
 }
@@ -613,8 +631,17 @@ function GroupFCPanel({
   summary: GroupFCSummary;
   images: Array<{ name: string; path: string }>;
 }) {
-  const meanHeatmap = images.find((f) => f.name.includes("mean") && f.name.includes("heatmap"));
+  const isLegacy = !summary.fisher_z_applied;
+  // For new runs: prefer r-space heatmap for the primary display.
+  const meanRHeatmap = images.find((f) => f.name.includes("mean_r") && f.name.includes("heatmap"))
+    ?? images.find((f) => f.name.includes("mean") && f.name.includes("heatmap") && !f.name.includes("fisher"));
+  const meanZHeatmap = images.find((f) => f.name.includes("fisher_z") && f.name.includes("mean") && f.name.includes("heatmap"));
   const stdHeatmap = images.find((f) => f.name.includes("std") && f.name.includes("heatmap"));
+
+  // Download paths differ between legacy and new runs
+  const meanRCsvFile = isLegacy ? "group_mean_connectivity_matrix.csv" : "group_mean_r_matrix.csv";
+  const meanRNpyFile = isLegacy ? "group_mean_connectivity_matrix.npy" : "group_mean_r_matrix.npy";
+  const stdCsvFile = isLegacy ? "group_std_connectivity_matrix.csv" : "group_std_fisher_z_matrix.csv";
 
   return (
     <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
@@ -623,6 +650,9 @@ function GroupFCPanel({
           <h3 className="text-sm font-semibold text-gray-800">Group Functional Connectivity</h3>
           <p className="text-xs text-gray-500">
             {summary.atlas ?? "Unknown atlas"} · {summary.n_runs ?? "?"} runs aggregated
+            {isLegacy
+              ? " · legacy aggregation (raw r)"
+              : " · Fisher r-to-z aggregation"}
           </p>
         </div>
         <a
@@ -635,6 +665,16 @@ function GroupFCPanel({
         </a>
       </div>
 
+      {isLegacy && (
+        <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-800">Legacy aggregation (raw r)</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            This run averaged raw Pearson r values without Fisher r-to-z transformation.
+            Re-run group aggregation to obtain scientifically correct Fisher-z results.
+          </p>
+        </div>
+      )}
+
       {summary.warnings && summary.warnings.length > 0 && (
         <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
           <p className="text-xs font-semibold text-amber-800 mb-1">Compatibility warnings</p>
@@ -646,15 +686,29 @@ function GroupFCPanel({
         </div>
       )}
 
+      {summary.confound_strategy && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs text-gray-500">Confound strategy:</span>
+          <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
+            {summary.confound_strategy}
+          </span>
+          {(summary.confound_strategy === "motion6_wm_csf_gsr" || summary.confound_strategy === "motion6_wm_csf_global") && (
+            <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-800">GSR</span>
+          )}
+        </div>
+      )}
+
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ["Runs", summary.n_runs ?? "—"],
           ["ROIs", summary.n_rois ?? "—"],
-          ["Mean min z", summary.mean_z_min?.toFixed(3) ?? "—"],
-          ["Mean max z", summary.mean_z_max?.toFixed(3) ?? "—"],
-          ["Mean avg z", summary.mean_z_mean?.toFixed(3) ?? "—"],
-          ["Mean std z", summary.mean_z_std?.toFixed(3) ?? "—"],
-          ["Max std", summary.std_z_max?.toFixed(3) ?? "—"],
+          ...(summary.fisher_z_applied ? [
+            ["Mean r min", summary.mean_r_min?.toFixed(3) ?? "—"],
+            ["Mean r max", summary.mean_r_max?.toFixed(3) ?? "—"],
+          ] : []),
+          ["Mean z min", summary.mean_z_min?.toFixed(3) ?? "—"],
+          ["Mean z max", summary.mean_z_max?.toFixed(3) ?? "—"],
+          ["Max std z", summary.std_z_max?.toFixed(3) ?? "—"],
           ["Nilearn", summary.nilearn_version ?? "—"],
         ].map(([label, value]) => (
           <div key={label} className="rounded bg-gray-50 p-2">
@@ -669,19 +723,33 @@ function GroupFCPanel({
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {meanHeatmap && (
+        {meanRHeatmap && (
           <div>
-            <p className="mb-1 text-xs font-medium text-gray-600">Group mean matrix</p>
+            <p className="mb-1 text-xs font-medium text-gray-600">
+              Group mean matrix {isLegacy ? "(raw r — legacy)" : "(r, back-transformed from Fisher z)"}
+            </p>
             <img
-              src={`/api/runs/${runId}/files/${meanHeatmap.path}`}
-              alt="Group mean connectivity heatmap"
+              src={`/api/runs/${runId}/files/${meanRHeatmap.path}`}
+              alt="Group mean connectivity heatmap (r-space)"
+              className="w-full rounded border border-gray-200 object-contain"
+            />
+          </div>
+        )}
+        {meanZHeatmap && !isLegacy && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-gray-600">Group mean (Fisher z-space)</p>
+            <img
+              src={`/api/runs/${runId}/files/${meanZHeatmap.path}`}
+              alt="Group mean connectivity heatmap (Fisher z)"
               className="w-full rounded border border-gray-200 object-contain"
             />
           </div>
         )}
         {stdHeatmap && (
           <div>
-            <p className="mb-1 text-xs font-medium text-gray-600">Across-run std matrix</p>
+            <p className="mb-1 text-xs font-medium text-gray-600">
+              Across-run std {isLegacy ? "(raw r)" : "(Fisher z-space, ddof=1)"}
+            </p>
             <img
               src={`/api/runs/${runId}/files/${stdHeatmap.path}`}
               alt="Group std connectivity heatmap"
@@ -693,28 +761,38 @@ function GroupFCPanel({
 
       <div className="mt-3 flex flex-wrap gap-3">
         <a
-          href={`/api/runs/${runId}/files/group_mean_connectivity_matrix.csv`}
+          href={`/api/runs/${runId}/files/${meanRCsvFile}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-blue-600 hover:underline"
         >
-          Download mean matrix CSV
+          {isLegacy ? "Download mean matrix CSV" : "Download mean r matrix CSV"}
+        </a>
+        {!isLegacy && (
+          <a
+            href={`/api/runs/${runId}/files/group_mean_fisher_z_matrix.csv`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Download mean z matrix CSV
+          </a>
+        )}
+        <a
+          href={`/api/runs/${runId}/files/${stdCsvFile}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline"
+        >
+          {isLegacy ? "Download std matrix CSV" : "Download std z matrix CSV"}
         </a>
         <a
-          href={`/api/runs/${runId}/files/group_std_connectivity_matrix.csv`}
+          href={`/api/runs/${runId}/files/${meanRNpyFile}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-blue-600 hover:underline"
         >
-          Download std matrix CSV
-        </a>
-        <a
-          href={`/api/runs/${runId}/files/group_mean_connectivity_matrix.npy`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:underline"
-        >
-          Download mean matrix NPY
+          {isLegacy ? "Download mean matrix NPY" : "Download mean r matrix NPY"}
         </a>
       </div>
     </div>
@@ -1689,23 +1767,44 @@ function ConnectivitySummary({
         </a>
       </div>
       {metadata && (
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            ["ROIs", metadata.n_rois ?? metadata.roi_count ?? "—"],
-            ["Matrix", metadata.matrix_shape?.join("×") ?? "—"],
-            ["Volumes", metadata.n_volumes ?? "—"],
-            ["Networks", metadata.atlas_network_count ?? "—"],
-            ["Min r", metadata.correlation_min?.toFixed(3) ?? "—"],
-            ["Max r", metadata.correlation_max?.toFixed(3) ?? "—"],
-            ["Atlas type", metadata.atlas_type ?? "—"],
-            ["Space", metadata.atlas_space ?? "—"],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded bg-gray-50 p-2">
-              <div className="text-xs text-gray-500">{label}</div>
-              <div className="font-mono text-sm font-semibold text-gray-900" title={String(value)}>{value}</div>
+        <>
+          {metadata.confound_strategy && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500">Confound strategy:</span>
+              <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
+                {metadata.confound_strategy}
+              </span>
+              {metadata.global_signal_included && (
+                <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-800">GSR</span>
+              )}
+              {metadata.n_confound_regressors !== undefined && (
+                <span className="text-xs text-gray-400">{metadata.n_confound_regressors} regressors</span>
+              )}
+              {metadata.n_volumes_after_cleaning !== undefined && metadata.n_volumes_before_cleaning !== undefined && (
+                <span className="text-xs text-gray-400">
+                  {metadata.n_volumes_after_cleaning}/{metadata.n_volumes_before_cleaning} volumes retained
+                </span>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              ["ROIs", metadata.n_rois ?? metadata.roi_count ?? "—"],
+              ["Matrix", metadata.matrix_shape?.join("×") ?? "—"],
+              ["Volumes", metadata.n_volumes ?? "—"],
+              ["Networks", metadata.atlas_network_count ?? "—"],
+              ["Min r", metadata.correlation_min?.toFixed(3) ?? "—"],
+              ["Max r", metadata.correlation_max?.toFixed(3) ?? "—"],
+              ["Atlas type", metadata.atlas_type ?? "—"],
+              ["Space", metadata.atlas_space ?? "—"],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded bg-gray-50 p-2">
+                <div className="text-xs text-gray-500">{label}</div>
+                <div className="font-mono text-sm font-semibold text-gray-900" title={String(value)}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       {metadata?.atlas_source && (
         <p className="mb-3 text-xs text-gray-500">

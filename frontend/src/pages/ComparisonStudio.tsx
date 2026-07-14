@@ -1016,6 +1016,10 @@ interface GroupFCSummaryForComp {
   mean_z_mean?: number;
   mean_z_std?: number;
   std_z_max?: number;
+  // Fisher-z milestone fields
+  fisher_z_applied?: boolean;
+  aggregation_space?: string;
+  confound_strategy?: string;
 }
 
 function GroupFCComparisonPanel({
@@ -1067,6 +1071,12 @@ function GroupFCComparisonPanel({
     !summaryA || !summaryB || summaryA.atlas_id === summaryB.atlas_id;
   const sameRoiCount =
     !summaryA || !summaryB || summaryA.n_rois === summaryB.n_rois;
+  const sameStrategy =
+    !summaryA?.confound_strategy || !summaryB?.confound_strategy ||
+    summaryA.confound_strategy === summaryB.confound_strategy;
+  const sameFisherZ =
+    !summaryA || !summaryB ||
+    (summaryA.fisher_z_applied ?? false) === (summaryB.fisher_z_applied ?? false);
   const compatible = sameAtlas && sameRoiCount;
 
   // Compute Frobenius norm and max abs diff if both matrices loaded
@@ -1115,6 +1125,18 @@ function GroupFCComparisonPanel({
           )}
           {compatible && summaryA.atlas && (
             <span className="text-gray-500">{summaryA.atlas}</span>
+          )}
+          {!sameStrategy && summaryA?.confound_strategy && summaryB?.confound_strategy && (
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-amber-300 font-medium">
+              <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+              Confound strategy mismatch: {summaryA.confound_strategy} vs {summaryB.confound_strategy}
+            </span>
+          )}
+          {!sameFisherZ && (
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-amber-300 font-medium">
+              <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+              Aggregation method mismatch: one run uses Fisher r-to-z, the other uses legacy raw r. Difference values are not meaningful.
+            </span>
           )}
         </div>
       )}
