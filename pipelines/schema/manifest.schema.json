@@ -121,6 +121,49 @@
       "enum": ["local-ok", "local-slow", "local-unsafe"],
       "description": "Expected local-execution quality. local-ok=runs well locally; local-slow=runs but significantly slower (e.g. Rosetta 2 emulation); local-unsafe=may hang indefinitely locally (e.g. AVX2 dependency)."
     },
+    "preflight": {
+      "type": "object",
+      "required": ["empirical_status", "required_os", "required_architecture", "architecture_mismatch", "resources"],
+      "additionalProperties": false,
+      "properties": {
+        "empirical_status": {
+          "type": "string",
+          "enum": ["verified", "pending-x86_64", "unsupported"]
+        },
+        "required_os": { "type": "string" },
+        "required_architecture": { "type": "string" },
+        "architecture_mismatch": {
+          "type": "string",
+          "enum": ["warning", "fail"]
+        },
+        "requires_valid_bids": { "type": "boolean", "default": false },
+        "license_parameters": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "ports": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "default": []
+        },
+        "known_local_unsafe": { "type": "string" },
+        "resources": {
+          "type": "object",
+          "required": ["min_ram_gb", "recommended_ram_gb", "min_cpu_count", "recommended_cpu_count", "min_disk_free_gb", "working_space_gb", "output_space_gb"],
+          "additionalProperties": false,
+          "properties": {
+            "min_ram_gb": { "type": "number", "minimum": 0 },
+            "recommended_ram_gb": { "type": "number", "minimum": 0 },
+            "min_cpu_count": { "type": "integer", "minimum": 1 },
+            "recommended_cpu_count": { "type": "integer", "minimum": 1 },
+            "min_disk_free_gb": { "type": "number", "minimum": 0 },
+            "working_space_gb": { "type": "number", "minimum": 0 },
+            "output_space_gb": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
     "category": {
       "type": "string",
       "enum": ["conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity"],

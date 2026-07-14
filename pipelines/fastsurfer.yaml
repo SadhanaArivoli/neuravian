@@ -9,6 +9,25 @@ description: >
   recommended starting point.
 homepage: https://deep-mi.org/research/fastsurfer/
 compute_profile: local-slow
+preflight:
+  empirical_status: pending-x86_64
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: false
+  license_parameters: [fs_license]
+  ports: []
+  known_local_unsafe: >
+    The cpu-v2.5.4 image is amd64 and is prohibitively slow under Apple Silicon
+    emulation. Native Linux x86_64 verification is still pending.
+  resources:
+    min_ram_gb: 8
+    recommended_ram_gb: 16
+    min_cpu_count: 2
+    recommended_cpu_count: 8
+    min_disk_free_gb: 30
+    working_space_gb: 15
+    output_space_gb: 10
 category: segmentation
 input_type: nifti
 

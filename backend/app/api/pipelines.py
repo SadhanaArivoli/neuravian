@@ -1,7 +1,12 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 from typing import Any
 
+from app.core.database import get_db
+from app.models.dataset import Dataset
+from app.schemas.preflight import PipelinePreflightRequest, PipelinePreflightResponse
 from app.services.pipeline import PipelineService
+from app.services.preflight import PreflightService
 
 router = APIRouter(tags=["pipelines"])
 
@@ -71,3 +76,33 @@ def get_pipeline(pipeline_id: str) -> dict[str, Any]:
     if manifest is None:
         raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
     return manifest
+
+
+@router.get("/pipelines/{pipeline_id}/preflight", response_model=PipelinePreflightResponse)
+def get_pipeline_preflight(pipeline_id: str) -> PipelinePreflightResponse:
+    manifest = _get_svc().get_by_id(pipeline_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
+    return PreflightService().run(manifest)
+
+
+@router.post("/pipelines/{pipeline_id}/preflight", response_model=PipelinePreflightResponse)
+def post_pipeline_preflight(
+    pipeline_id: str,
+    payload: PipelinePreflightRequest,
+    db: Session = Depends(get_db),
+) -> PipelinePreflightResponse:
+    manifest = _get_svc().get_by_id(pipeline_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
+    dataset = None
+    if payload.dataset_id is not None:
+        dataset = db.get(Dataset, payload.dataset_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail=f"Dataset {payload.dataset_id} not found")
+    return PreflightService().run(
+        manifest,
+        dataset=dataset,
+        params=payload.params,
+        parameterized=True,
+    )
