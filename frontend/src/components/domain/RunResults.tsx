@@ -320,52 +320,62 @@ function RehoPanel({ runId, niftis, images }: { runId: number; niftis: RunResult
   const s = meta.reho_statistics;
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-800">Regional Homogeneity (ReHo) Summary</h3>
+      {/* Metadata card — dark theme to match viewer */}
+      <div className="rounded-lg border border-white/10 bg-[#111] p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-100">Regional Homogeneity (ReHo)</h3>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {cards.map(([k, v]) => (
-            <div key={String(k)} className="rounded bg-gray-50 p-2">
-              <div className="text-xs text-gray-500">{k}</div>
-              <div className="font-mono text-sm text-gray-900">{v}</div>
+            <div key={String(k)} className="rounded bg-white/5 border border-white/8 p-2">
+              <div className="text-[10px] text-gray-500 uppercase tracking-wide">{k}</div>
+              <div className="font-mono text-sm text-gray-200 mt-0.5">{v}</div>
             </div>
           ))}
         </div>
-        <div className="mt-3 rounded border border-gray-100 p-3">
-          <div className="text-xs font-semibold text-gray-700">KCC (W) statistics</div>
-          <div className="mt-1 font-mono text-xs text-gray-600">
+        <div className="mt-3 rounded border border-white/8 bg-white/3 p-3">
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">KCC (W) statistics</div>
+          <div className="mt-1 font-mono text-xs text-gray-300">
             mean {s.mean.toPrecision(5)} · median {s.median.toPrecision(5)} · std {s.std.toPrecision(5)} · range {s.min.toPrecision(4)}–{s.max.toPrecision(4)}
           </div>
         </div>
         {meta.excluded_edge_voxels > 0 && (
-          <p className="mt-2 text-xs text-gray-400">{meta.excluded_edge_voxels.toLocaleString()} mask-edge voxels excluded (incomplete neighborhood).</p>
+          <p className="mt-2 text-xs text-gray-500">{meta.excluded_edge_voxels.toLocaleString()} mask-edge voxels excluded (incomplete neighborhood).</p>
         )}
         {meta.warnings.length > 0 && (
-          <ul className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">
+          <ul className="mt-3 rounded border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-amber-300">
             {meta.warnings.map((w) => <li key={w}>{w}</li>)}
           </ul>
         )}
       </div>
+      {/* Viewers — plasma = perceptually uniform for positive KCC values */}
       <div className={`grid gap-4 ${normMap ? "lg:grid-cols-2" : ""}`}>
         {rehoMap && (
-          <div className="h-[420px] overflow-hidden rounded border border-gray-700">
-            <NiivuePanel label="ReHo map (KCC W)" layers={[{ url: `/api/runs/${runId}/files/${rehoMap.path}`, name: "ReHo", colormap: "warm" }]} />
+          <div className="h-[460px] overflow-hidden rounded border border-white/8">
+            <NiivuePanel
+              label="ReHo map (KCC W)"
+              mapType="reho"
+              layers={[{ url: `/api/runs/${runId}/files/${rehoMap.path}`, name: "ReHo" }]}
+            />
           </div>
         )}
         {normMap && (
-          <div className="h-[420px] overflow-hidden rounded border border-gray-700">
-            <NiivuePanel label="Normalized ReHo (z-score)" layers={[{ url: `/api/runs/${runId}/files/${normMap.path}`, name: "ReHo-z", colormap: "warm" }]} />
+          <div className="h-[460px] overflow-hidden rounded border border-white/8">
+            <NiivuePanel
+              label="Normalized ReHo (z-score)"
+              mapType="reho_z"
+              layers={[{ url: `/api/runs/${runId}/files/${normMap.path}`, name: "ReHo-z" }]}
+            />
           </div>
         )}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {images.filter((i) => /reho_histogram/.test(i.path)).map((i) => (
           <a key={i.path} href={`/api/runs/${runId}/files/${i.path}`} target="_blank" rel="noreferrer">
-            <img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-gray-200" />
+            <img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-white/10" />
           </a>
         ))}
       </div>
       {meta.citations.length > 0 && (
-        <p className="text-xs text-gray-400">Citation: {meta.citations[0]}</p>
+        <p className="text-xs text-gray-500">Citation: {meta.citations[0]}</p>
       )}
     </div>
   );
@@ -375,18 +385,43 @@ function AlffFalffPanel({ runId, niftis, images }: { runId: number; niftis: RunR
   const { data: metadata, error } = useRunFile<AlffMetadata>(runId, "alff_falff_metadata.json");
   const alff = niftis.find((f) => f.path.endsWith("alff_map.nii.gz") && !f.path.includes("falff"));
   const falff = niftis.find((f) => f.path.endsWith("falff_map.nii.gz"));
-  if (error) return <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">Could not load ALFF/fALFF metadata.</div>;
-  if (!metadata) return <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-500">Loading ALFF/fALFF results…</div>;
+  if (error) return <div className="rounded border border-red-800/40 bg-red-950/30 p-3 text-sm text-red-300">Could not load ALFF/fALFF metadata.</div>;
+  if (!metadata) return <div className="rounded border border-white/10 bg-[#111] p-3 text-sm text-gray-400">Loading ALFF/fALFF results…</div>;
   const cards = [["TR", `${metadata.tr} s`], ["Timepoints", metadata.number_of_timepoints], ["Band", `${metadata.frequency_band[0]}–${metadata.frequency_band[1]} Hz`], ["Nyquist", `${metadata.nyquist_frequency} Hz`], ["Confounds", metadata.confound_strategy], ["Mask voxels", metadata.mask_voxel_count]];
   return <div className="space-y-4">
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <h3 className="mb-3 text-sm font-semibold text-gray-800">ALFF / fALFF Summary</h3>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-6">{cards.map(([k,v]) => <div key={String(k)} className="rounded bg-gray-50 p-2"><div className="text-xs text-gray-500">{k}</div><div className="font-mono text-sm text-gray-900">{v}</div></div>)}</div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">{([['ALFF',metadata.alff_statistics],['fALFF',metadata.falff_statistics]] as const).map(([label,s]) => <div key={label} className="rounded border border-gray-100 p-3"><div className="text-xs font-semibold text-gray-700">{label} statistics</div><div className="mt-1 font-mono text-xs text-gray-600">mean {s.mean.toPrecision(5)} · median {s.median.toPrecision(5)} · std {s.std.toPrecision(5)} · range {s.min.toPrecision(4)}–{s.max.toPrecision(4)}</div></div>)}</div>
-      {metadata.warnings.length > 0 && <ul className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">{metadata.warnings.map(w=><li key={w}>{w}</li>)}</ul>}
+    {/* Dark-themed metadata card to match viewer */}
+    <div className="rounded-lg border border-white/10 bg-[#111] p-4">
+      <h3 className="mb-3 text-sm font-semibold text-gray-100">ALFF / fALFF</h3>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+        {cards.map(([k,v]) => (
+          <div key={String(k)} className="rounded bg-white/5 border border-white/8 p-2">
+            <div className="text-[10px] text-gray-500 uppercase tracking-wide">{k}</div>
+            <div className="font-mono text-sm text-gray-200 mt-0.5">{v}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {([['ALFF',metadata.alff_statistics],['fALFF',metadata.falff_statistics]] as const).map(([label,s]) => (
+          <div key={label} className="rounded border border-white/8 bg-white/3 p-3">
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label} statistics</div>
+            <div className="mt-1 font-mono text-xs text-gray-300">mean {s.mean.toPrecision(5)} · median {s.median.toPrecision(5)} · std {s.std.toPrecision(5)} · range {s.min.toPrecision(4)}–{s.max.toPrecision(4)}</div>
+          </div>
+        ))}
+      </div>
+      {metadata.warnings.length > 0 && <ul className="mt-3 rounded border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-amber-300">{metadata.warnings.map(w=><li key={w}>{w}</li>)}</ul>}
     </div>
-    <div className="grid gap-4 lg:grid-cols-2">{alff && <div className="h-[420px] overflow-hidden rounded border border-gray-700"><NiivuePanel label="ALFF map" layers={[{url:`/api/runs/${runId}/files/${alff.path}`,name:"ALFF",colormap:"warm"}]}/></div>} {falff && <div className="h-[420px] overflow-hidden rounded border border-gray-700"><NiivuePanel label="fALFF map" layers={[{url:`/api/runs/${runId}/files/${falff.path}`,name:"fALFF",colormap:"warm"}]}/></div>}</div>
-    <div className="grid gap-3 md:grid-cols-3">{images.filter(i=>/alff_histogram|falff_histogram|spectral_summary/.test(i.path)).map(i=><a key={i.path} href={`/api/runs/${runId}/files/${i.path}`} target="_blank" rel="noreferrer"><img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-gray-200"/></a>)}</div>
+    {/* Viewers — inferno = perceptually uniform for positive-only amplitude values */}
+    <div className="grid gap-4 lg:grid-cols-2">
+      {alff && <div className="h-[460px] overflow-hidden rounded border border-white/8"><NiivuePanel label="ALFF map" mapType="alff" layers={[{url:`/api/runs/${runId}/files/${alff.path}`,name:"ALFF"}]}/></div>}
+      {falff && <div className="h-[460px] overflow-hidden rounded border border-white/8"><NiivuePanel label="fALFF map" mapType="falff" layers={[{url:`/api/runs/${runId}/files/${falff.path}`,name:"fALFF"}]}/></div>}
+    </div>
+    <div className="grid gap-3 md:grid-cols-3">
+      {images.filter(i=>/alff_histogram|falff_histogram|spectral_summary/.test(i.path)).map(i=>(
+        <a key={i.path} href={`/api/runs/${runId}/files/${i.path}`} target="_blank" rel="noreferrer">
+          <img src={`/api/runs/${runId}/files/${i.path}`} alt={i.name} className="w-full rounded border border-white/10"/>
+        </a>
+      ))}
+    </div>
   </div>;
 }
 
@@ -407,11 +442,23 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const value = Math.max(-1, Math.min(1, matrix[y][x] ?? 0));
-        const t = (value + 1) / 2;
-        const r = Math.round(37 + t * 210);
-        const g = Math.round(99 + (1 - Math.abs(t - 0.5) * 2) * 90);
-        const b = Math.round(235 - t * 190);
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        // Blue–white–red diverging colormap (matches blue2red in NiiVue):
+        //   -1 → blue (0,0,178), 0 → white (255,255,255), +1 → red (178,0,0)
+        // Perceptually balanced: mid-grey → white avoids dark-centre artefact
+        let r: number, g: number, b: number;
+        if (value >= 0) {
+          // white → red
+          r = 255;
+          g = Math.round(255 * (1 - value));
+          b = Math.round(255 * (1 - value));
+        } else {
+          // blue → white
+          const t = 1 + value; // 0 at -1, 1 at 0
+          r = Math.round(255 * t);
+          g = Math.round(255 * t);
+          b = 255;
+        }
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.fillRect(x * cell, y * cell, cell, cell);
       }
     }
@@ -439,34 +486,48 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-gray-500">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <p className="text-xs text-gray-400 font-mono">
           {hover
             ? `${labels[hover.row] ?? `ROI ${hover.row + 1}`} × ${labels[hover.col] ?? `ROI ${hover.col + 1}`} = ${hover.value.toFixed(3)}`
-            : "Hover matrix cells to inspect ROI pairs."}
+            : "Hover to inspect ROI pairs"}
         </p>
-        <button
-          type="button"
-          onClick={exportPng}
-          className="rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
-        >
-          Export PNG
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-gray-500">
+            Zoom
+            <input
+              type="range"
+              min="1"
+              max="4"
+              step="0.25"
+              value={zoom}
+              onChange={(event) => setZoom(Number(event.target.value))}
+              className="w-20 accent-blue-400"
+            />
+            <span className="w-8 text-right font-mono tabular-nums text-gray-400">{zoom.toFixed(2)}×</span>
+          </label>
+          <button
+            type="button"
+            onClick={exportPng}
+            className="rounded border border-white/12 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            ↓ PNG
+          </button>
+        </div>
       </div>
-      <label className="mt-2 flex max-w-xs items-center gap-2 text-xs text-gray-500">
-        Zoom
-        <input
-          type="range"
-          min="1"
-          max="4"
-          step="0.25"
-          value={zoom}
-          onChange={(event) => setZoom(Number(event.target.value))}
-          className="flex-1"
+      {/* Color scale legend */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] text-blue-300 font-mono">−1</span>
+        <div
+          className="flex-1 h-2.5 rounded"
+          style={{background: "linear-gradient(to right, rgb(0,0,255), rgb(255,255,255), rgb(255,0,0))"}}
         />
-        <span className="w-10 text-right font-mono">{zoom.toFixed(2)}×</span>
-      </label>
-      <div className="mt-3 max-h-[560px] overflow-auto rounded border border-gray-200 bg-gray-50 p-3">
+        <span className="text-[10px] text-red-300 font-mono">+1</span>
+        <span className="text-[10px] text-gray-500 ml-1">Pearson r</span>
+      </div>
+      {/* Matrix canvas */}
+      <div className="max-h-[560px] overflow-auto rounded border border-white/10 bg-[#0d0d0d] p-2">
         <canvas
           ref={canvasRef}
           onMouseMove={handleMove}

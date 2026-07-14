@@ -1,6 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+/**
+ * NiivueViewer — full-screen modal NiiVue viewer with overlay controls.
+ *
+ * Visualization defaults are pulled from niivueTheme.ts.
+ * Supports publication mode (clean export-ready appearance), PNG export,
+ * multiplanar mosaic layout, and per-overlay opacity/visibility controls.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Niivue } from "@niivue/niivue";
 import { ASEG_COLOR_MAP } from "../../lib/freesurferLut";
+import {
+  NIIVUE_MULTIPLANAR_OPTIONS,
+  OVERLAY_LAYER_OPACITY,
+  SLICE_TYPE_MULTIPLANAR,
+  STAT_MAP_COLORMAP,
+  STAT_MAP_UNIT,
+  type StatMapType,
+} from "../../lib/niivueTheme";
 
 // Niivue is a large WebGL library — dynamic import keeps it out of the main bundle
 // and avoids issues in test environments that have no canvas/WebGL.
@@ -23,37 +38,48 @@ export interface NiivueLayer {
 
 interface Props {
   layers: NiivueLayer[];
+  /** Semantic type of the primary stat-map — drives default colormap and unit. */
+  mapType?: StatMapType;
+  /** Use three-plane mosaic layout (sagittal + coronal + axial). Default: true. */
+  multiplanar?: boolean;
   onClose: () => void;
 }
 
-// TODO: surface mesh rendering (.surf, .pial, .white) is not yet implemented.
-// NiiVue supports it via nv.loadMeshes() — add it as a future enhancement once
-// we have a tested FastSurfer surface output path to validate against.
-
-export default function NiivueViewer({ layers, onClose }: Props) {
+export default function NiivueViewer({
+  layers,
+  mapType,
+  multiplanar = true,
+  onClose,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nvRef = useRef<Niivue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPubMode, setIsPubMode] = useState(false);
 
   // Overlay state (layers[1..n] only; base volume has no UI controls)
   const [overlayOpacities, setOverlayOpacities] = useState<number[]>(
-    () => layers.slice(1).map((l) => l.opacity ?? 0.7)
+    () => layers.slice(1).map((l) => l.opacity ?? OVERLAY_LAYER_OPACITY)
   );
   const [overlayVisible, setOverlayVisible] = useState<boolean[]>(
     () => layers.slice(1).map(() => true)
   );
 
-  // Close on Escape key
+  // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  // Stable dep: re-run only when the actual file URLs change, not on every render
+  // Apply publication-mode crosshair toggle without reloading volumes
+  useEffect(() => {
+    const nv = nvRef.current;
+    if (!nv) return;
+    nv.opts.crosshairWidth = isPubMode ? 0 : NIIVUE_MULTIPLANAR_OPTIONS.crosshairWidth;
+    nv.drawScene?.();
+  }, [isPubMode]);
+
   const layerKey = layers.map((l) => l.url).join("\0");
 
   useEffect(() => {
@@ -70,8 +96,8 @@ export default function NiivueViewer({ layers, onClose }: Props) {
         if (cancelled) return;
 
         const nv = new Niivue({
-          backColor: [0.05, 0.05, 0.05, 1],
-          show3Dcrosshair: true,
+          ...NIIVUE_MULTIPLANAR_OPTIONS,
+          isColorbar: true,
         });
         nv.attachToCanvas(canvas);
 
@@ -79,17 +105,28 @@ export default function NiivueViewer({ layers, onClose }: Props) {
         const needsLut = layers.some((l) => l.isSegmentation);
         const fsLut = needsLut ? cmapper.makeLabelLut(ASEG_COLOR_MAP) : null;
 
+        // Resolved colormap for overlay layers that don't specify one explicitly.
+        // For stat-map types the base layer IS the map — apply mapType colormap there too.
+        const resolvedMapColormap = mapType ? STAT_MAP_COLORMAP[mapType] : "warm";
+        const baseColormap =
+          mapType && mapType !== "anatomical" && mapType !== "default" && mapType !== "segmentation"
+            ? resolvedMapColormap
+            : "gray";
+
         const volumeOptions = layers.map((layer, idx) => ({
           url: layer.url,
-          opacity: idx === 0 ? (layer.opacity ?? 1.0) : (layer.opacity ?? 0.7),
-          // isSegmentation: suppress colormap, supply label LUT instead
-          // colormap set: use caller-specified built-in (e.g. "hot" for binary masks)
-          // default: "gray" for base, "gray" for unlabeled overlays
-          colormap: layer.isSegmentation ? "" : (layer.colormap ?? "gray"),
+          opacity: idx === 0 ? (layer.opacity ?? 1.0) : (layer.opacity ?? OVERLAY_LAYER_OPACITY),
+          colormap: layer.isSegmentation
+            ? ""
+            : (layer.colormap ?? (idx === 0 ? baseColormap : resolvedMapColormap)),
           ...(layer.isSegmentation && fsLut ? { colormapLabel: fsLut } : {}),
         }));
 
         await nv.loadVolumes(volumeOptions);
+
+        if (multiplanar) {
+          nv.setSliceType(SLICE_TYPE_MULTIPLANAR);
+        }
 
         if (!cancelled) {
           nvRef.current = nv;
@@ -107,17 +144,13 @@ export default function NiivueViewer({ layers, onClose }: Props) {
         }
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layerKey]);
+  }, [layerKey, multiplanar]);
 
   function handleOpacityChange(overlayIdx: number, newOpacity: number) {
     setOverlayOpacities((prev) => {
-      const next = [...prev];
-      next[overlayIdx] = newOpacity;
-      return next;
+      const next = [...prev]; next[overlayIdx] = newOpacity; return next;
     });
     if (overlayVisible[overlayIdx] && nvRef.current) {
       nvRef.current.setOpacity(overlayIdx + 1, newOpacity);
@@ -127,92 +160,130 @@ export default function NiivueViewer({ layers, onClose }: Props) {
   function handleVisibilityToggle(overlayIdx: number) {
     const nowVisible = !overlayVisible[overlayIdx];
     setOverlayVisible((prev) => {
-      const next = [...prev];
-      next[overlayIdx] = nowVisible;
-      return next;
+      const next = [...prev]; next[overlayIdx] = nowVisible; return next;
     });
     if (nvRef.current) {
       nvRef.current.setOpacity(overlayIdx + 1, nowVisible ? overlayOpacities[overlayIdx] : 0);
     }
   }
 
+  const handleExport = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const baseName = layers[0]?.name ?? "niivue";
+    const link = document.createElement("a");
+    link.download = `${baseName.replace(/[^a-zA-Z0-9_-]/g, "_")}_${isPubMode ? "pub" : "view"}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }, [layers, isPubMode]);
+
   const overlayLayers = layers.slice(1);
   const baseLabel = layers[0]?.name ?? "Scan";
+  const unitLabel = mapType ? STAT_MAP_UNIT[mapType] : "";
 
   return (
     // Backdrop
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Modal */}
-      <div className="relative w-full max-w-5xl mx-4 rounded-xl overflow-hidden bg-gray-950 shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 border-b border-white/10">
-          <span className="text-sm text-gray-300 font-mono truncate">{baseLabel}</span>
-          <button
-            onClick={onClose}
-            className="ml-4 shrink-0 text-gray-400 hover:text-white text-lg leading-none focus:outline-none"
-            aria-label="Close viewer"
-          >
-            ✕
-          </button>
+      <div className="relative w-full max-w-5xl mx-4 rounded-xl overflow-hidden bg-[#0d0d0d] shadow-2xl flex flex-col border border-white/8">
+
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] border-b border-white/8">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-[11px] text-gray-200 font-mono truncate tracking-wide">
+              {baseLabel}
+            </span>
+            {unitLabel && (
+              <span className="text-[10px] text-gray-500 shrink-0">[{unitLabel}]</span>
+            )}
+            {mapType && mapType !== "default" && mapType !== "anatomical" && (
+              <span className="text-[10px] rounded-full px-2 py-0.5 bg-white/6 text-gray-400 shrink-0 border border-white/10">
+                {mapType.replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            {/* Publication mode toggle */}
+            <button
+              type="button"
+              onClick={() => setIsPubMode((v) => !v)}
+              title={isPubMode ? "Exit publication mode" : "Publication mode — clean export view"}
+              className={`text-[10px] px-2 py-1 rounded border transition-colors font-medium ${
+                isPubMode
+                  ? "border-indigo-400/60 bg-indigo-500/15 text-indigo-300"
+                  : "border-white/12 text-gray-500 hover:text-gray-300 hover:border-white/20"
+              }`}
+            >
+              {isPubMode ? "📐 PUB" : "PUB"}
+            </button>
+            {/* Export */}
+            {!loading && !error && (
+              <button
+                type="button"
+                onClick={handleExport}
+                title="Export PNG"
+                className="text-[10px] px-2 py-1 rounded border border-white/12 text-gray-500 hover:text-gray-300 hover:border-white/20 transition-colors"
+              >
+                ↓ PNG
+              </button>
+            )}
+            {/* Close */}
+            <button
+              onClick={onClose}
+              className="ml-1 text-gray-500 hover:text-white text-lg leading-none focus:outline-none transition-colors"
+              aria-label="Close viewer"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
-        {/* Canvas area */}
-        <div className="relative" style={{ height: "70vh" }}>
+        {/* ── Canvas ──────────────────────────────────────────────────────── */}
+        <div className="relative" style={{ height: "68vh" }}>
           {loading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-950 z-10">
-              <div className="h-6 w-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0d0d0d] z-10">
+              <div className="h-6 w-6 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
               <span className="text-sm text-gray-400">
                 {layers.length > 1 ? `Loading ${layers.length} layers…` : "Loading scan…"}
               </span>
-              <span className="text-xs text-gray-400">Large files may take a moment</span>
+              <span className="text-xs text-gray-600">Large files may take a moment</span>
             </div>
           )}
           {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-950 z-10">
-              <div className="rounded-lg border border-red-800 bg-red-950/50 px-6 py-4 text-sm text-red-300 max-w-md text-center">
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0d0d] z-10">
+              <div className="rounded-lg border border-red-800/60 bg-red-950/40 px-6 py-4 text-sm text-red-300 max-w-md text-center">
                 {error}
               </div>
             </div>
           )}
-          <canvas
-            ref={canvasRef}
-            className="w-full h-full"
-            data-testid="niivue-canvas"
-          />
+          <canvas ref={canvasRef} className="w-full h-full" data-testid="niivue-canvas" />
         </div>
 
-        {/* Overlay layer controls — only when there are overlay layers and canvas is ready */}
-        {overlayLayers.length > 0 && !loading && !error && (
-          <div className="bg-gray-900 border-t border-white/10 px-4 py-2 space-y-1.5">
-            <p className="text-xs text-gray-500 mb-1.5">Overlay layers</p>
+        {/* ── Overlay layer controls ───────────────────────────────────────── */}
+        {overlayLayers.length > 0 && !loading && !error && !isPubMode && (
+          <div className="bg-[#111] border-t border-white/8 px-4 py-2.5 space-y-2">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Overlay layers</p>
             {overlayLayers.map((layer, idx) => (
               <div key={layer.url} className="flex items-center gap-3">
-                {/* Visibility toggle */}
                 <button
                   type="button"
                   onClick={() => handleVisibilityToggle(idx)}
-                  className={`shrink-0 w-5 h-5 rounded border text-xs flex items-center justify-center transition-colors focus:outline-none ${
+                  className={`shrink-0 w-4 h-4 rounded border text-[9px] flex items-center justify-center transition-colors focus:outline-none ${
                     overlayVisible[idx]
-                      ? "border-blue-400 bg-blue-500/20 text-blue-300"
-                      : "border-gray-600 bg-transparent text-gray-600"
+                      ? "border-blue-400/60 bg-blue-500/15 text-blue-300"
+                      : "border-white/12 bg-transparent text-gray-600"
                   }`}
                   aria-label={overlayVisible[idx] ? "Hide layer" : "Show layer"}
-                  title={overlayVisible[idx] ? "Hide" : "Show"}
                 >
                   {overlayVisible[idx] ? "●" : "○"}
                 </button>
-
-                {/* Layer name */}
-                <span className="text-xs text-gray-300 font-mono truncate w-40" title={layer.name}>
+                <span className="text-[11px] text-gray-300 font-mono truncate w-44" title={layer.name}>
                   {layer.name}
                 </span>
-
-                {/* Opacity slider */}
                 <input
                   type="range"
                   min={0}
@@ -221,12 +292,10 @@ export default function NiivueViewer({ layers, onClose }: Props) {
                   value={overlayOpacities[idx]}
                   onChange={(e) => handleOpacityChange(idx, Number(e.target.value))}
                   disabled={!overlayVisible[idx]}
-                  className="flex-1 accent-blue-400 disabled:opacity-30"
+                  className="flex-1 accent-blue-400 disabled:opacity-25 h-1"
                   aria-label={`Opacity for ${layer.name}`}
                 />
-
-                {/* Opacity percentage */}
-                <span className="text-xs text-gray-400 w-8 text-right tabular-nums">
+                <span className="text-[10px] text-gray-500 w-7 text-right tabular-nums">
                   {Math.round(overlayOpacities[idx] * 100)}%
                 </span>
               </div>
@@ -234,12 +303,12 @@ export default function NiivueViewer({ layers, onClose }: Props) {
           </div>
         )}
 
-        {/* Controls hint */}
-        {!loading && !error && (
-          <div className="px-4 py-2 bg-gray-900 border-t border-white/10 text-xs text-gray-500 flex gap-6">
+        {/* ── Footer: controls hint (hidden in pub mode) ───────────────────── */}
+        {!loading && !error && !isPubMode && (
+          <div className="px-4 py-2 bg-[#111] border-t border-white/8 text-[9px] text-gray-600 flex gap-6">
             <span>Scroll — change slice</span>
-            <span>Click + drag — pan</span>
-            <span>Right-click + drag — zoom</span>
+            <span>Drag — pan</span>
+            <span>Right-drag — zoom</span>
             <span>Esc — close</span>
           </div>
         )}

@@ -135,7 +135,7 @@ function RehoComparisonPanel({runIdA,runIdB,resultsA,resultsB,labelA,labelB}:{ru
     <p className="text-xs text-gray-500">Descriptive voxelwise KCC map comparison only; no inferential statistics are performed.</p>
     <table className="w-full text-xs"><thead><tr className="border-b border-white/10"><th className="p-2 text-left">Setting</th><th className="p-2 text-left">{labelA}</th><th className="p-2 text-left">{labelB}</th><th>Compatible</th></tr></thead><tbody>{rows.map(([k,x,y])=>{const diff=x!==y;return<tr key={k} className="border-b border-white/5"><td className="p-2 text-gray-400">{k}</td><td className={`p-2 font-mono ${diff?"text-amber-300 font-semibold":""}`}>{x}</td><td className={`p-2 font-mono ${diff?"text-amber-300 font-semibold":""}`}>{y}</td><td className="text-center">{diff?<span className="text-amber-400">≠</span>:<span className="text-green-400">✓</span>}</td></tr>})}</tbody></table>
     <div className="grid grid-cols-5 gap-2">{[["Map correlation",s.correlation?.toFixed(6)??"—"],["Mean |difference|",s.meanAbsoluteDifference.toPrecision(6)],["RMSE",s.rmse.toPrecision(6)],["Max |difference|",s.maximumAbsoluteDifference.toPrecision(6)],["Voxels",String(s.voxelCount)]].map(([k,v])=><div key={k} className="rounded border border-white/10 bg-surface-overlay p-3"><div className="text-[11px] text-gray-500">{k}</div><div className="font-mono text-sm">{v}</div></div>)}</div>
-    <div className="grid grid-cols-2 gap-3"><div className="h-[420px] overflow-hidden rounded border border-white/10">{state.differenceUrl&&<NiivuePanel label="ReHo difference (B − A)" layers={[{url:state.differenceUrl,name:"Difference",colormap:"bwr"}]}/>}</div><div className="rounded border border-white/10 bg-surface-overlay p-4"><div className="mb-3 text-xs text-gray-400">Difference histogram (B − A)</div><svg viewBox="0 0 310 180" className="h-[340px] w-full" aria-label="Difference histogram">{bins.map((v,i)=><rect key={i} x={i*10} y={170-(v/peak)*155} width="8" height={(v/peak)*155} fill="#818cf8"/>)}<line x1="155" y1="5" x2="155" y2="170" stroke="#f59e0b"/></svg></div></div>
+    <div className="grid grid-cols-2 gap-3"><div className="h-[420px] overflow-hidden rounded border border-white/10">{state.differenceUrl&&<NiivuePanel label="ReHo difference (B − A)" mapType="difference" layers={[{url:state.differenceUrl,name:"Difference",colormap:"blue2red"}]}/>}</div><div className="rounded border border-white/10 bg-surface-overlay p-4"><div className="mb-3 text-xs text-gray-400">Difference histogram (B − A)</div><svg viewBox="0 0 310 180" className="h-[340px] w-full" aria-label="Difference histogram">{bins.map((v,i)=><rect key={i} x={i*10} y={170-(v/peak)*155} width="8" height={(v/peak)*155} fill="#818cf8"/>)}<line x1="155" y1="5" x2="155" y2="170" stroke="#f59e0b"/></svg></div></div>
     <p className="text-xs text-gray-500">Reference: Zang et al. (2004). Regional homogeneity approach to fMRI data analysis. NeuroImage 22(1):394–400.</p>
   </div>;
 }
@@ -175,7 +175,7 @@ function AlffFalffComparisonPanel({runIdA,runIdB,resultsA,resultsB,labelA,labelB
     <p className="text-xs text-gray-500">Descriptive voxelwise comparison only; no inferential statistics are performed.</p>
     <table className="w-full text-xs"><thead><tr className="border-b border-white/10"><th className="p-2 text-left">Setting</th><th className="p-2 text-left">{labelA}</th><th className="p-2 text-left">{labelB}</th><th>Compatible</th></tr></thead><tbody>{rows.map(([k,x,y])=><tr key={k} className="border-b border-white/5"><td className="p-2 text-gray-400">{k}</td><td className="p-2 font-mono">{x}</td><td className="p-2 font-mono">{y}</td><td className="text-center text-green-400">✓</td></tr>)}</tbody></table>
     <div className="grid grid-cols-5 gap-2">{[["Map correlation",s.correlation?.toFixed(6)??"—"],["Mean |difference|",s.meanAbsoluteDifference.toPrecision(6)],["RMSE",s.rmse.toPrecision(6)],["Maximum |difference|",s.maximumAbsoluteDifference.toPrecision(6)],["Voxels",String(s.voxelCount)]].map(([k,v])=><div key={k} className="rounded border border-white/10 bg-surface-overlay p-3"><div className="text-[11px] text-gray-500">{k}</div><div className="font-mono text-sm">{v}</div></div>)}</div>
-    <div className="grid grid-cols-2 gap-3"><div className="h-[420px] overflow-hidden rounded border border-white/10">{state.differenceUrl&&<NiivuePanel label={`${measure.toUpperCase()} difference (B − A)`} layers={[{url:state.differenceUrl,name:"Difference",colormap:"bwr"}]}/>}</div><div className="rounded border border-white/10 bg-surface-overlay p-4"><div className="mb-3 text-xs text-gray-400">Difference histogram (B − A)</div><svg viewBox="0 0 310 180" className="h-[340px] w-full" aria-label="Difference histogram">{bins.map((v,i)=><rect key={i} x={i*10} y={170-(v/peak)*155} width="8" height={(v/peak)*155} fill="#818cf8"/>)}<line x1="155" y1="5" x2="155" y2="170" stroke="#f59e0b"/></svg></div></div>
+    <div className="grid grid-cols-2 gap-3"><div className="h-[420px] overflow-hidden rounded border border-white/10">{state.differenceUrl&&<NiivuePanel label={`${measure.toUpperCase()} difference (B − A)`} mapType="difference" layers={[{url:state.differenceUrl,name:"Difference",colormap:"blue2red"}]}/>}</div><div className="rounded border border-white/10 bg-surface-overlay p-4"><div className="mb-3 text-xs text-gray-400">Difference histogram (B − A)</div><svg viewBox="0 0 310 180" className="h-[340px] w-full" aria-label="Difference histogram">{bins.map((v,i)=><rect key={i} x={i*10} y={170-(v/peak)*155} width="8" height={(v/peak)*155} fill="#818cf8"/>)}<line x1="155" y1="5" x2="155" y2="170" stroke="#f59e0b"/></svg></div></div>
   </div>;
 }
 
@@ -545,10 +545,14 @@ function MatrixHeatmap({
       {matrix.values.slice(0, size).map((row, y) =>
         row.slice(0, size).map((value, x) => {
           const scaled = Math.max(-1, Math.min(1, value));
-          const t = (scaled + 1) / 2;
-          const r = Math.round(40 + t * 200);
-          const g = Math.round(90 + (1 - Math.abs(t - 0.5) * 2) * 80);
-          const b = Math.round(220 - t * 170);
+          // Blue-white-red diverging (matches blue2red NiiVue colormap)
+          let r: number, g: number, b: number;
+          if (scaled >= 0) {
+            r = 255; g = Math.round(255 * (1 - scaled)); b = Math.round(255 * (1 - scaled));
+          } else {
+            const pos = 1 + scaled;
+            r = Math.round(255 * pos); g = Math.round(255 * pos); b = 255;
+          }
           const color = `rgb(${r},${g},${b})`;
 
           const labelY = matrix.labels[y] ?? `ROI ${y + 1}`;
@@ -739,7 +743,7 @@ function ConnectivityComparisonPanel({
             Difference heatmap — {labelA} minus {labelB}
           </p>
           <p className="mb-3 text-[10px] text-gray-500">
-            Blue = A &lt; B · Red = A &gt; B · Teal = near-zero difference
+            Blue = A &lt; B · Red = A &gt; B · White = near-zero difference
           </p>
           <MatrixHeatmap matrix={diffMatrix} mode="diff" />
         </div>

@@ -94,13 +94,15 @@ fetch(url)
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         const flat = data.values.flat();
-        const max = Math.max(...flat.map(Math.abs));
+        const max = Math.max(...flat.map(Math.abs)) || 1;
+        // Blue–white–red diverging colormap (matches RunResults MatrixCanvas)
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < n; j++) {
-            const v = data.values[i][j] / (max || 1);
-            const r = v > 0 ? Math.round(v * 255) : 0;
-            const b = v < 0 ? Math.round(-v * 255) : 0;
-            ctx.fillStyle = `rgb(${r},0,${b})`;
+            const v = Math.max(-1, Math.min(1, data.values[i][j] / max));
+            let r: number, g: number, b: number;
+            if (v >= 0) { r = 255; g = Math.round(255 * (1 - v)); b = Math.round(255 * (1 - v)); }
+            else { const t = 1 + v; r = Math.round(255 * t); g = Math.round(255 * t); b = 255; }
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
             ctx.fillRect(j * cell, i * cell, cell, cell);
           }
         }
