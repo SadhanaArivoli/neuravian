@@ -31,6 +31,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 import pandas as pd

@@ -27,6 +27,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(_cache_dir / "matplotlib"))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 

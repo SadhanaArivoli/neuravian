@@ -231,6 +231,7 @@ def _write_heatmap(
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    plt.style.use("dark_background")
 
     n = matrix.shape[0]
     fig_size = max(6, min(20, n * 0.12))

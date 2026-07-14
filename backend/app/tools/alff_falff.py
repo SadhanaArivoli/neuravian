@@ -18,6 +18,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(_cache))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -119,6 +120,11 @@ def _save_map(path: Path, values: np.ndarray, mask: np.ndarray, source: nib.Nift
     header.set_data_dtype(np.float32)
     header.set_slope_inter(1.0, 0.0)
     header.set_data_shape(mask.shape)
+    # Set cal_min=0 so viewers (e.g. NiiVue) anchor the colormap at zero.
+    # Without this, viewers auto-scale from min-nonzero, mapping background zeros
+    # to the colormap maximum (e.g. yellow for inferno).
+    header["cal_min"] = 0.0
+    header["cal_max"] = float(np.nanmax(volume))
     nib.save(nib.Nifti1Image(volume, source.affine, header), path)
 
 

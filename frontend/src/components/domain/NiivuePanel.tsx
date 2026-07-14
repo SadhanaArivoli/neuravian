@@ -124,6 +124,9 @@ export default function NiivuePanel({
             ? resolvedMapColormap
             : "gray";
 
+        const isStatMapType =
+          !!mapType && mapType !== "anatomical" && mapType !== "default" && mapType !== "segmentation";
+
         const volumeOptions = layers.map((layer, idx) => ({
           url: layer.url,
           opacity:
@@ -132,9 +135,24 @@ export default function NiivuePanel({
             ? ""
             : (layer.colormap ?? (idx === 0 ? baseColormap : resolvedMapColormap)),
           ...(layer.isSegmentation && fsLut ? { colormapLabel: fsLut } : {}),
+          // For stat maps, tell NiiVue to honour the header's cal_min/cal_max instead
+          // of auto-calibrating from percentiles.  The backend writes cal_min=0 so that
+          // background zeros anchor to the colormap minimum (dark), not the maximum.
+          ...(isStatMapType && idx === 0 ? { trustCalMinMax: true } : {}),
         }));
 
         await nv.loadVolumes(volumeOptions);
+
+        // NiiVue auto-calibrates using the 2nd–98th percentile of the data.
+        // For fALFF/ReHo, nearly all voxels are non-zero brain tissue, so the 2nd
+        // percentile is ~0.12 rather than 0.  Background zeros fall below cal_min
+        // and wrap to the colormap maximum (yellow for inferno).
+        // Fix: override cal_min=0 and refresh the GPU texture.
+        if (isStatMapType && nv.volumes.length > 0) {
+          nv.volumes[0].cal_min = 0;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (nv as any).updateGLVolume?.(nv.volumes[0]);
+        }
 
         // Switch to three-plane mosaic after volumes are loaded
         if (multiplanar) {

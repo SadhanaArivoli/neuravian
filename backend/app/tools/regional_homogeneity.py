@@ -30,6 +30,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(_cache))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 import scipy
@@ -171,6 +172,8 @@ def _save_map(path: Path, volume: np.ndarray, source: nib.Nifti1Image) -> None:
     header.set_data_dtype(np.float32)
     header.set_slope_inter(1.0, 0.0)
     header.set_data_shape(volume.shape)
+    header["cal_min"] = 0.0
+    header["cal_max"] = float(np.nanmax(volume))
     nib.save(nib.Nifti1Image(volume.astype(np.float32), source.affine, header), path)
 
 

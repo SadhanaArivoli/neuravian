@@ -526,8 +526,8 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
         <span className="text-[10px] text-red-300 font-mono">+1</span>
         <span className="text-[10px] text-gray-500 ml-1">Pearson r</span>
       </div>
-      {/* Matrix canvas */}
-      <div className="max-h-[560px] overflow-auto rounded border border-white/10 bg-[#0d0d0d] p-2">
+      {/* Matrix canvas — width grows with zoom; overflow-x scrolls when wider than viewport */}
+      <div className="max-h-[560px] overflow-auto rounded border border-white/10 bg-[#0d0d0d] p-2 w-fit max-w-full">
         <canvas
           ref={canvasRef}
           onMouseMove={handleMove}

@@ -113,6 +113,9 @@ export default function NiivueViewer({
             ? resolvedMapColormap
             : "gray";
 
+        const isStatMapType =
+          !!mapType && mapType !== "anatomical" && mapType !== "default" && mapType !== "segmentation";
+
         const volumeOptions = layers.map((layer, idx) => ({
           url: layer.url,
           opacity: idx === 0 ? (layer.opacity ?? 1.0) : (layer.opacity ?? OVERLAY_LAYER_OPACITY),
@@ -120,9 +123,20 @@ export default function NiivueViewer({
             ? ""
             : (layer.colormap ?? (idx === 0 ? baseColormap : resolvedMapColormap)),
           ...(layer.isSegmentation && fsLut ? { colormapLabel: fsLut } : {}),
+          // For stat maps, honour the header's cal_min/cal_max (backend writes cal_min=0
+          // so that background zeros map to the colormap minimum, not the maximum).
+          ...(isStatMapType && idx === 0 ? { trustCalMinMax: true } : {}),
         }));
 
         await nv.loadVolumes(volumeOptions);
+
+        // Override cal_min=0 for stat maps so background zeros map to the
+        // colormap minimum (dark) instead of wrapping to the maximum (yellow).
+        if (isStatMapType && nv.volumes.length > 0) {
+          nv.volumes[0].cal_min = 0;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (nv as any).updateGLVolume?.(nv.volumes[0]);
+        }
 
         if (multiplanar) {
           nv.setSliceType(SLICE_TYPE_MULTIPLANAR);
