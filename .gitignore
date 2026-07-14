@@ -12,6 +12,9 @@ frontend/dist/
 desktop/build/
 desktop/dist/
 
+# Prepared x86 verification fixture (CC0 source data; generated locally)
+verification/fixtures/prepared/
+
 # Local data volume
 data/
 

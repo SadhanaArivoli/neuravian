@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "fixture_id": "openneuro-ds000001-v1.0.0-sub01-minimal",
+  "description": "A minimal, non-private BIDS fixture shared by the pydeface, fMRIPrep, and FastSurfer x86_64 verification procedures.",
+  "source": {
+    "name": "Balloon Analog Risk-taking Task",
+    "provider": "OpenNeuro",
+    "dataset_id": "ds000001",
+    "dataset_version": "1.0.0",
+    "doi": "10.18112/openneuro.ds000001.v1.0.0",
+    "url": "https://openneuro.org/datasets/ds000001/versions/1.0.0",
+    "license": "CC0",
+    "local_source_env": "NEUROFORGE_FIXTURE_SOURCE"
+  },
+  "subject": "sub-01",
+  "intended_pipelines": {
+    "pydeface": "sub-01/anat/sub-01_T1w.nii.gz",
+    "fastsurfer": "sub-01/anat/sub-01_T1w.nii.gz",
+    "fmriprep": "."
+  },
+  "transfer": {
+    "file_count": 6,
+    "total_bytes": 52914200,
+    "estimated_megabytes_decimal": 52.915
+  },
+  "files": [
+    {
+      "path": "dataset_description.json",
+      "bytes": 615,
+      "sha256": "082f6097dffc2343224238821fae6d6a4e17790b7b4a2bcfddce52852b52c2b5"
+    },
+    {
+      "path": "participants.tsv",
+      "bytes": 216,
+      "sha256": "f6619b8eb543c1ee9fba25a776e68ec68f28cb83c9d9f7379491214fea6fce1e"
+    },
+    {
+      "path": "task-balloonanalogrisktask_bold.json",
+      "bytes": 73,
+      "sha256": "ed4db48953f7d3ceaf80c56b5dc0060c658f391860408e7b189620d3602afbca"
+    },
+    {
+      "path": "sub-01/anat/sub-01_T1w.nii.gz",
+      "bytes": 5663237,
+      "sha256": "bdb7022ae229c5b8edd16425928c9243c562f84082b9b8e6f97cdba8b9354a98"
+    },
+    {
+      "path": "sub-01/func/sub-01_task-balloonanalogrisktask_run-01_bold.nii.gz",
+      "bytes": 47241449,
+      "sha256": "59de83eccb6e2a14b2ba862269537ab6bf95dff9fe7164bc0a0bd20bb3f83519"
+    },
+    {
+      "path": "sub-01/func/sub-01_task-balloonanalogrisktask_run-01_events.tsv",
+      "bytes": 8610,
+      "sha256": "d5b98488bd2d7c9ee3a1ca5b7b570f6c4bfa0065351c1d018fc5f9afac1186a4"
+    }
+  ]
+}
