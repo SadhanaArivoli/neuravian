@@ -64,7 +64,7 @@ from typing import Any
 
 import numpy as np
 
-from app.reporting import citation_block, data_table, document_shell, footer, info_box, key_value_table, statistics_cards, warning_box
+from app.reporting import citation_block, data_table, document_shell, footer, info_box, key_value_table, save_dark_figure, statistics_cards, warning_box
 from app.tools.functional_connectivity import (
     LEGACY_ATLAS_ALIASES,
     normalize_atlas_id,
@@ -257,7 +257,7 @@ def _write_heatmap(
         ax.set_yticklabels(roi_labels, fontsize=5)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    save_dark_figure(fig, output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 

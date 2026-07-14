@@ -38,7 +38,7 @@ import nibabel as nib
 import numpy as np
 from scipy import ndimage
 
-from app.reporting import data_table, document_shell, figure_block, footer, info_box, methods_block, statistics_cards, warning_box
+from app.reporting import data_table, document_shell, figure_block, footer, info_box, methods_block, save_dark_figure, statistics_cards, warning_box
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ def render_cluster_overlay(
         ax.text(0.5, 0.5, "No suprathreshold voxels", ha="center", va="center",
                 color="white", fontsize=14, transform=ax.transAxes)
         ax.axis("off")
-        fig.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="black")
+        save_dark_figure(fig, out_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         return
 
@@ -274,7 +274,7 @@ def render_cluster_overlay(
 
     plt.suptitle("Statistical map clusters", color="white", fontsize=11, y=1.01)
     fig.tight_layout(rect=[0, 0, 0.91, 1.0])
-    fig.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="black")
+    save_dark_figure(fig, out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 

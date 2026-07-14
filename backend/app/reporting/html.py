@@ -9,7 +9,8 @@ from typing import Any
 
 from app.reporting.theme import REPORT_CSS, REPORT_SYSTEM_MARKER
 
-_ABS_PATH = re.compile(r"^(?:/[A-Za-z0-9_.-]+)+/?$")
+_ABS_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/).+")
+_EMBEDDED_PATH = re.compile(r"(?<![\w.:/])(?:[A-Za-z]:[\\/]|/)(?:[^\s,;<>]+[\\/])+[^\s,;<>]+")
 
 
 def safe_display_value(value: Any) -> str:
@@ -17,10 +18,13 @@ def safe_display_value(value: Any) -> str:
     if value is None or value == "":
         return "—"
     text = str(value)
-    if _ABS_PATH.match(text) or text.startswith(("/app/data/", "/root/", "/Users/")):
-        text = Path(text).name or "local data"
+    if _ABS_PATH.match(text):
+        text = Path(text.replace("\\", "/")).name or "local data"
     else:
-        text = re.sub(r"/(?:app/data|root|Users)/[^\s,;]+", lambda m: Path(m.group(0)).name or "local data", text)
+        text = _EMBEDDED_PATH.sub(
+            lambda match: Path(match.group(0).replace("\\", "/")).name or "local data",
+            text,
+        )
     return html.escape(text, quote=True)
 
 

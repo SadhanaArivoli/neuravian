@@ -32,7 +32,7 @@ plt.style.use("dark_background")
 import numpy as np
 import networkx as nx
 
-from app.reporting import data_table, document_shell, footer, info_box, key_value_table, metadata_grid, statistics_cards
+from app.reporting import data_table, document_shell, footer, info_box, key_value_table, metadata_grid, save_dark_figure, statistics_cards
 
 try:
     import community as community_louvain  # python-louvain
@@ -350,7 +350,7 @@ def _write_summary_figure(
         spine.set_edgecolor("#333")
 
     plt.tight_layout(pad=2.0)
-    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    save_dark_figure(fig, path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 

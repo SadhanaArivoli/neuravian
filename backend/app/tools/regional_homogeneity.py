@@ -36,7 +36,7 @@ import numpy as np
 import scipy
 from scipy import ndimage, stats
 
-from app.reporting import citation_block, document_shell, figure_block, footer, info_box, key_value_table, methods_block
+from app.reporting import citation_block, document_shell, figure_block, footer, info_box, key_value_table, methods_block, save_dark_figure, statistics_cards
 from app.tools.bids_utils import bids_entity as _entity, find_matching_confounds as _matching_confounds
 from app.tools.confounds import select_confounds
 
@@ -183,7 +183,7 @@ def _hist(values: np.ndarray, title: str, path: Path) -> None:
     ax.hist(values, bins=60, color="#315b7d")
     ax.set(title=title, xlabel="KCC (W)", ylabel="Voxels")
     fig.tight_layout()
-    fig.savefig(path, dpi=140)
+    save_dark_figure(fig, path, dpi=140)
     plt.close(fig)
 
 
@@ -312,7 +312,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     (out / "reho_metadata.json").write_text(json.dumps(metadata, indent=2))
 
-    hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path", "citations"}
+    display_rows = [
+        ("Source run", args.source_run_id), ("Subject", _entity(bold, "sub") or "—"),
+        ("Task", _entity(bold, "task") or "—"), ("Run", _entity(bold, "run") or "—"),
+        ("Space", _entity(bold, "space") or "native / unspecified"),
+        ("TR (seconds)", f"{tr:g}"), ("Timepoints", T),
+        ("Neighborhood", metadata["neighborhood_label"]),
+        ("Confound strategy", args.confound_strategy),
+        ("Regressors used", ", ".join(selected.used) if selected.used else "None"),
+        ("Detrending", "Linear" if args.detrend else "None"),
+        ("Z-score map", "Generated" if args.z_normalize else "Not requested"),
+        ("Mask voxels", int(mask.sum())), ("Valid voxels", int(valid_mask.sum())),
+        ("Excluded edge voxels", excluded), ("Pipeline version", PIPELINE_VERSION),
+    ]
     norm_section = (
         "<p>Z-score normalized map also saved as <code>reho_normalized_map.nii.gz</code>.</p>"
         if args.z_normalize else ""
@@ -321,7 +333,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "<p>Descriptive resting-state map; no clinical or biological interpretation is inferred.</p>"
         + info_box("How to read ReHo", f"KCC W ranges from 0 (no agreement among neighbors) to 1 (perfect temporal rank agreement). Neighborhood: {metadata['neighborhood_label']}; timepoints: {T}; valid voxels: {valid_mask.sum():,}.")
         + norm_section + "<h2>Parameters and provenance</h2>"
-        + key_value_table((k, v) for k, v in metadata.items() if k not in hidden)
+        + key_value_table(display_rows)
+        + "<h2>Descriptive statistics</h2>"
+        + statistics_cards({"Mean ReHo": f"{reho_stats['mean']:.4g}", "Median ReHo": f"{reho_stats['median']:.4g}", "Minimum ReHo": f"{reho_stats['min']:.4g}", "Maximum ReHo": f"{reho_stats['max']:.4g}"})
         + "<h2>ReHo distribution</h2>"
         + figure_block("reho_histogram.png", "ReHo distribution", "Distribution of Kendall's coefficient of concordance within the valid mask.")
         + methods_block(f"At each brain voxel, the time series of the voxel and its {K-1} spatial neighbors were rank-transformed independently. Kendall's Coefficient of Concordance was computed as W = 12 S / [K squared times (T cubed minus T)]. Only voxels with a complete {neighborhood}-voxel neighborhood within the brain mask were retained.")

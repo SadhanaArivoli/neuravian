@@ -285,9 +285,21 @@ def _write_html_report(path: Path, metadata: dict[str, Any], rows: list[dict[str
     if rows and "overlap_voxel_count" in rows[0]:
         col_keys += ["overlap_voxel_count", "roi_occupancy_pct"]
 
-    hidden = {"atlas_labels", "output_checksums", "atlas_affine", "image_affine", "input_path"}
     body = metadata_grid({"Input artifact": Path(str(metadata.get("input_path", "artifact"))).name, "Atlas": atlas_name, "ROIs": n_rois, "Nibabel": metadata.get("nibabel_version", "?"), "Nilearn": metadata.get("nilearn_version", "?")})
-    body += resamp_note + "<h2>Run metadata</h2>" + key_value_table((k, v) for k, v in metadata.items() if k not in hidden)
+    display_rows = [
+        ("Input dimensions", " × ".join(str(v) for v in metadata.get("input_shape", []))),
+        ("Atlas space", metadata.get("atlas_space")),
+        ("Atlas resolution", metadata.get("atlas_resolution")),
+        ("Atlas version", metadata.get("atlas_version")),
+        ("Aggregation", metadata.get("aggregation_mode")),
+        ("Binary mask", "Yes" if metadata.get("is_binary_mask") else "No"),
+        ("Regions with voxels", f"{metadata.get('n_rois_with_voxels', 0)} of {n_rois}"),
+        ("Field-of-view overlap", f"{metadata.get('atlas_fov_overlap_pct', 0):g}%"),
+        ("Resampling", "Nearest-neighbour" if metadata.get("resampling_performed") else "Not required"),
+        ("Image voxel spacing (mm)", " × ".join(str(v) for v in metadata.get("image_voxel_spacing_mm", []))),
+        ("Runtime (seconds)", metadata.get("runtime_seconds")),
+    ]
+    body += resamp_note + "<h2>Run metadata</h2>" + key_value_table(display_rows)
     body += f"<h2>ROI statistics ({n_rois} regions)</h2>" + data_table(col_keys, ([row.get(k) for k in col_keys] for row in rows))
     body += info_box("Interpretation note", "These ROI summaries are descriptive and do not include statistical hypothesis testing.")
     report = document_shell("Atlas ROI Extraction Report", "Atlas-aware regional summary", body, footer_html=footer("Read-only analysis; the source NIfTI was not modified."))

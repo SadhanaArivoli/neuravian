@@ -26,7 +26,7 @@ import scipy
 from scipy import signal
 from scipy.fft import rfft, rfftfreq
 
-from app.reporting import citation_block, document_shell, figure_block, footer, key_value_table, methods_block
+from app.reporting import citation_block, document_shell, figure_block, footer, key_value_table, methods_block, save_dark_figure, statistics_cards
 from app.tools.bids_utils import bids_entity as _entity, find_matching_confounds as _matching_confounds
 from app.tools.confounds import select_confounds
 
@@ -131,7 +131,7 @@ def _save_map(path: Path, values: np.ndarray, mask: np.ndarray, source: nib.Nift
 
 def _hist(values: np.ndarray, title: str, path: Path):
     fig, ax = plt.subplots(figsize=(6, 4)); ax.hist(values, bins=60, color="#315b7d")
-    ax.set(title=title, xlabel=title, ylabel="Voxels"); fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
+    ax.set(title=title, xlabel=title, ylabel="Voxels"); fig.tight_layout(); save_dark_figure(fig, path, dpi=140); plt.close(fig)
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -173,7 +173,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         _save_map(out / "alff_normalized_map.nii.gz", normalize_map(alff, args.normalization), mask, image)
         _save_map(out / "falff_normalized_map.nii.gz", normalize_map(falff, args.normalization), mask, image)
     _hist(alff, "ALFF", out / "alff_histogram.png"); _hist(falff, "fALFF", out / "falff_histogram.png")
-    fig, ax = plt.subplots(figsize=(7, 4)); ax.plot(frequencies, spectrum, color="#315b7d"); ax.axvspan(args.low_frequency, args.high_frequency, alpha=.2, color="#db8b36"); ax.set(xlabel="Frequency (Hz)", ylabel="Mean FFT amplitude", title="Mean masked spectrum"); fig.tight_layout(); fig.savefig(out / "spectral_summary.png", dpi=140); plt.close(fig)
+    fig, ax = plt.subplots(figsize=(7, 4)); ax.plot(frequencies, spectrum, color="#67e8f9"); ax.axvspan(args.low_frequency, args.high_frequency, alpha=.25, color="#f59e0b"); ax.set(xlabel="Frequency (Hz)", ylabel="Mean FFT amplitude", title="Mean masked spectrum"); fig.tight_layout(); save_dark_figure(fig, out / "spectral_summary.png", dpi=140); plt.close(fig)
     metadata = {
         "source_run_id": args.source_run_id, "source_bold_path": str(bold), "source_mask_path": str(mask_path) if mask_path else None,
         "source_confounds_path": str(confounds_path) if confounds_path else None, "tr": tr, "number_of_timepoints": n,
@@ -188,11 +188,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "citations": ["Zang et al. (2007), doi:10.1016/j.braindev.2006.07.002", "Zou et al. (2008), doi:10.1016/j.jneumeth.2008.04.012"]
     }
     (out / "alff_falff_metadata.json").write_text(json.dumps(metadata, indent=2))
-    hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path", "citations"}
+    subject = _entity(bold, "sub") or "—"
+    task = _entity(bold, "task") or "—"
+    run_label = _entity(bold, "run") or "—"
+    space = _entity(bold, "space") or "native / unspecified"
+    display_rows = [
+        ("Source run", args.source_run_id), ("Subject", subject), ("Task", task),
+        ("Run", run_label), ("Space", space), ("TR (seconds)", f"{tr:g}"),
+        ("Timepoints", n), ("Frequency band (Hz)", f"{args.low_frequency:g}–{args.high_frequency:g}"),
+        ("Frequency resolution (Hz)", f"{1/(n*tr):.6g}"),
+        ("Confound strategy", args.confound_strategy),
+        ("Confound regressors", len(selected.used)),
+        ("Regressors used", ", ".join(selected.used) if selected.used else "None"),
+        ("Detrending", "Linear" if args.detrend else "None"),
+        ("Map normalization", args.normalization), ("Mask voxels", int(mask.sum())),
+        ("Pipeline version", PIPELINE_VERSION),
+    ]
     body = (
         "<p>Descriptive resting-state maps; no clinical or biological interpretation is inferred.</p>"
         "<h2>Parameters and provenance</h2>"
-        + key_value_table((k, v) for k, v in metadata.items() if k not in hidden)
+        + key_value_table(display_rows)
+        + "<h2>Descriptive statistics</h2>"
+        + statistics_cards({"Mean ALFF": f"{metadata['alff_statistics']['mean']:.4g}", "Mean fALFF": f"{metadata['falff_statistics']['mean']:.4g}", "Maximum ALFF": f"{metadata['alff_statistics']['max']:.4g}", "Maximum fALFF": f"{metadata['falff_statistics']['max']:.4g}"})
         + "<h2>Figures</h2>"
         + figure_block("alff_histogram.png", "ALFF distribution", "Distribution of ALFF values within the analysis mask.")
         + figure_block("falff_histogram.png", "fALFF distribution", "Distribution of fALFF values within the analysis mask.")

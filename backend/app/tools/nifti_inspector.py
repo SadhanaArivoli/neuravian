@@ -31,7 +31,7 @@ plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 
-from app.reporting import document_shell, figure_block, footer, info_box, key_value_table, metadata_grid, warning_box
+from app.reporting import document_shell, figure_block, footer, info_box, key_value_table, metadata_grid, save_dark_figure, warning_box
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -336,7 +336,7 @@ def _write_histogram(
         ax.legend(fontsize=8)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=120, bbox_inches="tight")
+    save_dark_figure(fig, output_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
 

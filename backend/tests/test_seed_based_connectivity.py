@@ -13,8 +13,29 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import nibabel as nib
+from PIL import Image
 
 # ── Manifest ──────────────────────────────────────────────────────────────────
+
+
+def test_seed_png_has_dark_corners(tmp_path: Path) -> None:
+    from app.tools.seed_based_connectivity import _write_seed_png
+
+    data = np.zeros((9, 9, 9), dtype=np.float32)
+    data[3:6, 3:6, 3:6] = 1.0
+    output = tmp_path / "seed.png"
+    _write_seed_png(output, nib.Nifti1Image(data, np.eye(4)), "Test seed")
+    with Image.open(output).convert("RGB") as image:
+        corners = [image.getpixel((0, 0)), image.getpixel((image.width - 1, 0)), image.getpixel((0, image.height - 1)), image.getpixel((image.width - 1, image.height - 1))]
+        border = [image.getpixel((x, y)) for x, y in (
+            [(i, 0) for i in range(image.width)]
+            + [(i, image.height - 1) for i in range(image.width)]
+            + [(0, i) for i in range(image.height)]
+            + [(image.width - 1, i) for i in range(image.height)]
+        )]
+    assert all(max(pixel) < 64 for pixel in corners)
+    assert sum(max(pixel) >= 245 for pixel in border) / len(border) < 0.01
 
 def test_manifest_exists():
     manifest_path = Path(__file__).parent.parent.parent / "pipelines" / "seed-based-connectivity.yaml"

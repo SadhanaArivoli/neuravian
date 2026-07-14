@@ -7,19 +7,27 @@ REPORT_CSS = r"""
 --nf-border:#29344a;--nf-text:#e6edf7;--nf-muted:#9eabc0;--nf-accent:#a78bfa;
 --nf-accent-2:#67e8f9;--nf-warn:#fbbf24;--nf-danger:#fb7185;--nf-success:#6ee7b7}
 *,*::before,*::after{box-sizing:border-box}
-html,body{background:#090d18;color:#e6edf7;color-scheme:dark;margin:0;min-height:100%}
+html[data-report-system],html[data-report-system] body{background:#090d18!important;color:#e6edf7!important;color-scheme:dark;margin:0;min-height:100%}
 html{font-size:16px}
 body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 line-height:1.6;overflow-wrap:anywhere}
-a{color:#67e8f9;text-underline-offset:3px}a:hover{color:#a5f3fc}
+html[data-report-system] h1,html[data-report-system] h2,html[data-report-system] h3,
+html[data-report-system] p,html[data-report-system] li,html[data-report-system] th,
+html[data-report-system] td,html[data-report-system] code,html[data-report-system] pre,
+html[data-report-system] caption,html[data-report-system] figcaption{color:#e6edf7!important}
+html[data-report-system] a{color:#67e8f9!important;text-underline-offset:3px}html[data-report-system] a:hover{color:#a5f3fc!important}
+html[data-report-system] pre{background:#0b1220!important;border:1px solid #243047;border-radius:7px;padding:12px;overflow:auto}
+html[data-report-system] table{background:#111827!important;color:#e6edf7!important}
+html[data-report-system] figure{background:#111827!important;color:#e6edf7!important}
+html[data-report-system] caption,html[data-report-system] figcaption{color:#9eabc0!important}
 .nf-page{width:min(100%,1040px);margin:0 auto;padding:clamp(20px,4vw,48px)}
 .nf-header{border-bottom:1px solid var(--nf-border);padding-bottom:24px;margin-bottom:28px}
 .nf-kicker{color:var(--nf-accent-2);font-size:.72rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase}
-h1{color:#f8fafc;font-size:clamp(1.55rem,4vw,2.25rem);line-height:1.18;margin:.4rem 0}
+h1{color:#f8fafc!important;font-size:clamp(1.55rem,4vw,2.25rem);line-height:1.18;margin:.4rem 0}
 .nf-subtitle,.nf-muted{color:var(--nf-muted)}
-h2{color:#ddd6fe;font-size:1.15rem;margin:32px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--nf-border)}
-h3{color:#f1f5f9;font-size:1rem;margin:22px 0 8px}p{margin:.6rem 0 1rem}
-code{background:#0b1220;border:1px solid #243047;border-radius:5px;color:#c4b5fd;padding:.12rem .34rem;font-size:.88em}
+h2{color:#ddd6fe!important;font-size:1.15rem;margin:32px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--nf-border)}
+h3{color:#f1f5f9!important;font-size:1rem;margin:22px 0 8px}p{margin:.6rem 0 1rem}
+code{background:#0b1220;border:1px solid #243047;border-radius:5px;color:#c4b5fd!important;padding:.12rem .34rem;font-size:.88em}
 .nf-metadata,.nf-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0}
 .nf-meta-item,.nf-stat{background:var(--nf-surface);border:1px solid var(--nf-border);border-radius:10px;padding:12px 14px;min-width:0}
 .nf-label{color:var(--nf-muted);font-size:.72rem;font-weight:700;letter-spacing:.055em;text-transform:uppercase}
@@ -27,7 +35,7 @@ code{background:#0b1220;border:1px solid #243047;border-radius:5px;color:#c4b5fd
 .nf-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--nf-border);border-radius:10px;margin:12px 0 20px}
 table{border-collapse:collapse;width:100%;font-size:.84rem;background:var(--nf-surface)}
 th,td{padding:9px 11px;text-align:left;vertical-align:top;border-bottom:1px solid var(--nf-border)}
-th{background:#1a2437;color:#cbd5e1;font-weight:700}td{color:#e2e8f0}tbody tr:nth-child(even) td{background:#131c2c}
+th{background:#1a2437!important;color:#cbd5e1!important;font-weight:700}td{color:#e2e8f0!important}tbody tr:nth-child(even) td{background:#131c2c}
 tbody tr:last-child td{border-bottom:0}tbody tr:hover td{background:#1b263a}
 .nf-box{border:1px solid var(--nf-border);border-left-width:4px;border-radius:9px;background:var(--nf-surface);padding:12px 15px;margin:14px 0}
 .nf-box-info{border-left-color:var(--nf-accent-2)}.nf-box-warning{border-left-color:var(--nf-warn)}
@@ -45,8 +53,8 @@ img{max-width:100%;height:auto;border-radius:6px}.badge{display:inline-block;bac
 .repro-list{list-style:none;padding:0}.repro-list li{border-bottom:1px solid var(--nf-border);padding:6px 0}.methods-section p{color:#d7deea}.citation-list{padding-left:1.35rem}
 @media(max-width:620px){.nf-page{padding:18px 14px}.nf-metadata,.nf-stats{grid-template-columns:1fr 1fr}th,td{padding:7px 8px}}
 @media(max-width:390px){.nf-metadata,.nf-stats{grid-template-columns:1fr}}
-@media print{:root{color-scheme:light}html,body{background:#fff!important;color:#111!important}.nf-page{max-width:none;padding:0}
-.nf-header{border-color:#aaa}h1,h2,h3,.nf-value,td,.nf-methods{color:#111!important}.nf-subtitle,.nf-muted,.nf-label,.nf-footer{color:#444!important}
+@media print{:root{color-scheme:light}html[data-report-system],html[data-report-system] body{background:#fff!important;color:#111!important}.nf-page{max-width:none;padding:0}
+.nf-header{border-color:#aaa}html[data-report-system] h1,html[data-report-system] h2,html[data-report-system] h3,html[data-report-system] p,html[data-report-system] li,html[data-report-system] th,html[data-report-system] td,html[data-report-system] code,html[data-report-system] pre,html[data-report-system] caption,html[data-report-system] figcaption,.nf-value,.nf-methods{color:#111!important}.nf-subtitle,.nf-muted,.nf-label,.nf-footer{color:#444!important}
 .nf-meta-item,.nf-stat,.nf-figure,.nf-box,.nf-table-wrap,table,th,td{background:#fff!important;border-color:#bbb!important}th{color:#111!important}
-a{color:#111!important;text-decoration:underline}.nf-downloads a{background:#fff!important;border-color:#bbb!important}h2{break-after:avoid}.nf-figure,table{break-inside:avoid}}
+html[data-report-system] a{color:#111!important;text-decoration:underline}html[data-report-system] table,html[data-report-system] figure,html[data-report-system] pre{background:#fff!important}.nf-downloads a{background:#fff!important;border-color:#bbb!important}h2{break-after:avoid}.nf-figure,table{break-inside:avoid}}
 """
