@@ -234,7 +234,11 @@ describe("shared NIfTI viewer UI", () => {
       shadowColor: "",
       shadowBlur: 0,
     } as unknown as CanvasRenderingContext2D) : null);
-    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(new Blob(["png"], { type: "image/png" })));
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => {
+      const blob = new Blob(["png"], { type: "image/png" });
+      Object.defineProperty(blob, "arrayBuffer", { value: async () => new Uint8Array([1, 2, 3]).buffer });
+      callback(blob);
+    });
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
     vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:export"), revokeObjectURL: vi.fn() });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
@@ -243,13 +247,13 @@ describe("shared NIfTI viewer UI", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     fireEvent.change(screen.getByLabelText("Export resolution"), { target: { value: "4" } });
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export figure" }));
     await waitFor(() => expect(mocks.instances).toHaveLength(2));
     const exportCanvas = latest().attachToCanvas.mock.calls[0][0] as HTMLCanvasElement;
     expect(exportCanvas.width).toBe(2560);
     expect(exportCanvas.height).toBe(1920);
     expect(toDataUrl).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("4× PNG rendered (2560 × 1920px)"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("4× PNG rendered (2560 × 1920px) · 300 DPI metadata"));
     expect(drawImage).toHaveBeenCalledWith(exportCanvas, 0, 0);
     expect(fillText).toHaveBeenCalledWith("Publication map", expect.any(Number), expect.any(Number));
   });

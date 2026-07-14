@@ -12,6 +12,7 @@ DARK_AXES_BACKGROUND = "#111827"
 DARK_TEXT = "#e6edf7"
 DARK_MUTED_TEXT = "#cbd5e1"
 DARK_SPINE = "#526078"
+PUBLICATION_DPI = 300
 
 
 def apply_dark_figure(fig: Figure) -> Figure:
@@ -42,12 +43,14 @@ def apply_dark_figure(fig: Figure) -> Figure:
 
 
 def save_dark_figure(fig: Figure, path: str | Path, **kwargs: Any) -> None:
-    """Save an opaque dark figure so browser image backgrounds cannot turn white."""
+    """Save an opaque, publication-resolution figure with the shared report palette."""
     apply_dark_figure(fig)
     options: dict[str, Any] = {
         "facecolor": DARK_FIGURE_BACKGROUND,
         "edgecolor": DARK_FIGURE_BACKGROUND,
         "transparent": False,
+        "dpi": PUBLICATION_DPI,
     }
     options.update(kwargs)
+    options["dpi"] = max(PUBLICATION_DPI, int(options.get("dpi", PUBLICATION_DPI)))
     fig.savefig(path, **options)

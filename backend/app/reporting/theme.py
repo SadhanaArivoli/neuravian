@@ -41,7 +41,7 @@ tbody tr:last-child td{border-bottom:0}tbody tr:hover td{background:#1b263a}
 .nf-box-info{border-left-color:var(--nf-accent-2)}.nf-box-warning{border-left-color:var(--nf-warn)}
 .nf-box-title{font-weight:750;margin-bottom:3px}.nf-box-warning .nf-box-title{color:#fde68a}.nf-box-info .nf-box-title{color:#a5f3fc}
 .nf-figure{background:var(--nf-surface);border:1px solid var(--nf-border);border-radius:10px;padding:12px;margin:16px 0}
-.nf-figure img{display:block;width:auto;max-width:100%;height:auto;margin:auto;border-radius:6px}.nf-figure figcaption{color:var(--nf-muted);font-size:.8rem;margin-top:9px}
+.nf-figure img{display:block;width:auto;max-width:100%;height:auto;margin:auto;border-radius:6px;image-rendering:auto}.nf-figure figcaption{color:var(--nf-muted);font-size:.8rem;line-height:1.5;margin-top:9px}
 .nf-downloads{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px;padding:0;list-style:none}
 .nf-downloads a{display:block;background:var(--nf-surface);border:1px solid var(--nf-border);border-radius:8px;padding:10px 12px;text-decoration:none}
 .nf-citations{padding-left:1.35rem}.nf-citations li{margin:.5rem 0}.nf-methods{color:#d7deea}
@@ -53,8 +53,9 @@ img{max-width:100%;height:auto;border-radius:6px}.badge{display:inline-block;bac
 .repro-list{list-style:none;padding:0}.repro-list li{border-bottom:1px solid var(--nf-border);padding:6px 0}.methods-section p{color:#d7deea}.citation-list{padding-left:1.35rem}
 @media(max-width:620px){.nf-page{padding:18px 14px}.nf-metadata,.nf-stats{grid-template-columns:1fr 1fr}th,td{padding:7px 8px}}
 @media(max-width:390px){.nf-metadata,.nf-stats{grid-template-columns:1fr}}
-@media print{:root{color-scheme:light}html[data-report-system],html[data-report-system] body{background:#fff!important;color:#111!important}.nf-page{max-width:none;padding:0}
+@page{size:auto;margin:16mm}
+@media print{:root{color-scheme:light}html[data-report-system],html[data-report-system] body{background:#fff!important;color:#111!important;font-size:10.5pt}.nf-page{max-width:none;padding:0}
 .nf-header{border-color:#aaa}html[data-report-system] h1,html[data-report-system] h2,html[data-report-system] h3,html[data-report-system] p,html[data-report-system] li,html[data-report-system] th,html[data-report-system] td,html[data-report-system] code,html[data-report-system] pre,html[data-report-system] caption,html[data-report-system] figcaption,.nf-value,.nf-methods{color:#111!important}.nf-subtitle,.nf-muted,.nf-label,.nf-footer{color:#444!important}
 .nf-meta-item,.nf-stat,.nf-figure,.nf-box,.nf-table-wrap,table,th,td{background:#fff!important;border-color:#bbb!important}th{color:#111!important}
-html[data-report-system] a{color:#111!important;text-decoration:underline}html[data-report-system] table,html[data-report-system] figure,html[data-report-system] pre{background:#fff!important}.nf-downloads a{background:#fff!important;border-color:#bbb!important}h2{break-after:avoid}.nf-figure,table{break-inside:avoid}}
+html[data-report-system] a{color:#111!important;text-decoration:underline}html[data-report-system] table,html[data-report-system] figure,html[data-report-system] pre{background:#fff!important}.nf-downloads{display:none}.nf-downloads a{background:#fff!important;border-color:#bbb!important}h1,h2,h3{break-after:avoid}.nf-figure,figure,table,pre,.nf-box,.nf-stat{break-inside:avoid}.nf-figure img{max-height:220mm;object-fit:contain}}
 """

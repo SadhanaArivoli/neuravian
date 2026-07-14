@@ -14,7 +14,7 @@ from app.reporting.components import (
     warning_box,
 )
 from app.reporting.html import document_shell, safe_display_value
-from app.reporting.plots import apply_dark_figure, save_dark_figure
+from app.reporting.plots import PUBLICATION_DPI, apply_dark_figure, save_dark_figure
 
 __all__ = [
     "citation_block",
@@ -31,5 +31,6 @@ __all__ = [
     "statistics_cards",
     "warning_box",
     "apply_dark_figure",
+    "PUBLICATION_DPI",
     "save_dark_figure",
 ]

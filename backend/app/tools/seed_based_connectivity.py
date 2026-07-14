@@ -42,7 +42,7 @@ from nilearn import __version__ as nilearn_version
 from nilearn.maskers import NiftiLabelsMasker, NiftiMasker
 from nilearn.plotting import plot_glass_brain
 
-from app.reporting import apply_dark_figure, document_shell, figure_block, footer, info_box, key_value_table, metadata_grid, methods_block, statistics_cards
+from app.reporting import PUBLICATION_DPI, apply_dark_figure, document_shell, figure_block, footer, info_box, key_value_table, metadata_grid, methods_block, statistics_cards
 from app.reporting.plots import DARK_TEXT
 from app.tools.bids_utils import BoldSelection, select_bold_file
 from app.tools.confounds import select_confounds
@@ -134,7 +134,7 @@ def _write_seed_png(path: Path, img: nib.Nifti1Image, seed_label: str) -> None:
     fig.suptitle(f"Seed: {seed_label[:60]}", color=DARK_TEXT, fontsize=11, y=0.98)
     fig.subplots_adjust(top=0.90)
     # Nilearn supplies the opaque black facecolor itself when black_bg=True.
-    display.savefig(str(path), dpi=120)
+    display.savefig(str(path), dpi=PUBLICATION_DPI)
     display.close()
 
 

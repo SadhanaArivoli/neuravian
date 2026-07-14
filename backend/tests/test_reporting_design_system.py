@@ -74,6 +74,14 @@ def test_every_first_party_tool_report_uses_shared_shell_without_inline_theme() 
         assert "<style" not in source.lower(), filename
 
 
+def test_report_generators_do_not_bypass_publication_resolution() -> None:
+    tools_dir = Path(__file__).parents[1] / "app" / "tools"
+    for filename in TOOL_REPORT_GENERATORS:
+        source = (tools_dir / filename).read_text(encoding="utf-8")
+        direct_saves = [line for line in source.splitlines() if ".savefig(" in line]
+        assert all("PUBLICATION_DPI" in line for line in direct_saves), filename
+
+
 def test_tool_reports_use_curated_metadata_schemas() -> None:
     tools_dir = Path(__file__).parents[1] / "app" / "tools"
     for filename in TOOL_REPORT_GENERATORS:
@@ -94,6 +102,7 @@ def test_dark_figure_save_has_opaque_nonwhite_corners(tmp_path: Path) -> None:
     save_dark_figure(fig, output, dpi=80)
     plt.close(fig)
     with Image.open(output).convert("RGB") as image:
+        assert image.info.get("dpi", (0, 0))[0] >= 299
         corners = [image.getpixel((0, 0)), image.getpixel((image.width - 1, 0)), image.getpixel((0, image.height - 1)), image.getpixel((image.width - 1, image.height - 1))]
     assert all(max(pixel) < 245 for pixel in corners)
 

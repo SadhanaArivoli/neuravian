@@ -14,6 +14,7 @@ import {
   type DisplayProfile,
 } from "../../lib/scientificDisplayProfiles";
 import { checkVolumeCompatibility, volumeGeometry } from "../../lib/volumeCompatibility";
+import { WorkbenchIcons } from "../../lib/iconRegistry";
 
 export interface NiivueLayer {
   url: string;
@@ -271,6 +272,37 @@ async function publicationBlob(
     context.fillText(colorScaleLabel, output.width - margin - width, margin + fontSize);
   }
   return canvasBlob(output);
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function withPngDpi(blob: Blob, dpi = 300): Promise<Blob> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < 33 || !signature.every((value, index) => bytes[index] === value)) return blob;
+  const pixelsPerMeter = Math.round(dpi / 0.0254);
+  const chunk = new Uint8Array(21);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, 9);
+  chunk.set([112, 72, 89, 115], 4); // pHYs
+  view.setUint32(8, pixelsPerMeter);
+  view.setUint32(12, pixelsPerMeter);
+  chunk[16] = 1;
+  view.setUint32(17, crc32(chunk.slice(4, 17)));
+  const output = new Uint8Array(bytes.length + chunk.length);
+  output.set(bytes.slice(0, 33), 0);
+  output.set(chunk, 33);
+  output.set(bytes.slice(33), 54);
+  return new Blob([output], { type: "image/png" });
 }
 
 function orderUnderlayFirst(input: NiivueLayer[]) {
@@ -636,9 +668,9 @@ export default function NeuroImageViewer({
       exportNv.setGamma(current?.gamma ?? 1);
       exportNv.drawScene();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const blob = await publicationBlob(exportCanvas, label, unitLabel, location);
+      const blob = await withPngDpi(await publicationBlob(exportCanvas, label, unitLabel, location));
       downloadBlob(blob, `${label.replace(/[^a-zA-Z0-9_-]/g, "_")}_${exportScale}x.png`);
-      setExportStatus(`${exportScale}× PNG rendered (${exportCanvas.width} × ${exportCanvas.height}px)`);
+      setExportStatus(`${exportScale}× PNG rendered (${exportCanvas.width} × ${exportCanvas.height}px) · 300 DPI metadata`);
     } catch (caught) {
       setError(caught instanceof Error ? `PNG export failed: ${caught.message}` : "PNG export failed.");
     } finally {
@@ -772,19 +804,20 @@ export default function NeuroImageViewer({
         <div className="flex shrink-0 items-center gap-2">
           {loading && <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />}
           {!loading && !error && <>
-            <button type="button" onClick={() => { setIsPubMode((value) => !value); changeCrosshairVisible(isPubMode); }} className={`rounded border px-1.5 py-0.5 text-[10px] ${isPubMode ? "border-indigo-400/60 bg-indigo-500/15 text-indigo-300" : "border-white/10 text-gray-500 hover:text-gray-300"}`} title="Publication mode">PUB</button>
-            <button type="button" onClick={toggleFullscreen} className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-white" title="Toggle fullscreen">⛶</button>
-            <button type="button" onClick={() => setControlsOpen((value) => !value)} className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-gray-400 hover:text-white" aria-expanded={controlsOpen}>Visualization {controlsOpen ? "▴" : "▾"}</button>
+            <button type="button" onClick={() => { setIsPubMode((value) => !value); changeCrosshairVisible(isPubMode); }} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors ${isPubMode ? "border-indigo-400/60 bg-indigo-500/15 text-indigo-200" : "border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-200"}`} title="Publication mode"><WorkbenchIcons.report className="h-3 w-3" aria-hidden="true" />Publication</button>
+            <button type="button" onClick={toggleFullscreen} className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-gray-400 transition-colors hover:border-white/20 hover:text-white" aria-label="Toggle fullscreen" title="Toggle fullscreen"><WorkbenchIcons.maximize className="h-3.5 w-3.5" aria-hidden="true" /></button>
+            <button type="button" onClick={() => setControlsOpen((value) => !value)} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] font-medium text-gray-300 transition-colors hover:border-white/20 hover:text-white" aria-expanded={controlsOpen}><WorkbenchIcons.sliders className="h-3 w-3" aria-hidden="true" />Visualization {controlsOpen ? "▴" : "▾"}</button>
           </>}
-          {onClose && <button type="button" onClick={onClose} className="text-lg leading-none text-gray-500 hover:text-white" aria-label="Close viewer">✕</button>}
+          {onClose && <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-gray-500 transition-colors hover:bg-white/5 hover:text-white" aria-label="Close viewer"><WorkbenchIcons.close className="h-4 w-4" aria-hidden="true" /></button>}
         </div>
       </div>
 
       <div className={`flex min-h-0 flex-1 flex-col ${modal ? "xl:flex-row" : ""}`}>
       {controlsOpen && !loading && !error && current && (
         <div className={`max-h-[42vh] shrink-0 overflow-y-auto border-b border-white/8 bg-slate-950/90 px-3 py-3 text-[11px] text-slate-300 ${modal ? "xl:order-2 xl:max-h-none xl:w-[360px] xl:border-b-0 xl:border-l" : ""}`} data-testid="visualization-controls">
-          <div className="grid gap-3">
-            <div className="space-y-2">
+          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
+            <section className="space-y-2 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <h3 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400"><WorkbenchIcons.sliders className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />Display</h3>
               {requestedLayers.length > 4 && <div role="status" className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-200">Only the first four layers are shown.</div>}
               {layers.length > 1 && <div className="space-y-1" data-testid="layer-panel"><div className="text-[10px] uppercase tracking-wide text-slate-500">Layers</div>{layers.map((layer, index) => <div key={layer.url} className={`flex items-center gap-1 rounded px-1 py-1 ${activeLayer === index ? "bg-cyan-500/10" : "bg-white/[0.03]"}`}><input aria-label={`Show ${layer.name}`} type="checkbox" checked={layerStates[index]?.visible ?? true} onChange={(event) => toggleLayerVisibility(index, event.target.checked)} /><button type="button" onClick={() => setActiveLayer(index)} className="min-w-0 flex-1 truncate text-left" title={layer.name}>{layer.name}</button><button type="button" aria-label={`Move ${layer.name} down`} disabled={index === 0} onClick={() => moveLayer(index, index - 1)} className="px-1 disabled:opacity-25">↓</button><button type="button" aria-label={`Move ${layer.name} up`} disabled={index === layers.length - 1} onClick={() => moveLayer(index, index + 1)} className="px-1 disabled:opacity-25">↑</button><button type="button" aria-label={`Remove ${layer.name}`} onClick={() => removeLayer(index)} className="px-1 text-rose-300">×</button></div>)}</div>}
               {underlayStatus && <div role="status" className={`rounded border p-2 text-[10px] ${hasCompatibleUnderlay ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-amber-500/25 bg-amber-500/10 text-amber-200"}`}>{underlayStatus}</div>}
@@ -794,9 +827,10 @@ export default function NeuroImageViewer({
               <div><div className="flex items-center justify-between"><span>Opacity</span><label className="flex items-center gap-1"><input aria-label="Overlay opacity percentage" type="number" min="0" max="100" value={Math.round(current.opacity * 100)} onChange={(event) => changeOpacity(Math.max(0, Math.min(100, Number(event.target.value))) / 100)} className="w-14 rounded border border-white/10 bg-slate-900 px-1 py-0.5 text-right tabular-nums" />%</label></div><input aria-label="Overlay opacity" type="range" min="0" max="1" step="0.01" value={current.opacity} onChange={(event) => changeOpacity(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></div>
               <div><span className="mb-1 block">Interpolation</span><div className="flex gap-1">{(["auto", "smooth", "nearest"] as InterpolationMode[]).map((mode) => <button key={mode} type="button" onClick={() => changeInterpolation(mode)} className={`rounded px-2 py-1 capitalize ${interpolationMode === mode ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{mode === "nearest" ? "Nearest" : mode}</button>)}</div></div>
               <div className="grid grid-cols-3 gap-2"><label>Brightness <input aria-label="Brightness" type="range" min="-50" max="50" value={current.brightness} onChange={(event) => updateTone({ brightness: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Contrast <input aria-label="Contrast" type="range" min="0.25" max="3" step="0.05" value={current.contrast} onChange={(event) => updateTone({ contrast: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Gamma <input aria-label="Gamma" type="range" min="0.2" max="3" step="0.05" value={current.gamma} onChange={(event) => updateTone({ gamma: Number(event.target.value) })} className="w-full accent-cyan-400" /></label></div>
-            </div>
+            </section>
 
-            <div className="space-y-2">
+            <section className="space-y-2 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <h3 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400"><WorkbenchIcons.chart className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />Intensity &amp; histogram</h3>
               <div className="flex items-center justify-between"><span>Intensity window</span><div className="flex gap-1"><button type="button" onClick={autoWindow} className={`rounded px-2 py-1 ${current.windowMode === "auto" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Auto</button><button type="button" onClick={robustWindow} className={`rounded px-2 py-1 ${current.windowMode === "robust" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Robust 2–98%</button><button type="button" onClick={autoWindow} className="rounded bg-white/5 px-2 py-1">Reset</button></div></div>
               {profiles[activeLayer].signed && <label className="flex items-center gap-2"><input aria-label="Symmetric range around zero" type="checkbox" checked={current.symmetric} onChange={(event) => { const symmetric = event.target.checked; setLayerStates((states) => states.map((state, index) => index === activeLayer ? { ...state, symmetric } : state)); if (symmetric) { const magnitude = Math.max(Math.abs(current.windowMin), Math.abs(current.windowMax)); setWindow("manual", -magnitude, magnitude); } }} /> Symmetric around zero</label>}
               <div className="grid grid-cols-2 gap-2"><label>Manual min<input aria-label="Manual minimum" type="number" value={Number(current.windowMin.toPrecision(6))} onChange={(event) => setWindow("manual", Number(event.target.value), current.windowMax)} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label><label>Manual max<input aria-label="Manual maximum" type="number" value={Number(current.windowMax.toPrecision(6))} onChange={(event) => setWindow("manual", current.windowMin, Number(event.target.value))} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label></div>
@@ -809,9 +843,10 @@ export default function NeuroImageViewer({
                 <span className="absolute left-2 top-1 text-[9px] text-yellow-300">P2</span><span className="absolute right-2 top-1 text-[9px] text-yellow-300">P98</span>
               </div>}
               <div className="grid grid-cols-4 gap-1 text-[9px] tabular-nums text-slate-500"><span>mean {current.mean.toPrecision(3)}</span><span>median {current.median.toPrecision(3)}</span><span>P2 {current.p2.toPrecision(3)}</span><span>P98 {current.p98.toPrecision(3)}</span></div>
-            </div>
+            </section>
 
-            <div className="space-y-2">
+            <section className="space-y-2 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <h3 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400"><WorkbenchIcons.viewer className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />Navigation &amp; figure</h3>
               <div className="flex items-center justify-between"><span>Crosshair</span><label className="flex items-center gap-1"><input aria-label="Show crosshair" type="checkbox" checked={crosshairVisible} onChange={(event) => changeCrosshairVisible(event.target.checked)} /> Show</label></div>
               <label className="block">Thickness <span className="float-right">{crosshairWidth.toFixed(1)}</span><input aria-label="Crosshair thickness" type="range" min="0.2" max="3" step="0.1" value={crosshairWidth} onChange={(event) => changeCrosshairWidth(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></label>
               <label className="flex items-center justify-between">Color<input aria-label="Crosshair color" type="color" value={crosshairColor} onChange={(event) => { setCrosshairColor(event.target.value); nvRef.current?.setCrosshairColor(hexToRgba(event.target.value)); }} /></label>
@@ -821,11 +856,11 @@ export default function NeuroImageViewer({
               <div className="grid grid-cols-2 gap-2"><label className="flex items-center gap-1"><input aria-label="Radiological convention" type="checkbox" checked={radiological} onChange={(event) => { setRadiological(event.target.checked); nvRef.current?.setRadiologicalConvention(event.target.checked); }} /> Radiological</label><label className="flex items-center gap-1"><input aria-label="Show orientation labels" type="checkbox" checked={showOrientation} onChange={(event) => { setShowOrientation(event.target.checked); nvRef.current?.setIsOrientationTextVisible(event.target.checked); }} /> Labels</label><label className="flex items-center gap-1"><input aria-label="Show colorbar" type="checkbox" checked={showColorbarState} onChange={(event) => { setShowColorbarState(event.target.checked); if (nvRef.current) { nvRef.current.opts.isColorbar = event.target.checked; nvRef.current.drawScene(); } }} /> Colorbar</label></div>
               <div><span className="block mb-1">Background</span><div className="flex gap-1"><button type="button" onClick={() => changeBackground("dark")} className={`rounded px-2 py-1 ${background === "dark" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Dark</button><button type="button" onClick={() => changeBackground("light")} className={`rounded px-2 py-1 ${background === "light" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Light</button></div></div>
               <label className="flex items-center gap-2"><input aria-label="Transparent export" type="checkbox" checked={transparentExport} onChange={(event) => setTransparentExport(event.target.checked)} /> Transparent PNG background</label>
-              <div className="flex items-center gap-2"><select aria-label="Export resolution" value={exportScale} onChange={(event) => setExportScale(Number(event.target.value) as 2 | 4)} className="rounded border border-white/10 bg-slate-900 px-2 py-1"><option value={2}>2× PNG</option><option value={4}>4× PNG</option></select><button type="button" onClick={handleExport} disabled={exporting} className="rounded bg-cyan-500/20 px-2 py-1 text-cyan-200 disabled:opacity-50">{exporting ? "Rendering…" : "Export"}</button></div>
+              <div className="rounded-lg border border-cyan-500/15 bg-cyan-500/[0.04] p-2"><div className="mb-2 flex items-center justify-between"><span className="font-medium text-slate-200">Publication export</span><span className="text-[9px] font-medium uppercase tracking-wide text-cyan-300">300 DPI PNG</span></div><div className="flex items-center gap-2"><select aria-label="Export resolution" value={exportScale} onChange={(event) => setExportScale(Number(event.target.value) as 2 | 4)} className="rounded border border-white/10 bg-slate-900 px-2 py-1"><option value={2}>2× PNG</option><option value={4}>4× PNG</option></select><button type="button" onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 rounded bg-cyan-500/20 px-2 py-1 font-medium text-cyan-200 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"><WorkbenchIcons.download className="h-3 w-3" aria-hidden="true" />{exporting ? "Rendering…" : "Export figure"}</button></div></div>
               {exportStatus && <div role="status" className="text-[10px] text-emerald-300">✓ {exportStatus}</div>}
-              <button type="button" onClick={resetViewer} className="rounded border border-white/10 px-2 py-1 text-slate-200 hover:bg-white/5">Reset viewer <span className="text-slate-500">(R)</span></button>
+              <button type="button" onClick={resetViewer} className="inline-flex items-center gap-1.5 rounded border border-white/10 px-2 py-1 text-slate-200 transition-colors hover:border-white/20 hover:bg-white/5"><WorkbenchIcons.reset className="h-3 w-3" aria-hidden="true" />Reset viewer <span className="text-slate-500">(R)</span></button>
               <div className="text-[9px] text-slate-500">Shortcuts: R reset · H histogram · C colormap · I interpolation</div>
-            </div>
+            </section>
           </div>
         </div>
       )}
