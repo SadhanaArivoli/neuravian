@@ -7,11 +7,9 @@
  * Colormap selection rationale:
  *   inferno  — perceptually uniform sequential (black→purple→orange→yellow).
  *              Ideal for positive-only amplitude maps (ALFF, fALFF, REHO).
- *   plasma   — perceptually uniform sequential (purple→magenta→yellow).
- *              Alternative for REHO to distinguish from ALFF.
+ *   inferno  — shared sequential default for non-negative statistical maps.
  *   blue2red — diverging (blue→white→red). Correct for difference maps,
  *              seed-based correlation maps (can be negative), and Z-maps.
- *   warm     — built-in warm scale. Used for seed connectivity overlays.
  *   gray     — anatomical background (always the base layer).
  *   green    — binary brain masks at low opacity.
  *
@@ -71,9 +69,9 @@ export type StatMapType =
 export const STAT_MAP_COLORMAP: Record<StatMapType, string> = {
   alff:             "inferno",   // positive-only amplitude: black→orange→yellow
   falff:            "inferno",   // same scale as ALFF for comparison
-  reho:             "plasma",    // positive-only KCC: purple→magenta→yellow
-  reho_z:           "plasma",
-  fc_overlay:       "warm",      // seed-based FC r-map overlay on anatomy
+  reho:             "inferno",   // positive-only KCC: sequential scale
+  reho_z:           "blue2red",  // standardized maps can be signed
+  fc_overlay:       "blue2red",  // correlation maps can be signed
   seed_connectivity:"blue2red",  // diverging: blue negative, white zero, red positive
   difference:       "blue2red",  // difference maps always diverging
   z_map:            "blue2red",
@@ -81,7 +79,7 @@ export const STAT_MAP_COLORMAP: Record<StatMapType, string> = {
   mask:             "green",     // binary mask at low opacity
   anatomical:       "gray",
   segmentation:     "",          // uses FreeSurfer LUT colormapLabel
-  default:          "warm",
+  default:          "inferno",
 };
 
 /** Default opacity for the base anatomical layer (layer 0). */
