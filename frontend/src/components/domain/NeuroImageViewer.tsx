@@ -241,6 +241,38 @@ function canvasBlob(canvas: HTMLCanvasElement) {
   });
 }
 
+async function publicationBlob(
+  renderedCanvas: HTMLCanvasElement,
+  title: string,
+  colorScaleLabel: string,
+  location: ViewerLocation,
+) {
+  const output = document.createElement("canvas");
+  output.width = renderedCanvas.width;
+  output.height = renderedCanvas.height;
+  const context = output.getContext("2d");
+  if (!context) return canvasBlob(renderedCanvas);
+  // The pixels originate from the dedicated high-resolution WebGL rerender,
+  // never from the visible viewer canvas. This pass adds vector-resolution
+  // publication labels to that newly rendered image.
+  context.drawImage(renderedCanvas, 0, 0);
+  const fontSize = Math.max(18, Math.round(output.width / 70));
+  const margin = fontSize;
+  context.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+  context.fillStyle = "rgba(255,255,255,0.96)";
+  context.shadowColor = "rgba(0,0,0,0.9)";
+  context.shadowBlur = Math.max(2, fontSize / 5);
+  context.fillText(title, margin, margin + fontSize);
+  context.font = `500 ${Math.round(fontSize * 0.72)}px ui-monospace, SFMono-Regular, monospace`;
+  const mm = location.mm?.slice(0, 3).map((value) => Number(value).toFixed(1)).join(", ");
+  if (mm) context.fillText(`MNI/world mm: ${mm}`, margin, output.height - margin);
+  if (colorScaleLabel) {
+    const width = context.measureText(colorScaleLabel).width;
+    context.fillText(colorScaleLabel, output.width - margin - width, margin + fontSize);
+  }
+  return canvasBlob(output);
+}
+
 function orderUnderlayFirst(input: NiivueLayer[]) {
   return input.slice(0, 4).sort((a, b) => {
     const profileA = selectDisplayProfile({ artifactType: a.artifactType, name: a.name, url: a.url, metadata: a.metadata });
@@ -454,6 +486,10 @@ export default function NeuroImageViewer({
         : null;
       const options = layers.map((layer, index) => ({
         url: layer.url,
+        // Client-generated comparison maps use blob: URLs, which have no
+        // extension for NiiVue to inspect. Always provide a NIfTI filename
+        // hint so historical difference maps load through this same viewer.
+        name: /\.nii(?:\.gz)?$/i.test(layer.name) ? layer.name : `${layer.name}.nii.gz`,
         opacity: layer.opacity ?? profiles[index].opacity,
         colormap: isLabelProfile(profiles[index])
           ? ""
@@ -565,11 +601,12 @@ export default function NeuroImageViewer({
       exportCanvas.height = height * exportScale;
       // Give NiiVue a genuinely larger render target. This is intentionally a
       // second WebGL render, not a scaled copy of the visible canvas.
-      exportCanvas.style.cssText = `position:fixed;left:-100000px;top:0;width:${width * exportScale}px;height:${height * exportScale}px`;
+      exportCanvas.style.cssText = `position:fixed;left:-100000px;top:0;width:${width}px;height:${height}px`;
       document.body.appendChild(exportCanvas);
       exportNv = new Niivue({
         ...NIIVUE_MULTIPLANAR_OPTIONS,
-        isColorbar: showColorbar,
+        forceDevicePixelRatio: exportScale,
+        isColorbar: showColorbarState,
         backColor: background === "light"
           ? [...LIGHT_BACKGROUND]
           : [...DARK_BACKGROUND],
@@ -577,21 +614,31 @@ export default function NeuroImageViewer({
       if (transparentExport) exportNv.opts.backColor = [0, 0, 0, 0];
       exportNv.attachToCanvas(exportCanvas);
       await exportNv.loadVolumes(volumeOptionsRef.current);
-      if (multiplanar) exportNv.setSliceType(SLICE_TYPE_MULTIPLANAR);
+      exportNv.opts.multiplanarShowRender = viewLayout === "four-pane" ? 1 : 0;
+      const exportSliceType = viewLayout === "axial" ? 0 : viewLayout === "coronal" ? 1 : viewLayout === "sagittal" ? 2 : viewLayout === "render" ? 4 : 3;
+      exportNv.setSliceType(exportSliceType);
       exportNv.setInterpolation(nearest);
       exportNv.setCrosshairWidth(crosshairVisible ? crosshairWidth : 0);
       exportNv.setCrosshairColor(hexToRgba(crosshairColor));
+      exportNv.setRadiologicalConvention(radiological);
+      exportNv.setIsOrientationTextVisible(showOrientation);
+      exportNv.scene.crosshairPos = [...(nvRef.current?.scene.crosshairPos ?? [0.5, 0.5, 0.5])];
       layerStates.forEach((state, index) => {
         const volume = exportNv?.volumes[index];
         if (!volume || !exportNv) return;
-        if (!isLabelProfile(profiles[index])) applyVolumeDisplay(exportNv, volume, profiles[index], state.colormap, state.windowMin, state.windowMax);
-        exportNv.setOpacity(index, state.opacity);
+        const sourceSpan = Math.max(Number.EPSILON, state.windowMax - state.windowMin);
+        const center = (state.windowMin + state.windowMax) / 2 + (state.brightness / 100) * sourceSpan;
+        const span = sourceSpan / Math.max(0.1, state.contrast);
+        if (!isLabelProfile(profiles[index])) applyVolumeDisplay(exportNv, volume, profiles[index], state.colormap, center - span / 2, center + span / 2);
+        volume.colormapInvert = state.inverted;
+        exportNv.setOpacity(index, state.visible ? state.opacity : 0);
       });
+      exportNv.setGamma(current?.gamma ?? 1);
       exportNv.drawScene();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const blob = await canvasBlob(exportCanvas);
+      const blob = await publicationBlob(exportCanvas, label, unitLabel, location);
       downloadBlob(blob, `${label.replace(/[^a-zA-Z0-9_-]/g, "_")}_${exportScale}x.png`);
-      setExportStatus(`${exportScale}× PNG rendered`);
+      setExportStatus(`${exportScale}× PNG rendered (${exportCanvas.width} × ${exportCanvas.height}px)`);
     } catch (caught) {
       setError(caught instanceof Error ? `PNG export failed: ${caught.message}` : "PNG export failed.");
     } finally {
@@ -599,7 +646,7 @@ export default function NeuroImageViewer({
       exportCanvas?.remove();
       setExporting(false);
     }
-  }, [background, crosshairColor, crosshairVisible, crosshairWidth, exportScale, label, layerStates, multiplanar, nearest, profiles, showColorbar, transparentExport]);
+  }, [background, crosshairColor, crosshairVisible, crosshairWidth, current?.gamma, exportScale, label, layerStates, location, nearest, profiles, radiological, showColorbarState, showOrientation, transparentExport, unitLabel, viewLayout]);
 
   const changeColormap = (value: string) => {
     const volume = nvRef.current?.volumes[activeLayer];
@@ -719,7 +766,8 @@ export default function NeuroImageViewer({
     <div ref={viewerRef} className={`flex h-full min-h-0 flex-col overflow-hidden ${modal ? "bg-[#0d0d0d]" : "rounded bg-[#111]"}`} data-testid="shared-nifti-viewer">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/8 bg-[#0d0d0d] px-3 py-2">
         <div className="min-w-0 truncate font-mono text-[11px] tracking-wide text-gray-300">
-          {label}{unitLabel && <span className="ml-2 font-sans text-gray-500">[{unitLabel}]</span>}
+          {layers.length > 1 ? layers[activeLayer]?.name ?? label : label}
+          {unitLabel && <span className="ml-2 font-sans text-gray-500">[{unitLabel}]</span>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {loading && <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />}
@@ -732,9 +780,9 @@ export default function NeuroImageViewer({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+      <div className={`flex min-h-0 flex-1 flex-col ${modal ? "xl:flex-row" : ""}`}>
       {controlsOpen && !loading && !error && current && (
-        <div className="max-h-[42vh] shrink-0 overflow-y-auto border-b border-white/8 bg-slate-950/90 px-3 py-3 text-[11px] text-slate-300 xl:order-2 xl:max-h-none xl:w-[360px] xl:border-b-0 xl:border-l" data-testid="visualization-controls">
+        <div className={`max-h-[42vh] shrink-0 overflow-y-auto border-b border-white/8 bg-slate-950/90 px-3 py-3 text-[11px] text-slate-300 ${modal ? "xl:order-2 xl:max-h-none xl:w-[360px] xl:border-b-0 xl:border-l" : ""}`} data-testid="visualization-controls">
           <div className="grid gap-3">
             <div className="space-y-2">
               {requestedLayers.length > 4 && <div role="status" className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-200">Only the first four layers are shown.</div>}
@@ -782,7 +830,7 @@ export default function NeuroImageViewer({
         </div>
       )}
 
-      <div className="relative min-h-[180px] flex-1 xl:order-1">
+      <div className={`relative min-h-[180px] flex-1 ${modal ? "xl:order-1" : ""}`}>
         {loading && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0d0d0d]"><div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent"/><span className="text-xs text-gray-400">Loading {layers.length > 1 ? `${layers.length} layers…` : "scan…"}</span></div>}
         {error && <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0d0d0d] p-4"><div className="max-w-md rounded border border-red-800/60 bg-red-950/40 px-4 py-3 text-center text-xs text-red-300">{error}</div></div>}
         <canvas ref={canvasRef} className="h-full w-full" data-testid="niivue-canvas" />

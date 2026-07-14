@@ -2795,8 +2795,9 @@ export default function RunResults({ runId }: Props) {
                       <button
                         onClick={() => {
                           const enrichLayer = (layer: NiivueLayer): NiivueLayer => {
+                            const runRelativePath = layer.url.split("/files/")[1] ?? layer.name;
                             const artifact = (results.artifacts ?? []).find((candidate) =>
-                              candidate.paths?.some((path) => layer.url.endsWith(path))
+                              candidate.paths?.some((path) => layer.url.endsWith(path) || path.endsWith(runRelativePath))
                             );
                             return {
                               ...layer,

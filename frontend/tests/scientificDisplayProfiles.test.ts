@@ -20,6 +20,15 @@ describe("scientific display profile classification", () => {
     expect(classifyScientificMap({ pipelineId: "statistical-map-explorer", metadata: { direction: "positive" }, name: "result.nii.gz" })).toBe("positive-continuous");
     expect(classifyScientificMap({ name: "sub-01_atlas.nii.gz" })).toBe("label-atlas");
     expect(classifyScientificMap({ name: "sub-01_T1w.nii.gz" })).toBe("structural");
+    expect(classifyScientificMap({ name: "stripped.nii.gz" })).toBe("structural");
+  });
+
+  it("uses pipeline identity before filename-derived semantic hints", () => {
+    expect(classifyScientificMap({
+      pipelineId: "seed-based-connectivity",
+      semanticType: "z_map",
+      name: "seed_connectivity_map.nii.gz",
+    })).toBe("correlation");
   });
 
   it("selects scientifically labelled profiles", () => {

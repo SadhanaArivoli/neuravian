@@ -166,16 +166,16 @@ export function classifyScientificMap(input: MapClassificationInput): Scientific
   if (/label|atlas|parcell/.test(meta)) return "label-atlas";
   if (/difference|contrast/.test(meta)) return "difference-map";
 
-  if (input.semanticType && SEMANTIC_CLASS[input.semanticType]) {
-    return SEMANTIC_CLASS[input.semanticType] as ScientificMapClass;
-  }
-
   const pipeline = input.pipelineId?.toLowerCase() ?? "";
   if (pipeline === "seed-based-connectivity") return "correlation";
   if (pipeline === "regional-homogeneity") return /normal|z/.test(meta) ? "z-score" : "positive-continuous";
   if (pipeline === "alff-falff") return /normal|z/.test(meta) ? "z-score" : "positive-continuous";
   if (pipeline === "statistical-map-explorer") {
     return /positive/.test(meta) ? "positive-continuous" : "signed-continuous";
+  }
+
+  if (input.semanticType && SEMANTIC_CLASS[input.semanticType]) {
+    return SEMANTIC_CLASS[input.semanticType] as ScientificMapClass;
   }
 
   const identity = `${input.name ?? ""} ${input.url ?? ""}`.toLowerCase();
@@ -187,7 +187,7 @@ export function classifyScientificMap(input: MapClassificationInput): Scientific
   if (/(reho[_-]?(z|normal)|z[-_]?map|zstat)/.test(identity)) return "z-score";
   if (/(t[-_]?map|tstat|signed)/.test(identity)) return "signed-continuous";
   if (/(falff|(^|[_/.-])alff([_/.-]|$)|reho)/.test(identity)) return "positive-continuous";
-  if (/(t1w|t2w|anatom|structural|orig\.mgz|brain\.mgz)/.test(identity)) return "structural";
+  if (/(t1w|t2w|anatom|structural|orig\.mgz|brain\.mgz|(^|[_/.-])stripped\.nii)/.test(identity)) return "structural";
   return "unknown-continuous";
 }
 
@@ -281,4 +281,3 @@ export function computeDisplayStatistics(
     isConstant: sorted[0] === sorted[sorted.length - 1], isEmpty: nonZero.length === 0,
   };
 }
-

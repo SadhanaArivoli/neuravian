@@ -159,6 +159,18 @@ describe("shared NIfTI viewer UI", () => {
     expect(screen.getByText("[Fisher z]")).toBeInTheDocument();
   });
 
+  it("supplies a NIfTI filename hint for client-generated difference blobs", async () => {
+    render(<NeuroImageViewer layers={[{
+      url: "blob:http://localhost/difference-map",
+      name: "Difference",
+    }]} label="ALFF difference (B − A)" mapType="difference" />);
+    await waitFor(() => expect(latest().loadVolumes).toHaveBeenCalled());
+    expect(latest().loadVolumes.mock.calls[0][0][0]).toMatchObject({
+      url: "blob:http://localhost/difference-map",
+      name: "Difference.nii.gz",
+    });
+  });
+
   it("supports R, H, C, and I keyboard shortcuts", async () => {
     render(<NeuroImageViewer layers={structural} label="Stat map" mapType="t_map" modal />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
@@ -211,6 +223,17 @@ describe("shared NIfTI viewer UI", () => {
 
   it("rerenders a separate high-resolution canvas for PNG export", async () => {
     const toDataUrl = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL");
+    const drawImage = vi.fn();
+    const fillText = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((type) => type === "2d" ? ({
+      drawImage,
+      fillText,
+      measureText: vi.fn(() => ({ width: 80 })),
+      fillStyle: "",
+      font: "",
+      shadowColor: "",
+      shadowBlur: 0,
+    } as unknown as CanvasRenderingContext2D) : null);
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(new Blob(["png"], { type: "image/png" })));
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
     vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:export"), revokeObjectURL: vi.fn() });
@@ -226,7 +249,9 @@ describe("shared NIfTI viewer UI", () => {
     expect(exportCanvas.width).toBe(2560);
     expect(exportCanvas.height).toBe(1920);
     expect(toDataUrl).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("4× PNG rendered"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("4× PNG rendered (2560 × 1920px)"));
+    expect(drawImage).toHaveBeenCalledWith(exportCanvas, 0, 0);
+    expect(fillText).toHaveBeenCalledWith("Publication map", expect.any(Number), expect.any(Number));
   });
 
   it("closes via button, Escape, and modal backdrop", () => {

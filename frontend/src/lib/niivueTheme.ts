@@ -29,7 +29,8 @@ export const NIIVUE_BASE_OPTIONS = {
   crosshairWidth: 0.5,
   show3Dcrosshair: true,
   /** Relative text height for coordinate labels. */
-  textHeight: 0.03,
+  fontMinPx: 12,
+  fontSizeScaling: 1,
   /** Use device pixel ratio for crisp rendering on Retina displays. */
   isHighResolutionCapable: true,
   /** Show the internal NiiVue color scale bar. */
