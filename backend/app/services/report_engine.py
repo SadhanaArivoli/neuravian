@@ -478,17 +478,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     except Exception:
         nf_version = "0.1.0"
 
-    git_commit = "unknown"
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=3,
-        )
-        if result.returncode == 0:
-            git_commit = result.stdout.strip()
-    except Exception:
-        pass
+    git_commit = os.environ.get("NEUROFORGE_GIT_COMMIT", "unknown")
 
     return ReportData(
         report_id=report_id,
@@ -1280,10 +1270,10 @@ figcaption {{ font-size: 0.82rem; color: #666; margin-top: 6px; text-align: cent
   <h1>{title}</h1>
   <div class="subtitle">NeuroForge Study Report</div>
   <div class="cover-meta">
-    <span>📅 Generated: {generated_at}</span>
-    <span>🔬 NeuroForge {neuroforge_version}</span>
-    <span>🔑 Commit: {git_commit}</span>
-    <span>📊 Report #{report_id} · Dataset #{dataset_id}</span>
+    <span>Generated: {generated_at}</span>
+    <span>NeuroForge {neuroforge_version}</span>
+    <span>Commit: {git_commit}</span>
+    <span>Report #{report_id} · Dataset #{dataset_id}</span>
   </div>
 </div>
 

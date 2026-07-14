@@ -311,10 +311,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     (out / "reho_metadata.json").write_text(json.dumps(metadata, indent=2))
 
+    _hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path"}
     rows = "".join(
         f"<tr><th>{html.escape(str(k))}</th><td>{html.escape(str(v))}</td></tr>"
         for k, v in metadata.items()
-        if k != "command"
+        if k not in _hidden
     )
     norm_section = (
         "<p>Z-score normalized map also saved as <code>reho_normalized_map.nii.gz</code>.</p>"

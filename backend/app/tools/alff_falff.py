@@ -187,7 +187,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "citations": ["Zang et al. (2007), doi:10.1016/j.braindev.2006.07.002", "Zou et al. (2008), doi:10.1016/j.jneumeth.2008.04.012"]
     }
     (out / "alff_falff_metadata.json").write_text(json.dumps(metadata, indent=2))
-    rows = "".join(f"<tr><th>{html.escape(str(k))}</th><td>{html.escape(str(v))}</td></tr>" for k,v in metadata.items() if k not in {"command"})
+    _hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path"}
+    rows = "".join(f"<tr><th>{html.escape(str(k))}</th><td>{html.escape(str(v))}</td></tr>" for k,v in metadata.items() if k not in _hidden)
     (out / "alff_falff_report.html").write_text(f"<!doctype html><html><head><meta charset='utf-8'><title>ALFF / fALFF Report</title><style>body{{font:15px system-ui;max-width:900px;margin:auto;padding:2rem}}th{{text-align:left}}td,th{{padding:.4rem;border-bottom:1px solid #ddd}}img{{max-width:48%}}</style></head><body><h1>ALFF / fALFF Analysis</h1><p>Descriptive resting-state maps; no clinical or biological interpretation is inferred.</p><table>{rows}</table><h2>Figures</h2><img src='alff_histogram.png'><img src='falff_histogram.png'><img src='spectral_summary.png'><h2>Method</h2><p>After optional nuisance regression and linear detrending, voxelwise FFT amplitude spectra were calculated. ALFF is summed amplitude from {args.low_frequency:g}–{args.high_frequency:g} Hz. fALFF is that amplitude divided by summed positive-frequency amplitude excluding DC. Zang et al. (2007); Zou et al. (2008).</p></body></html>")
     return metadata
 

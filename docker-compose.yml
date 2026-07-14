@@ -2,6 +2,8 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "8000:8000"
     volumes:
