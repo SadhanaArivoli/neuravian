@@ -43,6 +43,13 @@ export interface ConnectivityMetadata {
   bold_file: string | null;
   confounds_file: string | null;
   runtime_seconds: number;
+  // Confound provenance (added in Fisher-z milestone)
+  confound_strategy?: string;
+  confounds_used?: string[];
+  n_confound_regressors?: number;
+  global_signal_included?: boolean;
+  n_volumes_before_cleaning?: number;
+  n_volumes_after_cleaning?: number;
 }
 
 export type MatrixComparisonMode = "same-source" | "cross-subject";

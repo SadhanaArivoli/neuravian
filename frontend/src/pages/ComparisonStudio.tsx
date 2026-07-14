@@ -678,6 +678,19 @@ function ConnectivityComparisonPanel({
         </div>
       </div>
 
+      {/* Confound strategy mismatch warning (FC runs with different strategies) */}
+      {state.metaA?.confound_strategy && state.metaB?.confound_strategy &&
+       state.metaA.confound_strategy !== state.metaB.confound_strategy && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
+          <strong>Confound strategy mismatch:</strong>{" "}
+          {labelA} used <code className="bg-amber-500/10 px-1 rounded">{state.metaA.confound_strategy}</code> and{" "}
+          {labelB} used <code className="bg-amber-500/10 px-1 rounded">{state.metaB.confound_strategy}</code>.
+          Strategies that include global signal regression (GSR) substantially change correlation sign and magnitude.
+          Difference values here reflect both biology and preprocessing variation — interpret with caution.
+        </div>
+      )}
+
       {/* Cross-subject warning */}
       {compat?.mode === "cross-subject" && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">
