@@ -28,6 +28,7 @@ vi.mock("@niivue/niivue", () => ({
       }),
       setOpacity: vi.fn(),
       setColormap: vi.fn(),
+      setColormapNegative: vi.fn(),
       setInterpolation: vi.fn(),
       setCrosshairColor: vi.fn(),
       setCrosshairWidth: vi.fn(),
@@ -51,6 +52,7 @@ function latest() {
   return mocks.instances[mocks.instances.length - 1] as {
     setOpacity: ReturnType<typeof vi.fn>;
     setColormap: ReturnType<typeof vi.fn>;
+    setColormapNegative: ReturnType<typeof vi.fn>;
     setInterpolation: ReturnType<typeof vi.fn>;
     setCrosshairWidth: ReturnType<typeof vi.fn>;
     setPan2Dxyzmm: ReturnType<typeof vi.fn>;
@@ -116,6 +118,26 @@ describe("shared NIfTI viewer UI", () => {
     render(<NeuroImageViewer layers={[{ ...structural[0], isSegmentation: true }]} label="Labels" mapType="segmentation" modal />);
     await waitFor(() => expect(latest().setInterpolation).toHaveBeenCalledWith(true));
     expect(screen.getByLabelText("Colormap")).toBeDisabled();
+  });
+
+  it("uses symmetric dual-tail rendering and transparent zero for signed maps", async () => {
+    render(<NeuroImageViewer layers={[{
+      url: "/api/runs/71/files/seed_connectivity_map.nii.gz",
+      name: "seed_connectivity_map.nii.gz",
+      artifactType: "seed_connectivity_map_nii",
+      pipelineId: "seed-based-connectivity",
+    }]} label="Seed connectivity" modal />);
+    await waitFor(() => expect(screen.getByLabelText("Colormap")).toHaveValue("blue2red"));
+    const nv = latest();
+    const volume = (nv.loadVolumes.mock.results[0] ? (mocks.instances[0].volumes as Array<Record<string, unknown>>)[0] : null);
+    expect(nv.setColormap).toHaveBeenCalledWith("volume-0", "red");
+    expect(nv.setColormapNegative).toHaveBeenCalledWith("volume-0", "blue");
+    expect(volume?.cal_min).toBe(0);
+    expect(volume?.cal_max).toBeCloseTo(11.52);
+    expect(volume?.cal_minNeg).toBeCloseTo(-11.52);
+    expect(volume?.cal_maxNeg).toBe(0);
+    expect(volume?.colormapType).toBe(1);
+    expect(screen.getByText("[Fisher z]")).toBeInTheDocument();
   });
 
   it("supports R, H, C, and I keyboard shortcuts", async () => {

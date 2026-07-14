@@ -3,12 +3,16 @@ import type { Niivue } from "@niivue/niivue";
 import { ASEG_COLOR_MAP } from "../../lib/freesurferLut";
 import {
   NIIVUE_MULTIPLANAR_OPTIONS,
-  OVERLAY_LAYER_OPACITY,
   SLICE_TYPE_MULTIPLANAR,
   STAT_MAP_COLORMAP,
   STAT_MAP_UNIT,
   type StatMapType,
 } from "../../lib/niivueTheme";
+import {
+  computeDisplayStatistics,
+  selectDisplayProfile,
+  type DisplayProfile,
+} from "../../lib/scientificDisplayProfiles";
 
 export interface NiivueLayer {
   url: string;
@@ -16,6 +20,9 @@ export interface NiivueLayer {
   isSegmentation?: boolean;
   colormap?: string;
   opacity?: number;
+  artifactType?: string;
+  pipelineId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NeuroImageViewerProps {
@@ -100,8 +107,8 @@ export function inferMapType(layer?: NiivueLayer): StatMapType | undefined {
   return undefined;
 }
 
-function isLabelLayer(layer: NiivueLayer, mapType?: StatMapType) {
-  return layer.isSegmentation || mapType === "segmentation" || mapType === "mask";
+function isLabelProfile(profile: DisplayProfile) {
+  return profile.id === "label-atlas" || profile.id === "binary-mask";
 }
 
 export function defaultColormap(
@@ -109,10 +116,40 @@ export function defaultColormap(
   index: number,
   mapType?: StatMapType,
 ) {
-  if (isLabelLayer(layer, mapType)) return "roi_i256";
+  if (layer.isSegmentation || mapType === "segmentation" || mapType === "mask") return "roi_i256";
   if (layer.colormap) return layer.colormap;
   if (index === 0 && !isStatMap(mapType)) return "gray";
   return mapType ? STAT_MAP_COLORMAP[mapType] : index === 0 ? "gray" : "inferno";
+}
+
+function applyVolumeDisplay(
+  nv: Niivue,
+  volume: Niivue["volumes"][number],
+  profile: DisplayProfile,
+  colormap: string,
+  min: number,
+  max: number,
+) {
+  if (profile.signed && colormap === "blue2red") {
+    // NiiVue's paired positive/negative LUTs keep exact zero transparent while
+    // preserving a perceptually neutral center over a black or anatomical base.
+    nv.setColormap(volume.id, "red");
+    nv.setColormapNegative(volume.id, "blue");
+    volume.cal_min = 0;
+    volume.cal_max = Math.max(Number.EPSILON, max);
+    volume.cal_minNeg = Math.min(-Number.EPSILON, min);
+    volume.cal_maxNeg = 0;
+    volume.colormapType = 1;
+  } else {
+    nv.setColormap(volume.id, colormap);
+    nv.setColormapNegative(volume.id, "");
+    volume.cal_min = min;
+    volume.cal_max = max;
+    volume.cal_minNeg = Number.NaN;
+    volume.cal_maxNeg = Number.NaN;
+    volume.colormapType = profile.zeroBackground === "transparent" ? 1 : 0;
+  }
+  refreshVolume(nv, volume);
 }
 
 function finiteSamples(image: NumericArray | null | undefined) {
@@ -202,9 +239,15 @@ export default function NeuroImageViewer({
   const volumeOptionsRef = useRef<VolumeOption[]>([]);
   const samplesRef = useRef<number[][]>([]);
   const effectiveMapType = mapType ?? inferMapType(layers[0]);
-  const hasLabelLayer = layers.some((layer, index) =>
-    isLabelLayer(layer, index === 0 ? effectiveMapType : inferMapType(layer)),
-  );
+  const profiles = useMemo(() => layers.map((layer, index) => selectDisplayProfile({
+    artifactType: layer.artifactType,
+    pipelineId: layer.pipelineId,
+    semanticType: index === 0 ? effectiveMapType : inferMapType(layer),
+    name: layer.name,
+    url: layer.url,
+    metadata: layer.metadata,
+  })), [effectiveMapType, layers]);
+  const hasLabelLayer = profiles.some(isLabelProfile);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
@@ -224,17 +267,19 @@ export default function NeuroImageViewer({
 
   const layerKey = useMemo(() => layers.map((layer) => layer.url).join("\0"), [layers]);
   const current = layerStates[activeLayer];
-  const unitLabel = effectiveMapType ? STAT_MAP_UNIT[effectiveMapType] : "";
+  const unitLabel = profiles[activeLayer]?.colorbarLabel
+    ?? (effectiveMapType ? STAT_MAP_UNIT[effectiveMapType] : "");
 
   const applyWindow = useCallback((index: number, min: number, max: number) => {
     const nv = nvRef.current;
     const volume = nv?.volumes[index];
     if (!nv || !volume || !Number.isFinite(min) || !Number.isFinite(max) || min >= max) return;
-    volume.cal_min = min;
-    volume.cal_max = max;
-    refreshVolume(nv, volume);
+    const state = layerStates[index];
+    const profile = profiles[index];
+    if (!state || !profile) return;
+    applyVolumeDisplay(nv, volume, profile, state.colormap, min, max);
     nv.drawScene();
-  }, []);
+  }, [layerStates, profiles]);
 
   const setWindow = useCallback((mode: WindowMode, min: number, max: number) => {
     setLayerStates((previous) => previous.map((state, index) => {
@@ -250,24 +295,22 @@ export default function NeuroImageViewer({
     if (!nv) return;
     const nextStates = layers.map((layer, index) => {
       const samples = samplesRef.current[index] ?? [];
-      const histogram = calculateHistogram(samples);
+      const statistics = computeDisplayStatistics(samples, profiles[index]);
+      const histogram = calculateHistogram(samples, statistics.displayMin, statistics.displayMax);
       return {
         ...histogram,
-        colormap: defaultColormap(layer, index, index === 0 ? effectiveMapType : inferMapType(layer)),
-        opacity: layer.opacity ?? (index === 0 ? 1 : OVERLAY_LAYER_OPACITY),
+        colormap: layer.colormap ?? profiles[index].defaultColormap,
+        opacity: layer.opacity ?? profiles[index].opacity,
         windowMode: "auto" as WindowMode,
-        windowMin: histogram.dataMin,
-        windowMax: histogram.dataMax,
+        windowMin: statistics.displayMin,
+        windowMax: statistics.displayMax,
       };
     });
     nextStates.forEach((state, index) => {
       const volume = nv.volumes[index];
       if (!volume) return;
-      if (!isLabelLayer(layers[index], index === 0 ? effectiveMapType : inferMapType(layers[index]))) {
-        nv.setColormap(volume.id, state.colormap);
-      }
+      if (!isLabelProfile(profiles[index])) applyVolumeDisplay(nv, volume, profiles[index], state.colormap, state.windowMin, state.windowMax);
       nv.setOpacity(index, state.opacity);
-      applyWindow(index, state.windowMin, state.windowMax);
     });
     setLayerStates(nextStates);
     setActiveLayer(0);
@@ -283,7 +326,7 @@ export default function NeuroImageViewer({
     nv.setPan2Dxyzmm([0, 0, 0, 1]);
     nv.volScaleMultiplier = 1;
     nv.drawScene();
-  }, [applyWindow, effectiveMapType, hasLabelLayer, layers]);
+  }, [hasLabelLayer, layers, profiles]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -299,17 +342,17 @@ export default function NeuroImageViewer({
           return !value;
         });
       }
-      if (key === "c" && current && !isLabelLayer(layers[activeLayer], activeLayer === 0 ? effectiveMapType : inferMapType(layers[activeLayer]))) {
+      if (key === "c" && current && !isLabelProfile(profiles[activeLayer])) {
         const index = VIEWER_COLORMAPS.findIndex(([value]) => value === current.colormap);
         const next = VIEWER_COLORMAPS[(index + 1) % VIEWER_COLORMAPS.length][0];
         const volume = nvRef.current?.volumes[activeLayer];
-        if (volume) nvRef.current?.setColormap(volume.id, next);
+        if (volume && nvRef.current) applyVolumeDisplay(nvRef.current, volume, profiles[activeLayer], next, current.windowMin, current.windowMax);
         setLayerStates((states) => states.map((state, layerIndex) => layerIndex === activeLayer ? { ...state, colormap: next } : state));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeLayer, current, effectiveMapType, layers, modal, onClose, resetViewer]);
+  }, [activeLayer, current, modal, onClose, profiles, resetViewer]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -333,12 +376,14 @@ export default function NeuroImageViewer({
         : null;
       const options = layers.map((layer, index) => ({
         url: layer.url,
-        opacity: layer.opacity ?? (index === 0 ? 1 : OVERLAY_LAYER_OPACITY),
-        colormap: isLabelLayer(layer, index === 0 ? effectiveMapType : inferMapType(layer))
+        opacity: layer.opacity ?? profiles[index].opacity,
+        colormap: isLabelProfile(profiles[index])
           ? ""
-          : defaultColormap(layer, index, index === 0 ? effectiveMapType : inferMapType(layer)),
-        ...(isLabelLayer(layer, index === 0 ? effectiveMapType : inferMapType(layer)) && lut ? { colormapLabel: lut } : {}),
-        ...(isStatMap(effectiveMapType) && index === 0 ? { trustCalMinMax: true } : {}),
+          : profiles[index].signed ? "red" : layer.colormap ?? profiles[index].defaultColormap,
+        ...(isLabelProfile(profiles[index]) && lut ? { colormapLabel: lut } : {}),
+        ...(profiles[index].signed ? { colormapNegative: "blue", ignoreZeroVoxels: true } : {}),
+        ...(profiles[index].zeroBackground !== "data" ? { ignoreZeroVoxels: true } : {}),
+        ...(!isLabelProfile(profiles[index]) ? { trustCalMinMax: false } : {}),
       }));
       volumeOptionsRef.current = options;
       await nv.loadVolumes(options);
@@ -350,15 +395,17 @@ export default function NeuroImageViewer({
       const samples = nv.volumes.map((volume) => finiteSamples(volume.img as NumericArray));
       samplesRef.current = samples;
       const initialStates = layers.map((layer, index) => {
-        const histogram = calculateHistogram(samples[index]);
-        const volumeMin = nv.volumes[index]?.cal_min;
-        const volumeMax = nv.volumes[index]?.cal_max;
-        const min = typeof volumeMin === "number" && Number.isFinite(volumeMin) ? volumeMin : histogram.dataMin;
-        const max = typeof volumeMax === "number" && Number.isFinite(volumeMax) ? volumeMax : histogram.dataMax;
+        const statistics = computeDisplayStatistics(samples[index], profiles[index]);
+        const min = statistics.displayMin;
+        const max = statistics.displayMax;
+        const colormap = layer.colormap ?? profiles[index].defaultColormap;
+        if (!isLabelProfile(profiles[index])) {
+          applyVolumeDisplay(nv, nv.volumes[index], profiles[index], colormap, min, max);
+        }
         return {
           ...calculateHistogram(samples[index], min, max),
-          colormap: defaultColormap(layer, index, index === 0 ? effectiveMapType : inferMapType(layer)),
-          opacity: layer.opacity ?? (index === 0 ? 1 : OVERLAY_LAYER_OPACITY),
+          colormap,
+          opacity: layer.opacity ?? profiles[index].opacity,
           windowMode: "auto" as WindowMode,
           windowMin: min,
           windowMax: max,
@@ -383,7 +430,7 @@ export default function NeuroImageViewer({
     };
     // Consumer callbacks intentionally do not reload a volume.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveMapType, hasLabelLayer, layerKey, multiplanar, showColorbar]);
+  }, [hasLabelLayer, layerKey, multiplanar, profiles, showColorbar]);
 
   const handleExport = useCallback(async () => {
     const sourceCanvas = canvasRef.current;
@@ -420,13 +467,8 @@ export default function NeuroImageViewer({
       layerStates.forEach((state, index) => {
         const volume = exportNv?.volumes[index];
         if (!volume || !exportNv) return;
-        if (!isLabelLayer(layers[index], index === 0 ? effectiveMapType : inferMapType(layers[index]))) {
-          exportNv.setColormap(volume.id, state.colormap);
-        }
+        if (!isLabelProfile(profiles[index])) applyVolumeDisplay(exportNv, volume, profiles[index], state.colormap, state.windowMin, state.windowMax);
         exportNv.setOpacity(index, state.opacity);
-        volume.cal_min = state.windowMin;
-        volume.cal_max = state.windowMax;
-        refreshVolume(exportNv, volume);
       });
       exportNv.drawScene();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -440,11 +482,11 @@ export default function NeuroImageViewer({
       exportCanvas?.remove();
       setExporting(false);
     }
-  }, [background, crosshairColor, crosshairVisible, crosshairWidth, effectiveMapType, exportScale, label, layerStates, layers, multiplanar, nearest, showColorbar, transparentExport]);
+  }, [background, crosshairColor, crosshairVisible, crosshairWidth, exportScale, label, layerStates, multiplanar, nearest, profiles, showColorbar, transparentExport]);
 
   const changeColormap = (value: string) => {
     const volume = nvRef.current?.volumes[activeLayer];
-    if (volume) nvRef.current?.setColormap(volume.id, value);
+    if (volume && nvRef.current && current) applyVolumeDisplay(nvRef.current, volume, profiles[activeLayer], value, current.windowMin, current.windowMax);
     setLayerStates((states) => states.map((state, index) => index === activeLayer ? { ...state, colormap: value } : state));
   };
 
@@ -503,7 +545,7 @@ export default function NeuroImageViewer({
           <div className="grid gap-3 xl:grid-cols-[1fr_1.35fr_1fr]">
             <div className="space-y-2">
               {layers.length > 1 && <label className="block">Layer<select aria-label="Active volume layer" value={activeLayer} onChange={(event) => setActiveLayer(Number(event.target.value))} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs">{layers.map((layer, index) => <option key={layer.url} value={index}>{layer.name}</option>)}</select></label>}
-              <label className="block">Colormap<select aria-label="Colormap" value={current.colormap} disabled={isLabelLayer(layers[activeLayer], activeLayer === 0 ? effectiveMapType : inferMapType(layers[activeLayer]))} onChange={(event) => changeColormap(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs disabled:opacity-60">{isLabelLayer(layers[activeLayer], activeLayer === 0 ? effectiveMapType : inferMapType(layers[activeLayer])) && <option value="roi_i256">Discrete ROI labels</option>}{VIEWER_COLORMAPS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
+              <label className="block">Colormap<select aria-label="Colormap" value={current.colormap} disabled={isLabelProfile(profiles[activeLayer])} onChange={(event) => changeColormap(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs disabled:opacity-60">{isLabelProfile(profiles[activeLayer]) && <option value="roi_i256">Discrete ROI labels</option>}{VIEWER_COLORMAPS.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
               <div><div className="flex items-center justify-between"><span>Opacity</span><label className="flex items-center gap-1"><input aria-label="Overlay opacity percentage" type="number" min="0" max="100" value={Math.round(current.opacity * 100)} onChange={(event) => changeOpacity(Math.max(0, Math.min(100, Number(event.target.value))) / 100)} className="w-14 rounded border border-white/10 bg-slate-900 px-1 py-0.5 text-right tabular-nums" />%</label></div><input aria-label="Overlay opacity" type="range" min="0" max="1" step="0.01" value={current.opacity} onChange={(event) => changeOpacity(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></div>
               <div><span className="block mb-1">Interpolation</span><div className="flex gap-1"><button type="button" onClick={() => changeInterpolation(false)} className={`rounded px-2 py-1 ${!nearest ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Smooth</button><button type="button" onClick={() => changeInterpolation(true)} className={`rounded px-2 py-1 ${nearest ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Nearest neighbor</button></div></div>
             </div>

@@ -2794,13 +2794,25 @@ export default function RunResults({ runId }: Props) {
                       )}
                       <button
                         onClick={() => {
+                          const enrichLayer = (layer: NiivueLayer): NiivueLayer => {
+                            const artifact = (results.artifacts ?? []).find((candidate) =>
+                              candidate.paths?.some((path) => layer.url.endsWith(path))
+                            );
+                            return {
+                              ...layer,
+                              artifactType: artifact?.type,
+                              pipelineId: results.metadata?.pipeline_id,
+                              metadata: results.metadata?.params,
+                            };
+                          };
                           if (pair && pair.memberNames.includes(f.name)) {
-                            setViewerLayers(pair.layers);
+                            setViewerLayers(pair.layers.map(enrichLayer));
                           } else {
-                            setViewerLayers([{
+                            setViewerLayers([enrichLayer({
                               url: `/api/runs/${runId}/files/${f.path}`,
                               name: f.name,
-                            }]);
+                              artifactType: matchingArtifact?.type,
+                            })]);
                           }
                         }}
                         className="rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 transition-colors"
