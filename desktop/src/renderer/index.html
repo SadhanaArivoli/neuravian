@@ -14,12 +14,18 @@
       <h1 id="app-title">NeuroForge</h1>
       <p class="subtitle">Local-first neuroimaging workstation</p>
       <section class="status-card" aria-live="polite">
-        <span class="spinner" aria-hidden="true"></span>
+        <span class="spinner" id="spinner" aria-hidden="true"></span>
         <div>
           <p class="status" id="startup-status">Checking system</p>
           <p class="detail" id="startup-detail">Preparing the desktop launcher…</p>
         </div>
       </section>
+      <div class="actions" id="startup-actions" hidden>
+        <button type="button" class="primary" id="retry">Retry</button>
+        <button type="button" id="copy-diagnostics">Copy diagnostics</button>
+        <button type="button" id="install-docker" hidden>Install Docker Desktop</button>
+      </div>
+      <p class="feedback" id="feedback" aria-live="polite"></p>
       <p class="privacy">NeuroForge is running locally. The desktop launcher does not upload your datasets.</p>
     </main>
     <script src="app.js"></script>
