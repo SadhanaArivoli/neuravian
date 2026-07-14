@@ -490,3 +490,82 @@ def test_workflow_template_exists():
     if '"group-functional-connectivity"' not in content and "'group-functional-connectivity'" not in content:
         pytest.skip("Frontend source is a stale mount; check host filesystem")
     assert "group" in content.lower()
+
+
+# ── Atlas alias normalisation ─────────────────────────────────────────────────
+
+def test_atlas_alias_schaefer_underscore_resolves_to_canonical():
+    """schaefer_100_7 (legacy underscore spelling) must resolve to schaefer100_7."""
+    from app.tools.functional_connectivity import LEGACY_ATLAS_ALIASES
+    assert LEGACY_ATLAS_ALIASES.get("schaefer_100_7") == "schaefer100_7", (
+        "LEGACY_ATLAS_ALIASES must map schaefer_100_7 -> schaefer100_7"
+    )
+
+
+def test_normalize_atlas_id_alias():
+    """normalize_atlas_id must return the canonical ID for legacy aliases."""
+    from app.tools.functional_connectivity import normalize_atlas_id
+    assert normalize_atlas_id("schaefer_100_7") == "schaefer100_7"
+    assert normalize_atlas_id("schaefer100_7") == "schaefer100_7"
+
+
+def test_atlas_alias_runs_accepted_by_group_fc():
+    """Group FC must accept one run with schaefer_100_7 and one with schaefer100_7."""
+    from app.tools.group_functional_connectivity import run as gfc_run
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        d1 = td / "run_1"; d2 = td / "run_2"
+        d1.mkdir(); d2.mkdir()
+        # Simulate: legacy run stored atlas_id as schaefer_100_7
+        _write_fake_fc_run(d1, 6, "schaefer_100_7", seed=1, confound_strategy="motion6")
+        _write_fake_fc_run(d2, 6, "schaefer100_7", seed=2, confound_strategy="motion6")
+        out = td / "out"; out.mkdir()
+        gfc_run(["--matrix-dirs", f"{d1},{d2}", "--output-dir", str(out)])
+        assert (out / "group_summary.json").exists()
+        summary = json.loads((out / "group_summary.json").read_text())
+        assert summary["canonical_atlas_id"] == "schaefer100_7"
+
+
+def test_atlas_alias_different_roi_ordering_still_rejected():
+    """Alias equality must not bypass ROI-order validation."""
+    from app.tools.group_functional_connectivity import run as gfc_run
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        d1 = td / "run_1"; d2 = td / "run_2"
+        d1.mkdir(); d2.mkdir()
+        _write_fake_fc_run(d1, 6, "schaefer_100_7", seed=1, confound_strategy="motion6")
+        # Different n_rois — forces dimension/shape mismatch, the proxy for ROI ordering
+        _write_fake_fc_run(d2, 8, "schaefer100_7", seed=2, confound_strategy="motion6")
+        out = td / "out"; out.mkdir()
+        with pytest.raises(ValueError, match="[Dd]imension|[Ss]hape|[Mm]atch"):
+            gfc_run(["--matrix-dirs", f"{d1},{d2}", "--output-dir", str(out)])
+
+
+def test_schaefer_vs_aal_still_rejected():
+    """Truly different atlases must remain incompatible after the alias fix."""
+    from app.tools.group_functional_connectivity import run as gfc_run
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        d1 = td / "run_1"; d2 = td / "run_2"
+        d1.mkdir(); d2.mkdir()
+        _write_fake_fc_run(d1, 6, "schaefer100_7", seed=1)
+        _write_fake_fc_run(d2, 6, "aal", seed=2)
+        out = td / "out"; out.mkdir()
+        with pytest.raises(ValueError, match="[Aa]tlas mismatch"):
+            gfc_run(["--matrix-dirs", f"{d1},{d2}", "--output-dir", str(out)])
+
+
+def test_canonical_atlas_id_in_summary():
+    """canonical_atlas_id must be present and canonical in group_summary.json."""
+    from app.tools.group_functional_connectivity import run as gfc_run
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        d1 = td / "run_1"; d2 = td / "run_2"
+        d1.mkdir(); d2.mkdir()
+        _write_fake_fc_run(d1, 6, "schaefer100_7", seed=10, confound_strategy="motion6")
+        _write_fake_fc_run(d2, 6, "schaefer100_7", seed=11, confound_strategy="motion6")
+        out = td / "out"; out.mkdir()
+        gfc_run(["--matrix-dirs", f"{d1},{d2}", "--output-dir", str(out)])
+        summary = json.loads((out / "group_summary.json").read_text())
+        assert "canonical_atlas_id" in summary, "group_summary.json must include canonical_atlas_id"
+        assert summary["canonical_atlas_id"] == "schaefer100_7"

@@ -64,6 +64,11 @@ from typing import Any
 
 import numpy as np
 
+from app.tools.functional_connectivity import (
+    LEGACY_ATLAS_ALIASES,
+    normalize_atlas_id,
+)
+
 # Epsilon used to clip r values away from ±1 before arctanh to prevent ±∞.
 _FISHER_CLIP_EPS: float = 1e-6
 
@@ -163,14 +168,16 @@ def _check_compatibility(
                 f"but run {i} ({run_dirs[i]}) has shape {mat.shape}"
             )
 
-    ref_atlas = metadatas[0].get("atlas_id") or metadatas[0].get("atlas")
+    ref_atlas_raw = metadatas[0].get("atlas_id") or metadatas[0].get("atlas")
+    ref_atlas = LEGACY_ATLAS_ALIASES.get(ref_atlas_raw, ref_atlas_raw) if ref_atlas_raw else None
     if ref_atlas:
         for i, meta in enumerate(metadatas[1:], 1):
-            cand_atlas = meta.get("atlas_id") or meta.get("atlas")
+            cand_raw = meta.get("atlas_id") or meta.get("atlas")
+            cand_atlas = LEGACY_ATLAS_ALIASES.get(cand_raw, cand_raw) if cand_raw else None
             if cand_atlas and cand_atlas != ref_atlas:
                 raise ValueError(
-                    f"Atlas mismatch: run 0 used '{ref_atlas}' but "
-                    f"run {i} used '{cand_atlas}'"
+                    f"Atlas mismatch: run 0 used '{ref_atlas_raw}' but "
+                    f"run {i} used '{cand_raw}'"
                 )
 
     # Confound strategy mismatch is fatal: aggregating runs with different
@@ -509,6 +516,9 @@ def run(argv: list[str] | None = None) -> None:
         "n_runs": n,
         "atlas": atlas_display,
         "atlas_id": metadatas[0].get("atlas_id") or metadatas[0].get("atlas"),
+        "canonical_atlas_id": (
+            lambda raw: LEGACY_ATLAS_ALIASES.get(raw, raw) if raw else None
+        )(metadatas[0].get("atlas_id") or metadatas[0].get("atlas")),
         "atlas_citation": metadatas[0].get("atlas_citation"),
         "n_rois": n_rois,
         "roi_ordering": "canonical atlas ROI order from first input run",

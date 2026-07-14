@@ -1,3 +1,28 @@
+/**
+ * Atlas alias table — mirrors backend LEGACY_ATLAS_ALIASES in
+ * backend/app/tools/functional_connectivity.py.  Keep in sync when new
+ * aliases are added there.  Used to normalise atlas_id values recorded by
+ * older pipeline runs before canonical IDs were standardised.
+ */
+const ATLAS_ALIASES: Record<string, string> = {
+  schaefer_100_7: "schaefer100_7",
+};
+
+/**
+ * Return the canonical atlas ID for compatibility checks.
+ * Prefers the explicit canonical_atlas_id field when present (written by
+ * pipeline runs after the alias-normalisation fix), otherwise resolves via
+ * the alias table.  Falls back to the raw atlas_id unchanged.
+ */
+export function canonicalAtlasId(
+  atlasId: string | undefined | null,
+  canonicalId?: string | null,
+): string | undefined {
+  if (canonicalId) return canonicalId;
+  if (!atlasId) return undefined;
+  return ATLAS_ALIASES[atlasId] ?? atlasId;
+}
+
 export interface ConnectivityMatrixData {
   labels: string[];
   values: number[][];
@@ -20,6 +45,7 @@ export interface ConnectivityMatrixDifference {
 export interface ConnectivityMetadata {
   atlas: string;
   atlas_id: string;
+  canonical_atlas_id?: string;
   atlas_display_name?: string;
   atlas_source?: string;
   atlas_version?: string | null;
@@ -64,7 +90,9 @@ export function checkMatrixCompatibility(
   a: ConnectivityMetadata,
   b: ConnectivityMetadata,
 ): MatrixCompatibilityResult {
-  if (a.atlas_id !== b.atlas_id) {
+  const canonA = canonicalAtlasId(a.atlas_id, a.canonical_atlas_id);
+  const canonB = canonicalAtlasId(b.atlas_id, b.canonical_atlas_id);
+  if (canonA !== canonB) {
     return { compatible: false, reason: `Atlas mismatch: "${a.atlas_id}" vs "${b.atlas_id}"` };
   }
   if (a.n_rois !== b.n_rois) {

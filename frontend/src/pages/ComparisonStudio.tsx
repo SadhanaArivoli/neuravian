@@ -37,6 +37,7 @@ import {
   type NiftiGeometry,
 } from "../lib/comparisonEligibility";
 import {
+  canonicalAtlasId,
   checkMatrixCompatibility,
   connectivityMatrixDifference,
   connectivityMatrixRange,
@@ -945,8 +946,9 @@ function SeedConnectivityComparisonPanel({
     return () => { c = true; };
   }, [runIdB, metaPathB]);
 
-  // Compatibility check
-  const sameAtlas = !metaA || !metaB || metaA.atlas_id === metaB.atlas_id;
+  // Compatibility check — use canonical atlas IDs so aliases (e.g. schaefer_100_7 vs schaefer100_7) are treated as equal
+  const sameAtlas = !metaA || !metaB ||
+    canonicalAtlasId(metaA.atlas_id) === canonicalAtlasId(metaB.atlas_id);
   const sameSeed = !metaA || !metaB || metaA.seed_roi_index === metaB.seed_roi_index;
   const compatible = sameAtlas && sameSeed;
 
@@ -1021,6 +1023,7 @@ interface GroupFCSummaryForComp {
   n_runs?: number;
   atlas?: string;
   atlas_id?: string;
+  canonical_atlas_id?: string;
   n_rois?: number;
   correlation_method?: string;
   nilearn_version?: string;
@@ -1081,7 +1084,9 @@ function GroupFCComparisonPanel({
   }, [runIdB, meanPathB]);
 
   const sameAtlas =
-    !summaryA || !summaryB || summaryA.atlas_id === summaryB.atlas_id;
+    !summaryA || !summaryB ||
+    canonicalAtlasId(summaryA.atlas_id, summaryA.canonical_atlas_id) ===
+    canonicalAtlasId(summaryB.atlas_id, summaryB.canonical_atlas_id);
   const sameRoiCount =
     !summaryA || !summaryB || summaryA.n_rois === summaryB.n_rois;
   const sameStrategy =
@@ -1837,7 +1842,8 @@ function RoiExtractionComparisonPanel({
     <div className="text-xs text-gray-500 animate-pulse py-4">Loading ROI data…</div>
   );
 
-  const sameAtlas = metaA?.atlas_id && metaB?.atlas_id && metaA.atlas_id === metaB.atlas_id;
+  const sameAtlas = metaA?.atlas_id && metaB?.atlas_id &&
+    canonicalAtlasId(metaA.atlas_id) === canonicalAtlasId(metaB.atlas_id);
   const sameNRois = metaA?.n_rois && metaB?.n_rois && metaA.n_rois === metaB.n_rois;
   const compatible = sameAtlas && sameNRois;
 

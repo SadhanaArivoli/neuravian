@@ -504,6 +504,7 @@ def run(argv: list[str] | None = None) -> int:
     metadata: dict[str, Any] = {
         "atlas": loaded_atlas.spec.display_name,
         "atlas_id": loaded_atlas.spec.id,
+        "canonical_atlas_id": loaded_atlas.spec.id,
         "atlas_display_name": loaded_atlas.spec.display_name,
         "atlas_source": loaded_atlas.spec.source,
         "atlas_version": loaded_atlas.version,
