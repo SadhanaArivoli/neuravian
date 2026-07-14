@@ -278,7 +278,7 @@ class TestHtmlRenderer:
 
     def test_html_contains_cover_metadata(self):
         html = render_html(_make_report_data())
-        assert "NeuroForge Study Report" in html
+        assert "NeuroForge report" in html
         assert "abc1234" in html  # git commit
 
     def test_html_contains_reproducibility_checklist(self):
@@ -294,7 +294,7 @@ class TestHtmlRenderer:
         data = _make_report_data(runs=runs, warnings=["1 run(s) failed."])
         html = render_html(data)
         assert "failed" in html.lower()
-        assert "⚠️" in html
+        assert "Warning:" in html
 
     def test_html_no_figures_message_when_empty(self):
         data = _make_report_data()

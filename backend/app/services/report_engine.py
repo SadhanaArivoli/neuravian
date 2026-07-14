@@ -23,6 +23,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.reporting.components import footer
+from app.reporting.html import document_shell, safe_display_value
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
 from app.models.run import Run
@@ -722,9 +724,229 @@ def _format_bibtex(c: dict[str, Any]) -> str:
 
 # ── Renderers ─────────────────────────────────────────────────────────────────
 
+def _html_vars(d: ReportData) -> dict[str, Any]:
+    """Build template substitution variables."""
+    title = d.dataset_name or (Path(d.dataset_path).name if d.dataset_path else "Dataset")
+
+    # Dataset summary rows
+    ds_rows = [
+        ("Name", d.dataset_name or "—"),
+        ("Source", Path(d.dataset_path).name if d.dataset_path else "—"),
+        ("BIDS version", d.dataset_bids_version or "—"),
+        ("Validation", d.dataset_validation_status),
+        ("Subjects", str(len(d.dataset_subjects))),
+        ("Sessions", str(len(d.dataset_sessions)) if d.dataset_sessions else "—"),
+        ("Modalities", ", ".join(d.dataset_modalities) or "—"),
+        ("Total files", str(d.dataset_file_count)),
+        ("Imported", (d.dataset_imported_at or "")[:10] or "—"),
+    ]
+    ds_html = "\n".join(
+        f"<tr><td class='label'>{k}</td><td>{v}</td></tr>" for k, v in ds_rows
+    )
+
+    # Run status cards
+    run_cards_html = (
+        f'<div class="stat-card"><span class="stat-num">{d.total_runs}</span>'
+        f'<span class="stat-lbl">Total runs</span></div>'
+        f'<div class="stat-card success"><span class="stat-num">{d.success_runs}</span>'
+        f'<span class="stat-lbl">Successful</span></div>'
+        f'<div class="stat-card failed"><span class="stat-num">{d.failed_runs}</span>'
+        f'<span class="stat-lbl">Failed</span></div>'
+        f'<div class="stat-card"><span class="stat-num">{d.cancelled_runs}</span>'
+        f'<span class="stat-lbl">Cancelled</span></div>'
+    )
+
+    # Pipeline summary table
+    if d.runs:
+        pipeline_rows = "\n".join(
+            f"<tr>"
+            f"<td>{r.pipeline_display_name}</td>"
+            f"<td><code>{r.pipeline_version}</code></td>"
+            f"<td>{r.execution_type}</td>"
+            f"<td>{f'{r.runtime_seconds}s' if r.runtime_seconds is not None else '—'}</td>"
+            f"<td><span class='badge {r.status}'>{r.status}</span></td>"
+            f"<td>{r.artifact_count}</td>"
+            f"</tr>"
+            for r in d.runs
+        )
+        pipeline_table_html = (
+            "<table class='data-table'>"
+            "<thead><tr><th>Pipeline</th><th>Version</th><th>Execution</th>"
+            "<th>Runtime</th><th>Status</th><th>Artifacts</th></tr></thead>"
+            f"<tbody>{pipeline_rows}</tbody></table>"
+        )
+    else:
+        pipeline_table_html = "<p class='empty'>No runs recorded for this dataset.</p>"
+
+    # Methods sections
+    if d.methods_sections:
+        methods_html = "\n".join(
+            f"<div class='methods-section'>"
+            f"<h3>{sec['title']}</h3>"
+            f"<p>{sec['text']}</p>"
+            f"</div>"
+            for sec in d.methods_sections
+        )
+    else:
+        methods_html = "<p class='empty'>No pipeline runs recorded.</p>"
+
+    if d.alff_falff_sections:
+        alff_parts = []
+        for section in d.alff_falff_sections:
+            band = section.get("frequency_band", ["—", "—"])
+            rows = [
+                ("Run", f"#{section.get('run_id')}"), ("Frequency band", f"{band[0]}–{band[1]} Hz"),
+                ("TR", f"{section.get('tr', '—')} s"), ("Nyquist", f"{section.get('nyquist_frequency', '—')} Hz"),
+                ("Confounds", section.get("confound_strategy", "—")), ("Normalization", section.get("normalization", "—")),
+                ("Runtime", f"{section.get('runtime_seconds', '—')} s"), ("Mask voxels", section.get("mask_voxel_count", "—")),
+                ("ALFF statistics", json.dumps(section.get("alff_statistics", {}), sort_keys=True)),
+                ("fALFF statistics", json.dumps(section.get("falff_statistics", {}), sort_keys=True)),
+            ]
+            alff_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
+        alff_html = "".join(alff_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
+    else:
+        alff_html = "<p class='empty'>No ALFF/fALFF runs exist for this dataset.</p>"
+
+    if d.reho_sections:
+        reho_parts = []
+        for section in d.reho_sections:
+            rows = [
+                ("Run", f"#{section.get('run_id')}"),
+                ("Neighborhood", f"{section.get('neighborhood', '—')} voxels"),
+                ("Confounds", section.get("confound_strategy", "—")),
+                ("Detrend", str(section.get("detrend", "—"))),
+                ("Z-normalize", str(section.get("z_normalize", "—"))),
+                ("Runtime", f"{section.get('runtime_seconds', '—')} s"),
+                ("Mask voxels", str(section.get("mask_voxel_count", "—"))),
+                ("Valid voxels", str(section.get("valid_voxel_count", "—"))),
+                ("ReHo statistics", json.dumps(section.get("reho_statistics", {}), sort_keys=True)),
+            ]
+            reho_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
+        reho_html = "".join(reho_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
+    else:
+        reho_html = "<p class='empty'>No Regional Homogeneity runs exist for this dataset.</p>"
+
+    # Software versions table
+    if d.software_table:
+        sw_rows = "\n".join(
+            f"<tr><td>{row['tool']}</td><td><code>{row['version']}</code></td>"
+            f"<td>{row['execution']}</td><td><code>{row['image']}</code></td></tr>"
+            for row in d.software_table
+        )
+        sw_table_html = (
+            "<table class='data-table'>"
+            "<thead><tr><th>Tool</th><th>Version</th><th>Execution</th><th>Image</th></tr></thead>"
+            f"<tbody>{sw_rows}</tbody></table>"
+        )
+    else:
+        sw_table_html = "<p class='empty'>No software version data.</p>"
+
+    # Citations
+    if d.citations:
+        citations_html = "<ol class='citation-list'>" + "\n".join(
+            f"<li><span class='cit-text'>{cit.apa}</span>"
+            f"<a class='doi-link' href='https://doi.org/{cit.doi}' target='_blank'>DOI</a>"
+            + (f"<span class='rrid'>RRID:{cit.rrid}</span>" if cit.rrid else "")
+            + "</li>"
+            for cit in d.citations
+        ) + "</ol>"
+    else:
+        citations_html = "<p class='empty'>No citations (no recognised pipelines run).</p>"
+
+    # Warnings
+    if d.warnings:
+        warnings_html = "<ul class='warnings'>" + "\n".join(
+            f"<li><strong>Warning:</strong> {safe_display_value(w)}</li>" for w in d.warnings
+        ) + "</ul>"
+    else:
+        warnings_html = "<p class='no-warnings'>No warnings.</p>"
+
+    # Figures
+    if d.figures:
+        figs_html = "<div class='figures-grid'>" + "\n".join(
+            f"<figure>"
+            f"<img src='{fig.data_uri}' alt='{fig.alt}' />"
+            f"<figcaption>{fig.caption}</figcaption>"
+            f"</figure>"
+            for fig in d.figures
+        ) + "</div>"
+    else:
+        figs_html = "<p class='empty'>No figures produced by completed runs.</p>"
+
+    # Artifact inventory
+    if d.artifacts:
+        art_rows = "\n".join(
+            f"<tr><td>Run {a.run_id}</td><td>{_PIPELINE_DISPLAY_NAMES.get(a.pipeline_id, a.pipeline_id)}</td>"
+            f"<td><code>{a.type}</code></td><td>{a.label}</td></tr>"
+            for a in d.artifacts
+        )
+        artifacts_html = (
+            "<table class='data-table'>"
+            "<thead><tr><th>Run</th><th>Pipeline</th><th>Type</th><th>Label</th></tr></thead>"
+            f"<tbody>{art_rows}</tbody></table>"
+        )
+    else:
+        artifacts_html = "<p class='empty'>No resolved artifacts.</p>"
+
+    # Reproducibility checklist
+    repro_rows = [
+        ("Pass" if d.dataset_bids_version else "Review", "Dataset is BIDS-formatted"),
+        ("Pass" if d.dataset_validation_status == "valid" else "Review", "BIDS validation passed"),
+        ("Pass" if d.success_runs > 0 else "Not available", "At least one successful run"),
+        ("Pass" if all(r.container_image for r in d.runs) else "Review",
+         "All pipelines ran in containers (reproducible environment)"),
+        ("Pass" if d.citations else "Not available", "Software citations available"),
+        ("Pass", "Provenance logged (run IDs, parameters, timestamps)"),
+        ("Pass", "Report generated by NeuroForge with version tracking"),
+    ]
+    repro_html = "<ul class='repro-list'>" + "\n".join(
+        f"<li><span class='repro-icon'>{icon}</span> {text}</li>"
+        for icon, text in repro_rows
+    ) + "</ul>"
+
+    return {
+        "title": title,
+        "generated_at": d.generated_at[:19].replace("T", " ") + " UTC",
+        "neuroforge_version": d.neuroforge_version,
+        "git_commit": d.git_commit,
+        "report_id": d.report_id,
+        "dataset_id": d.dataset_id,
+        "ds_html": ds_html,
+        "run_cards_html": run_cards_html,
+        "pipeline_table_html": pipeline_table_html,
+        "methods_html": methods_html,
+        "alff_html": alff_html,
+        "reho_html": reho_html,
+        "sw_table_html": sw_table_html,
+        "citations_html": citations_html,
+        "warnings_html": warnings_html,
+        "figs_html": figs_html,
+        "artifacts_html": artifacts_html,
+        "repro_html": repro_html,
+    }
+
+
+
 def render_html(data: ReportData) -> str:
     """Render a self-contained HTML report."""
-    return _HTML_TEMPLATE.format(**_html_vars(data))
+    v = _html_vars(data)
+    sections = [
+        ("Dataset Summary", f'<div class="nf-table-wrap"><table><tbody>{v["ds_html"]}</tbody></table></div>'),
+        ("Analysis Timeline", f'<div class="stats-row">{v["run_cards_html"]}</div>'),
+        ("Pipeline Summary", v["pipeline_table_html"]),
+        ("Figures", v["figs_html"]),
+        ("ALFF / fALFF Analysis", v["alff_html"]),
+        ("Regional Homogeneity (ReHo)", v["reho_html"]),
+        ("Artifact Inventory", v["artifacts_html"]),
+        ("Methods", v["methods_html"]),
+        ("Software Versions", v["sw_table_html"]),
+        ("References", v["citations_html"]),
+        ("Warnings", v["warnings_html"]),
+        ("Reproducibility Checklist", v["repro_html"]),
+    ]
+    body = "".join(f"<section><h2>{title}</h2>{content}</section>" for title, content in sections)
+    subtitle = f'Generated {v["generated_at"]} · NeuroForge {v["neuroforge_version"]} · Report {v["report_id"]} · Dataset {v["dataset_id"]}'
+    return document_shell(f'Study Report — {v["title"]}', subtitle, body, footer_html=footer(f'Commit {v["git_commit"]}. No AI-generated scientific interpretation is included.'))
 
 
 def render_markdown(data: ReportData) -> str:
@@ -906,445 +1128,3 @@ def build_supplement_zip(data: ReportData, report_dir: Path) -> Path:
         zf.writestr("provenance.json", json.dumps(prov, indent=2, default=str))
 
     return zip_path
-
-
-# ── HTML template ─────────────────────────────────────────────────────────────
-
-def _html_vars(d: ReportData) -> dict[str, Any]:
-    """Build template substitution variables."""
-    title = d.dataset_name or (Path(d.dataset_path).name if d.dataset_path else "Dataset")
-
-    # Dataset summary rows
-    ds_rows = [
-        ("Name", d.dataset_name or "—"),
-        ("Path", d.dataset_path or "—"),
-        ("BIDS version", d.dataset_bids_version or "—"),
-        ("Validation", d.dataset_validation_status),
-        ("Subjects", str(len(d.dataset_subjects))),
-        ("Sessions", str(len(d.dataset_sessions)) if d.dataset_sessions else "—"),
-        ("Modalities", ", ".join(d.dataset_modalities) or "—"),
-        ("Total files", str(d.dataset_file_count)),
-        ("Imported", (d.dataset_imported_at or "")[:10] or "—"),
-    ]
-    ds_html = "\n".join(
-        f"<tr><td class='label'>{k}</td><td>{v}</td></tr>" for k, v in ds_rows
-    )
-
-    # Run status cards
-    run_cards_html = (
-        f'<div class="stat-card"><span class="stat-num">{d.total_runs}</span>'
-        f'<span class="stat-lbl">Total runs</span></div>'
-        f'<div class="stat-card success"><span class="stat-num">{d.success_runs}</span>'
-        f'<span class="stat-lbl">Successful</span></div>'
-        f'<div class="stat-card failed"><span class="stat-num">{d.failed_runs}</span>'
-        f'<span class="stat-lbl">Failed</span></div>'
-        f'<div class="stat-card"><span class="stat-num">{d.cancelled_runs}</span>'
-        f'<span class="stat-lbl">Cancelled</span></div>'
-    )
-
-    # Pipeline summary table
-    if d.runs:
-        pipeline_rows = "\n".join(
-            f"<tr>"
-            f"<td>{r.pipeline_display_name}</td>"
-            f"<td><code>{r.pipeline_version}</code></td>"
-            f"<td>{r.execution_type}</td>"
-            f"<td>{f'{r.runtime_seconds}s' if r.runtime_seconds is not None else '—'}</td>"
-            f"<td><span class='badge {r.status}'>{r.status}</span></td>"
-            f"<td>{r.artifact_count}</td>"
-            f"</tr>"
-            for r in d.runs
-        )
-        pipeline_table_html = (
-            "<table class='data-table'>"
-            "<thead><tr><th>Pipeline</th><th>Version</th><th>Execution</th>"
-            "<th>Runtime</th><th>Status</th><th>Artifacts</th></tr></thead>"
-            f"<tbody>{pipeline_rows}</tbody></table>"
-        )
-    else:
-        pipeline_table_html = "<p class='empty'>No runs recorded for this dataset.</p>"
-
-    # Methods sections
-    if d.methods_sections:
-        methods_html = "\n".join(
-            f"<div class='methods-section'>"
-            f"<h3>{sec['title']}</h3>"
-            f"<p>{sec['text']}</p>"
-            f"</div>"
-            for sec in d.methods_sections
-        )
-    else:
-        methods_html = "<p class='empty'>No pipeline runs recorded.</p>"
-
-    if d.alff_falff_sections:
-        alff_parts = []
-        for section in d.alff_falff_sections:
-            band = section.get("frequency_band", ["—", "—"])
-            rows = [
-                ("Run", f"#{section.get('run_id')}"), ("Frequency band", f"{band[0]}–{band[1]} Hz"),
-                ("TR", f"{section.get('tr', '—')} s"), ("Nyquist", f"{section.get('nyquist_frequency', '—')} Hz"),
-                ("Confounds", section.get("confound_strategy", "—")), ("Normalization", section.get("normalization", "—")),
-                ("Runtime", f"{section.get('runtime_seconds', '—')} s"), ("Mask voxels", section.get("mask_voxel_count", "—")),
-                ("ALFF statistics", json.dumps(section.get("alff_statistics", {}), sort_keys=True)),
-                ("fALFF statistics", json.dumps(section.get("falff_statistics", {}), sort_keys=True)),
-            ]
-            alff_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
-        alff_html = "".join(alff_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
-    else:
-        alff_html = "<p class='empty'>No ALFF/fALFF runs exist for this dataset.</p>"
-
-    if d.reho_sections:
-        reho_parts = []
-        for section in d.reho_sections:
-            rows = [
-                ("Run", f"#{section.get('run_id')}"),
-                ("Neighborhood", f"{section.get('neighborhood', '—')} voxels"),
-                ("Confounds", section.get("confound_strategy", "—")),
-                ("Detrend", str(section.get("detrend", "—"))),
-                ("Z-normalize", str(section.get("z_normalize", "—"))),
-                ("Runtime", f"{section.get('runtime_seconds', '—')} s"),
-                ("Mask voxels", str(section.get("mask_voxel_count", "—"))),
-                ("Valid voxels", str(section.get("valid_voxel_count", "—"))),
-                ("ReHo statistics", json.dumps(section.get("reho_statistics", {}), sort_keys=True)),
-            ]
-            reho_parts.append("<table class='data-table'><tbody>" + "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k,v in rows) + "</tbody></table>")
-        reho_html = "".join(reho_parts) + "<p>No clinical, biological, or inferential interpretation was generated.</p>"
-    else:
-        reho_html = "<p class='empty'>No Regional Homogeneity runs exist for this dataset.</p>"
-
-    # Software versions table
-    if d.software_table:
-        sw_rows = "\n".join(
-            f"<tr><td>{row['tool']}</td><td><code>{row['version']}</code></td>"
-            f"<td>{row['execution']}</td><td><code>{row['image']}</code></td></tr>"
-            for row in d.software_table
-        )
-        sw_table_html = (
-            "<table class='data-table'>"
-            "<thead><tr><th>Tool</th><th>Version</th><th>Execution</th><th>Image</th></tr></thead>"
-            f"<tbody>{sw_rows}</tbody></table>"
-        )
-    else:
-        sw_table_html = "<p class='empty'>No software version data.</p>"
-
-    # Citations
-    if d.citations:
-        citations_html = "<ol class='citation-list'>" + "\n".join(
-            f"<li><span class='cit-text'>{cit.apa}</span>"
-            f"<a class='doi-link' href='https://doi.org/{cit.doi}' target='_blank'>DOI</a>"
-            + (f"<span class='rrid'>RRID:{cit.rrid}</span>" if cit.rrid else "")
-            + "</li>"
-            for cit in d.citations
-        ) + "</ol>"
-    else:
-        citations_html = "<p class='empty'>No citations (no recognised pipelines run).</p>"
-
-    # Warnings
-    if d.warnings:
-        warnings_html = "<ul class='warnings'>" + "\n".join(
-            f"<li>⚠️ {w}</li>" for w in d.warnings
-        ) + "</ul>"
-    else:
-        warnings_html = "<p class='no-warnings'>✓ No warnings.</p>"
-
-    # Figures
-    if d.figures:
-        figs_html = "<div class='figures-grid'>" + "\n".join(
-            f"<figure>"
-            f"<img src='{fig.data_uri}' alt='{fig.alt}' />"
-            f"<figcaption>{fig.caption}</figcaption>"
-            f"</figure>"
-            for fig in d.figures
-        ) + "</div>"
-    else:
-        figs_html = "<p class='empty'>No figures produced by completed runs.</p>"
-
-    # Artifact inventory
-    if d.artifacts:
-        art_rows = "\n".join(
-            f"<tr><td>Run {a.run_id}</td><td>{_PIPELINE_DISPLAY_NAMES.get(a.pipeline_id, a.pipeline_id)}</td>"
-            f"<td><code>{a.type}</code></td><td>{a.label}</td></tr>"
-            for a in d.artifacts
-        )
-        artifacts_html = (
-            "<table class='data-table'>"
-            "<thead><tr><th>Run</th><th>Pipeline</th><th>Type</th><th>Label</th></tr></thead>"
-            f"<tbody>{art_rows}</tbody></table>"
-        )
-    else:
-        artifacts_html = "<p class='empty'>No resolved artifacts.</p>"
-
-    # Reproducibility checklist
-    repro_rows = [
-        ("✅" if d.dataset_bids_version else "⚠️", "Dataset is BIDS-formatted"),
-        ("✅" if d.dataset_validation_status == "valid" else "⚠️", "BIDS validation passed"),
-        ("✅" if d.success_runs > 0 else "—", "At least one successful run"),
-        ("✅" if all(r.container_image for r in d.runs) else "⚠️",
-         "All pipelines ran in containers (reproducible environment)"),
-        ("✅" if d.citations else "—", "Software citations available"),
-        ("✅", "Provenance logged (run IDs, parameters, timestamps)"),
-        ("✅", "Report generated by NeuroForge with version tracking"),
-    ]
-    repro_html = "<ul class='repro-list'>" + "\n".join(
-        f"<li><span class='repro-icon'>{icon}</span> {text}</li>"
-        for icon, text in repro_rows
-    ) + "</ul>"
-
-    return {
-        "title": title,
-        "generated_at": d.generated_at[:19].replace("T", " ") + " UTC",
-        "neuroforge_version": d.neuroforge_version,
-        "git_commit": d.git_commit,
-        "report_id": d.report_id,
-        "dataset_id": d.dataset_id,
-        "ds_html": ds_html,
-        "run_cards_html": run_cards_html,
-        "pipeline_table_html": pipeline_table_html,
-        "methods_html": methods_html,
-        "alff_html": alff_html,
-        "reho_html": reho_html,
-        "sw_table_html": sw_table_html,
-        "citations_html": citations_html,
-        "warnings_html": warnings_html,
-        "figs_html": figs_html,
-        "artifacts_html": artifacts_html,
-        "repro_html": repro_html,
-    }
-
-
-_HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Study Report — {title}</title>
-<style>
-/* ── Reset ── */
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-html {{ font-size: 16px; }}
-body {{
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  color: #1a1a2e;
-  background: #ffffff;
-  line-height: 1.6;
-}}
-
-/* ── Layout ── */
-.page {{ max-width: 900px; margin: 0 auto; padding: 48px 40px; }}
-
-/* ── Cover ── */
-.cover {{
-  border-bottom: 3px solid #5b4fcf;
-  padding-bottom: 32px;
-  margin-bottom: 40px;
-}}
-.cover h1 {{ font-size: 2rem; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }}
-.cover .subtitle {{ font-size: 1.1rem; color: #5b4fcf; font-weight: 500; margin-bottom: 24px; }}
-.cover-meta {{ display: flex; gap: 24px; flex-wrap: wrap; font-size: 0.85rem; color: #555; }}
-.cover-meta span {{ display: flex; align-items: center; gap: 6px; }}
-
-/* ── Section headers ── */
-h2 {{
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: #1a1a2e;
-  margin: 48px 0 16px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid #e8e8f0;
-}}
-h3 {{ font-size: 1.05rem; font-weight: 600; color: #2d2d4e; margin: 20px 0 8px; }}
-
-/* ── Tables ── */
-.data-table {{
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
-  margin-top: 12px;
-}}
-.data-table th {{
-  background: #f0eff8;
-  font-weight: 600;
-  text-align: left;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  color: #333;
-}}
-.data-table td {{
-  padding: 7px 12px;
-  border: 1px solid #e0e0e0;
-  vertical-align: top;
-}}
-.data-table tbody tr:nth-child(even) {{ background: #fafafa; }}
-.label {{ color: #555; font-weight: 500; white-space: nowrap; }}
-code {{ font-family: 'Courier New', monospace; font-size: 0.85em; background: #f3f3f8; padding: 2px 5px; border-radius: 3px; }}
-
-/* ── Stat cards ── */
-.stats-row {{ display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }}
-.stat-card {{
-  flex: 1; min-width: 120px;
-  background: #f5f5fb;
-  border: 1px solid #e0e0ef;
-  border-radius: 8px;
-  padding: 16px;
-  text-align: center;
-}}
-.stat-card.success {{ border-color: #22c55e; background: #f0fdf4; }}
-.stat-card.failed {{ border-color: #ef4444; background: #fef2f2; }}
-.stat-num {{ display: block; font-size: 2rem; font-weight: 700; color: #1a1a2e; }}
-.stat-lbl {{ display: block; font-size: 0.78rem; color: #666; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }}
-
-/* ── Badges ── */
-.badge {{
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.8em;
-  font-weight: 600;
-  text-transform: uppercase;
-}}
-.badge.success {{ background: #dcfce7; color: #166534; }}
-.badge.failed {{ background: #fee2e2; color: #991b1b; }}
-.badge.running {{ background: #dbeafe; color: #1e40af; }}
-.badge.pending {{ background: #fef3c7; color: #92400e; }}
-.badge.cancelled {{ background: #f3f4f6; color: #374151; }}
-
-/* ── Methods ── */
-.methods-section {{ margin-bottom: 20px; }}
-.methods-section p {{ color: #333; }}
-
-/* ── Citations ── */
-.citation-list {{ padding-left: 20px; font-size: 0.88rem; }}
-.citation-list li {{ margin-bottom: 10px; }}
-.cit-text {{ color: #333; }}
-.doi-link {{ margin-left: 8px; color: #5b4fcf; font-size: 0.85em; }}
-.rrid {{ margin-left: 8px; font-size: 0.8em; color: #888; }}
-
-/* ── Warnings ── */
-.warnings {{ list-style: none; padding: 0; }}
-.warnings li {{ background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; color: #78350f; }}
-.no-warnings {{ color: #166534; }}
-
-/* ── Figures ── */
-.figures-grid {{ display: flex; flex-wrap: wrap; gap: 20px; margin-top: 16px; }}
-figure {{ flex: 1; min-width: 280px; max-width: 420px; }}
-figure img {{ width: 100%; border-radius: 6px; border: 1px solid #e0e0e0; }}
-figcaption {{ font-size: 0.82rem; color: #666; margin-top: 6px; text-align: center; }}
-
-/* ── Repro checklist ── */
-.repro-list {{ list-style: none; padding: 0; }}
-.repro-list li {{ display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 0.9rem; border-bottom: 1px solid #f0f0f0; }}
-.repro-icon {{ font-size: 1.1em; min-width: 24px; }}
-
-/* ── Footer ── */
-.footer {{
-  margin-top: 60px;
-  padding-top: 20px;
-  border-top: 1px solid #e0e0e0;
-  font-size: 0.8rem;
-  color: #888;
-  text-align: center;
-}}
-
-.empty {{ color: #999; font-style: italic; margin-top: 8px; }}
-
-/* ── Print styles ── */
-@media print {{
-  body {{ color: #000; }}
-  .cover {{ border-color: #000; }}
-  h2 {{ border-color: #ccc; color: #000; }}
-  .stat-card {{ border: 1px solid #ccc; background: #fff; }}
-  .data-table th {{ background: #f5f5f5; }}
-  a {{ color: #000; text-decoration: underline; }}
-  .no-print {{ display: none !important; }}
-  @page {{ margin: 2cm; }}
-  h2 {{ page-break-before: always; }}
-  h2:first-of-type {{ page-break-before: auto; }}
-}}
-</style>
-</head>
-<body>
-<div class="page">
-
-<!-- Cover -->
-<div class="cover">
-  <h1>{title}</h1>
-  <div class="subtitle">NeuroForge Study Report</div>
-  <div class="cover-meta">
-    <span>Generated: {generated_at}</span>
-    <span>NeuroForge {neuroforge_version}</span>
-    <span>Commit: {git_commit}</span>
-    <span>Report #{report_id} · Dataset #{dataset_id}</span>
-  </div>
-</div>
-
-<!-- Dataset Summary -->
-<h2>Dataset Summary</h2>
-<table class="data-table">
-  <tbody>
-    {ds_html}
-  </tbody>
-</table>
-
-<!-- Analysis Timeline -->
-<h2>Analysis Timeline</h2>
-<div class="stats-row">
-  {run_cards_html}
-</div>
-
-<!-- Pipeline Summary -->
-<h2>Pipeline Summary</h2>
-{pipeline_table_html}
-
-<!-- Figures -->
-<h2>Figures</h2>
-{figs_html}
-
-<!-- ALFF/fALFF -->
-<h2>ALFF / fALFF Analysis</h2>
-{alff_html}
-
-<!-- Regional Homogeneity -->
-<h2>Regional Homogeneity (ReHo)</h2>
-{reho_html}
-
-<!-- Artifact Inventory -->
-<h2>Artifact Inventory</h2>
-{artifacts_html}
-
-<!-- Methods -->
-<h2>Methods</h2>
-{methods_html}
-
-<!-- Software Versions -->
-<h2>Software Versions</h2>
-{sw_table_html}
-
-<!-- References -->
-<h2>References</h2>
-{citations_html}
-
-<!-- Warnings -->
-<h2>Warnings</h2>
-{warnings_html}
-
-<!-- Reproducibility Checklist -->
-<h2>Reproducibility Checklist</h2>
-{repro_html}
-
-<!-- Footer -->
-<div class="footer">
-  <p>
-    This report was generated automatically by
-    <strong>NeuroForge {neuroforge_version}</strong>
-    (commit: <code>{git_commit}</code>) on {generated_at}.
-    No AI-generated scientific interpretation is included.
-    All values are derived exclusively from recorded pipeline outputs.
-  </p>
-  <p style="margin-top:6px">
-    Report ID: {report_id} · Dataset ID: {dataset_id}
-  </p>
-</div>
-
-</div><!-- /page -->
-</body>
-</html>"""

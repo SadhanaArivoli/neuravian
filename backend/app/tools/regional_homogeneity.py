@@ -36,6 +36,7 @@ import numpy as np
 import scipy
 from scipy import ndimage, stats
 
+from app.reporting import citation_block, document_shell, figure_block, footer, info_box, key_value_table, methods_block
 from app.tools.bids_utils import bids_entity as _entity, find_matching_confounds as _matching_confounds
 from app.tools.confounds import select_confounds
 
@@ -311,36 +312,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     (out / "reho_metadata.json").write_text(json.dumps(metadata, indent=2))
 
-    _hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path"}
-    rows = "".join(
-        f"<tr><th>{html.escape(str(k))}</th><td>{html.escape(str(v))}</td></tr>"
-        for k, v in metadata.items()
-        if k not in _hidden
-    )
+    hidden = {"command", "source_bold_path", "source_mask_path", "source_confounds_path", "citations"}
     norm_section = (
         "<p>Z-score normalized map also saved as <code>reho_normalized_map.nii.gz</code>.</p>"
         if args.z_normalize else ""
     )
-    report_html = f"""<!doctype html><html><head><meta charset='utf-8'>
-<title>Regional Homogeneity (ReHo) Report</title>
-<style>body{{font:15px system-ui;max-width:900px;margin:auto;padding:2rem}}
-th{{text-align:left;width:14rem}}td,th{{padding:.4rem;border-bottom:1px solid #ddd}}
-img{{max-width:100%}}</style></head><body>
-<h1>Regional Homogeneity (ReHo)</h1>
-<p>Descriptive resting-state map; no clinical or biological interpretation is inferred.</p>
-<p>KCC W ranges from 0 (no agreement among neighbors) to 1 (perfect temporal rank agreement).
-Neighborhood: {metadata['neighborhood_label']} · Timepoints: {T} · Valid voxels: {valid_mask.sum():,}</p>
-{norm_section}
-<h2>Parameters</h2><table>{rows}</table>
-<h2>ReHo Distribution</h2><img src='reho_histogram.png'>
-<h2>Method</h2>
-<p>At each brain voxel, the timeseries of the voxel and its {K-1} spatial neighbors were
-rank-transformed independently. Kendall's Coefficient of Concordance (W) was computed as
-W = 12·S / [K²·(T³−T)], where S is the sum of squared deviations of per-timepoint rank
-sums from their mean (Zang et al. 2004). Only voxels with a complete {neighborhood}-voxel
-neighborhood within the brain mask were retained.</p>
-</body></html>"""
-    (out / "reho_report.html").write_text(report_html)
+    body = (
+        "<p>Descriptive resting-state map; no clinical or biological interpretation is inferred.</p>"
+        + info_box("How to read ReHo", f"KCC W ranges from 0 (no agreement among neighbors) to 1 (perfect temporal rank agreement). Neighborhood: {metadata['neighborhood_label']}; timepoints: {T}; valid voxels: {valid_mask.sum():,}.")
+        + norm_section + "<h2>Parameters and provenance</h2>"
+        + key_value_table((k, v) for k, v in metadata.items() if k not in hidden)
+        + "<h2>ReHo distribution</h2>"
+        + figure_block("reho_histogram.png", "ReHo distribution", "Distribution of Kendall's coefficient of concordance within the valid mask.")
+        + methods_block(f"At each brain voxel, the time series of the voxel and its {K-1} spatial neighbors were rank-transformed independently. Kendall's Coefficient of Concordance was computed as W = 12 S / [K squared times (T cubed minus T)]. Only voxels with a complete {neighborhood}-voxel neighborhood within the brain mask were retained.")
+        + citation_block(metadata["citations"])
+    )
+    (out / "reho_report.html").write_text(document_shell("Regional Homogeneity (ReHo)", "Descriptive local synchrony report", body, footer_html=footer()), encoding="utf-8")
 
     return metadata
 

@@ -162,7 +162,7 @@ function PreviewPanel({
           <iframe
             src={fileUrl}
             title={artifact.label}
-            className="h-[600px] w-full rounded border border-white/10 bg-white"
+            className="h-[min(75vh,900px)] min-h-[600px] w-full rounded border border-white/10 bg-[#090d18] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
             sandbox="allow-scripts allow-same-origin"
           />
         )}

@@ -38,6 +38,8 @@ import nibabel as nib
 import numpy as np
 from scipy import ndimage
 
+from app.reporting import data_table, document_shell, figure_block, footer, info_box, methods_block, statistics_cards, warning_box
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 NEUROFORGE_VERSION = "0.1.0"
@@ -60,128 +62,6 @@ _COLORMAPS = {
     "plasma": "plasma",
     "bwr": "bwr",
 }
-
-_HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Cluster Report — {dataset_name}</title>
-<style>
-*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-html{{font-size:16px}}
-body{{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff;line-height:1.6}}
-.page{{max-width:900px;margin:0 auto;padding:48px 40px}}
-.cover{{border-bottom:3px solid #5b4fcf;padding-bottom:32px;margin-bottom:40px}}
-.cover h1{{font-size:2rem;font-weight:700;color:#1a1a2e;margin-bottom:8px}}
-.cover .subtitle{{font-size:1.1rem;color:#5b4fcf;font-weight:500;margin-bottom:24px}}
-.cover-meta{{display:flex;gap:24px;flex-wrap:wrap;font-size:.85rem;color:#555}}
-.cover-meta span{{display:flex;align-items:center;gap:6px}}
-h2{{font-size:1.3rem;font-weight:700;color:#1a1a2e;margin:48px 0 16px;
-    padding-bottom:6px;border-bottom:2px solid #e8e8f0}}
-h3{{font-size:1.05rem;font-weight:600;color:#333;margin:24px 0 10px}}
-table{{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:12px}}
-th{{background:#f4f4f8;text-align:left;padding:8px 12px;font-weight:600;
-    color:#444;border-bottom:2px solid #ddd}}
-td{{padding:7px 12px;border-bottom:1px solid #eee;color:#333;font-family:monospace}}
-tr:nth-child(even){{background:#fafafa}}
-.stat-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin:16px 0}}
-.stat-card{{background:#f8f8fc;border:1px solid #e0e0f0;border-radius:8px;padding:16px}}
-.stat-card .val{{font-size:1.6rem;font-weight:700;color:#5b4fcf;font-family:monospace}}
-.stat-card .lbl{{font-size:.75rem;color:#777;margin-top:4px}}
-.fig{{text-align:center;margin:24px 0}}
-.fig img{{max-width:100%;border:1px solid #e8e8f0;border-radius:4px}}
-.fig figcaption{{font-size:.8rem;color:#777;margin-top:8px;font-style:italic}}
-.info-box{{background:#f0f4ff;border:1px solid #d0d8ff;border-radius:6px;padding:16px;
-           font-size:.85rem;color:#444;margin:16px 0}}
-.footer{{margin-top:48px;padding-top:16px;border-top:1px solid #eee;
-         font-size:.75rem;color:#888}}
-@media print{{
-  body{{font-size:11pt}}
-  .page{{padding:24px}}
-  h2{{page-break-before:always}}
-  h2:first-of-type{{page-break-before:avoid}}
-}}
-</style>
-</head>
-<body>
-<div class="page">
-<div class="cover">
-  <h1>Cluster Analysis Report</h1>
-  <div class="subtitle">Statistical Map Explorer</div>
-  <div class="cover-meta">
-    <span>🗂 {input_filename}</span>
-    <span>📅 {generated_at}</span>
-    <span>🔬 NeuroForge {neuroforge_version}</span>
-  </div>
-</div>
-
-<h2>Summary</h2>
-<div class="stat-grid">
-  <div class="stat-card"><div class="val">{n_clusters}</div><div class="lbl">Clusters detected</div></div>
-  <div class="stat-card"><div class="val">{threshold}</div><div class="lbl">Threshold (|z|)</div></div>
-  <div class="stat-card"><div class="val">{direction_label}</div><div class="lbl">Direction</div></div>
-  <div class="stat-card"><div class="val">{min_cluster_size}</div><div class="lbl">Min cluster size (voxels)</div></div>
-  <div class="stat-card"><div class="val">{largest_cluster}</div><div class="lbl">Largest cluster (voxels)</div></div>
-  <div class="stat-card"><div class="val">{peak_stat}</div><div class="lbl">Peak statistic</div></div>
-</div>
-
-<h2>Cluster Overlay</h2>
-<figure class="fig">
-  <img src="cluster_overlay.png" alt="Cluster overlay mosaic"/>
-  <figcaption>
-    Thresholded statistical map overlaid on brain template.
-    Threshold = {threshold} · Direction = {direction_label} · Color map = {colormap}
-  </figcaption>
-</figure>
-
-<h2>Cluster Table</h2>
-<div class="info-box">
-  Clusters are ordered by size (largest first). Coordinates are in millimetres (mm)
-  derived from the NIfTI affine transform. Peak: voxel with the maximum absolute value.
-  CoM: intensity-weighted center of mass.
-</div>
-<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:0.75em 1em;margin:0.75em 0;font-size:.88em;color:#664d03;">
-  <strong>&#9888; Descriptive results only.</strong>
-  Cluster sizes, peak values, and MNI coordinates reported here are <em>not</em> corrected
-  for multiple comparisons. No family-wise error (FWE), false discovery rate (FDR), or
-  permutation-based inference was applied. Do not interpret these values as statistically
-  significant without applying appropriate correction in your analysis.
-</div>
-{cluster_table_html}
-
-<h2>Methods</h2>
-<p>
-  Statistical thresholding was applied at |value| &ge; {threshold} ({direction_label}).
-  Contiguous voxel clusters were identified using 6-connectivity (face-adjacent)
-  connected-component labelling (scipy.ndimage {scipy_version}).
-  Clusters smaller than {min_cluster_size} voxels were discarded.
-  Voxel-to-millimetre coordinate conversion used the NIfTI affine matrix
-  (nibabel {nibabel_version}).
-  No inferential statistics, random field theory, or permutation testing were applied.
-</p>
-
-<h2>Software</h2>
-<table>
-  <tr><th>Package</th><th>Version</th><th>Role</th></tr>
-  <tr><td>nibabel</td><td>{nibabel_version}</td><td>NIfTI I/O and affine handling</td></tr>
-  <tr><td>scipy</td><td>{scipy_version}</td><td>Connected-component labelling</td></tr>
-  <tr><td>numpy</td><td>{numpy_version}</td><td>Array operations</td></tr>
-  <tr><td>matplotlib</td><td>{matplotlib_version}</td><td>Cluster overlay figure</td></tr>
-  <tr><td>NeuroForge</td><td>{neuroforge_version}</td><td>Orchestration and reporting</td></tr>
-</table>
-
-<div class="footer">
-  Generated by NeuroForge {neuroforge_version} Statistical Map Explorer.
-  No AI-generated scientific interpretation is included.
-  All values are derived exclusively from the input NIfTI data.
-</div>
-</div>
-</body>
-</html>
-"""
-
 
 # ── Thresholding ──────────────────────────────────────────────────────────────
 
@@ -464,24 +344,15 @@ def render_html_report(
     largest = max((c["size_voxels"] for c in clusters), default=0)
     peak = max((abs(c["peak_value"]) for c in clusters), default=0.0)
 
-    html = _HTML_TEMPLATE.format(
-        dataset_name=metadata.get("input_filename", "unknown"),
-        input_filename=metadata.get("input_filename", "unknown"),
-        generated_at=metadata.get("generated_at", ""),
-        neuroforge_version=NEUROFORGE_VERSION,
-        n_clusters=n,
-        threshold=metadata.get("threshold", ""),
-        direction_label=metadata.get("direction", ""),
-        min_cluster_size=metadata.get("min_cluster_size", ""),
-        largest_cluster=largest,
-        peak_stat=f"{peak:.3f}",
-        colormap=metadata.get("colormap", "hot"),
-        cluster_table_html=_cluster_table_html(clusters),
-        scipy_version=scipy.__version__,
-        nibabel_version=metadata.get("nibabel_version", ""),
-        numpy_version=np.__version__,
-        matplotlib_version=_mpl.__version__,
-    )
+    table_rows = ([c["cluster_id"], c["size_voxels"], f'{c["peak_value"]:.3f}', f'{c["mean_value"]:.3f}', f'{c["peak_x_mm"]:.1f}', f'{c["peak_y_mm"]:.1f}', f'{c["peak_z_mm"]:.1f}', f'{c["com_x_mm"]:.1f}, {c["com_y_mm"]:.1f}, {c["com_z_mm"]:.1f}'] for c in clusters)
+    body = statistics_cards({"Clusters detected": n, "Threshold": metadata.get("threshold", ""), "Direction": metadata.get("direction", ""), "Min cluster size": metadata.get("min_cluster_size", ""), "Largest cluster": largest, "Peak statistic": f"{peak:.3f}"})
+    body += "<h2>Cluster overlay</h2>" + figure_block("cluster_overlay.png", "Cluster overlay mosaic", f"Thresholded map; color map {metadata.get('colormap', 'hot')}.")
+    body += "<h2>Cluster table</h2>" + info_box("Coordinate conventions", "Clusters are ordered by size. Coordinates are derived from the NIfTI affine in millimetres. Center of mass is intensity weighted.")
+    body += warning_box("Descriptive results only", "Cluster values are not corrected for multiple comparisons. No FWE, FDR, or permutation inference was applied.")
+    body += data_table(["Cluster", "Size", "Peak", "Mean", "X (mm)", "Y (mm)", "Z (mm)", "Center of mass (mm)"], table_rows) if clusters else "<p class=\"nf-muted\">No clusters detected above threshold.</p>"
+    body += methods_block(f"Thresholding used {metadata.get('direction', '')} values at {metadata.get('threshold', '')}. Clusters smaller than {metadata.get('min_cluster_size', '')} voxels were discarded using 6-connectivity in scipy.ndimage {scipy.__version__}. Coordinates used the NIfTI affine with nibabel {metadata.get('nibabel_version', '')}.")
+    body += "<h2>Software</h2>" + data_table(["Package", "Version", "Role"], [["nibabel", metadata.get("nibabel_version", ""), "NIfTI I/O"], ["scipy", scipy.__version__, "Connected components"], ["numpy", np.__version__, "Array operations"], ["matplotlib", _mpl.__version__, "Overlay figure"], ["NeuroForge", NEUROFORGE_VERSION, "Orchestration and reporting"]])
+    html = document_shell("Cluster Analysis Report", f"Statistical Map Explorer · {metadata.get('input_filename', 'input artifact')}", body, footer_html=footer("No AI-generated scientific interpretation is included."))
     out_path.write_text(html, encoding="utf-8")
 
 

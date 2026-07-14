@@ -31,6 +31,8 @@ plt.style.use("dark_background")
 import nibabel as nib
 import numpy as np
 
+from app.reporting import document_shell, figure_block, footer, info_box, key_value_table, metadata_grid, warning_box
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 _NIFTI_DTYPES = {
@@ -356,109 +358,17 @@ def _write_html_report(
             return f"{v:.{decimals}g}"
         return str(v)
 
-    def severity_color(s: str) -> str:
-        return {"error": "#dc2626", "warning": "#d97706"}.get(s, "#374151")
-
-    warn_html = ""
-    if warnings:
-        items = "".join(
-            f"""<li style="color:{severity_color(w['severity'])};margin:4px 0">
-                <strong>{w['severity'].upper()}</strong>: {w['message']}
-               </li>"""
-            for w in warnings
-        )
-        warn_html = f"""
-        <div style="background:#fef9c3;border:1px solid #fde047;padding:12px 16px;
-                    border-radius:6px;margin-bottom:20px">
-          <strong>Warnings ({len(warnings)})</strong>
-          <ul style="margin:8px 0 0 18px;padding:0">{items}</ul>
-        </div>"""
-    else:
-        warn_html = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:6px;margin-bottom:20px;color:#166534"><strong>✓ No warnings detected</strong></div>'
-
-    def header_row(label: str, value: Any) -> str:
-        return f"<tr><th style='text-align:left;padding:5px 10px;background:#f8fafc'>{label}</th><td style='padding:5px 10px;font-family:monospace'>{fmt(value)}</td></tr>"
-
-    header_table = "".join([
-        header_row("Dimensions", hdr.get("dimensions")),
-        header_row("Volumes", hdr.get("n_volumes")),
-        header_row("Voxel spacing (mm)", hdr.get("voxel_spacing_mm")),
-        header_row("TR (seconds)", hdr.get("tr_seconds")),
-        header_row("Datatype", f"{hdr.get('datatype')} (code {hdr.get('datatype_code')}, {hdr.get('bitpix')}bit)"),
-        header_row("Endianness", hdr.get("endianness")),
-        header_row("Orientation", hdr.get("orientation")),
-        header_row("qform", f"{hdr.get('qform_code')} ({hdr.get('qform_name')})"),
-        header_row("sform", f"{hdr.get('sform_code')} ({hdr.get('sform_name')})"),
-        header_row("Intent", f"{hdr.get('intent_name')} (code {hdr.get('intent_code')})"),
-        header_row("NIfTI version", hdr.get("header_version")),
-        header_row("Total voxels", f"{hdr.get('voxel_count', 0):,}"),
-    ])
-
-    def stats_row(label: str, value: Any, decimals: int = 4) -> str:
-        return f"<tr><th style='text-align:left;padding:5px 10px;background:#f8fafc'>{label}</th><td style='padding:5px 10px;font-family:monospace'>{fmt(value, decimals)}</td></tr>"
-
-    stats_table = "".join([
-        stats_row("Min", stats.get("min")),
-        stats_row("Max", stats.get("max")),
-        stats_row("Mean", stats.get("mean")),
-        stats_row("Median", stats.get("median")),
-        stats_row("Std dev", stats.get("std")),
-        stats_row("5th percentile", stats.get("p5")),
-        stats_row("95th percentile", stats.get("p95")),
-        stats_row("Dynamic range", stats.get("dynamic_range")),
-        stats_row("Non-zero voxels", f"{stats.get('nonzero_count', 0):,} ({stats.get('nonzero_pct', 0):.2f}%)" if stats.get('nonzero_count') is not None else "n/a", 0),
-        stats_row("Background", f"{stats.get('background_pct', 0):.2f}%"),
-        stats_row("NaN count", stats.get("nan_count", 0), 0),
-        stats_row("Inf count", stats.get("inf_count", 0), 0),
-    ])
-
     input_file = result.get("input_file", "unknown")
     file_size = result.get("file_size_bytes", 0)
     file_size_fmt = f"{file_size / 1024:.1f} KB" if file_size < 1024 * 1024 else f"{file_size / 1024 / 1024:.2f} MB"
 
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <title>NIfTI Inspector Report</title>
-  <style>
-    body{{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1f2937}}
-    h1{{font-size:1.4rem;border-bottom:2px solid #e5e7eb;padding-bottom:10px}}
-    h2{{font-size:1.05rem;color:#374151;margin-top:28px}}
-    table{{border-collapse:collapse;width:100%;margin-bottom:16px}}
-    th{{font-weight:600}}
-    td,th{{border-top:1px solid #e5e7eb}}
-    img{{max-width:100%;border:1px solid #e5e7eb;border-radius:6px;margin-top:8px}}
-    code{{background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:13px}}
-  </style>
-</head>
-<body>
-  <h1>NIfTI Inspector Report</h1>
-  <p style="color:#6b7280;font-size:13px;margin-bottom:16px">
-    <strong>File:</strong> <code>{input_file}</code><br/>
-    <strong>Size:</strong> {file_size_fmt} &nbsp;&nbsp;
-    <strong>nibabel:</strong> {provenance.get('nibabel_version', '?')} &nbsp;&nbsp;
-    <strong>Header hash:</strong> <code>{provenance.get('header_hash', '?')[:16]}…</code>
-  </p>
-
-  {warn_html}
-
-  <h2>Header metadata</h2>
-  <table>{header_table}</table>
-
-  <h2>Image statistics</h2>
-  <table>{stats_table}</table>
-
-  <h2>Intensity histogram</h2>
-  <img src="nifti_histogram.png" alt="Intensity histogram" />
-
-  <p style="color:#9ca3af;font-size:11px;margin-top:32px">
-    Generated by NeuroForge NIfTI Inspector. Read-only analysis — no data were modified.
-    Histogram excludes voxels outside the 5th–95th percentile range for clarity.
-  </p>
-</body>
-</html>"""
-    output_path.write_text(html)
+    notices = "".join(warning_box(w["severity"].title(), w["message"]) for w in warnings) if warnings else info_box("Header checks", "No warnings detected.")
+    header_rows = [("Dimensions", hdr.get("dimensions")), ("Volumes", hdr.get("n_volumes")), ("Voxel spacing (mm)", hdr.get("voxel_spacing_mm")), ("TR (seconds)", hdr.get("tr_seconds")), ("Datatype", f"{hdr.get('datatype')} (code {hdr.get('datatype_code')}, {hdr.get('bitpix')} bit)"), ("Endianness", hdr.get("endianness")), ("Orientation", hdr.get("orientation")), ("qform", f"{hdr.get('qform_code')} ({hdr.get('qform_name')})"), ("sform", f"{hdr.get('sform_code')} ({hdr.get('sform_name')})"), ("Intent", f"{hdr.get('intent_name')} (code {hdr.get('intent_code')})"), ("NIfTI version", hdr.get("header_version")), ("Total voxels", f"{hdr.get('voxel_count', 0):,}")]
+    stats_rows = [("Min", fmt(stats.get("min"))), ("Max", fmt(stats.get("max"))), ("Mean", fmt(stats.get("mean"))), ("Median", fmt(stats.get("median"))), ("Std dev", fmt(stats.get("std"))), ("5th percentile", fmt(stats.get("p5"))), ("95th percentile", fmt(stats.get("p95"))), ("Dynamic range", fmt(stats.get("dynamic_range"))), ("Non-zero voxels", f"{stats.get('nonzero_count', 0):,} ({stats.get('nonzero_pct', 0):.2f}%)"), ("Background", f"{stats.get('background_pct', 0):.2f}%"), ("NaN count", stats.get("nan_count", 0)), ("Inf count", stats.get("inf_count", 0))]
+    body = metadata_grid({"File": Path(str(input_file)).name, "Size": file_size_fmt, "Nibabel": provenance.get("nibabel_version", "?"), "Header hash": f"{provenance.get('header_hash', '?')[:16]}…"}) + notices
+    body += "<h2>Header metadata</h2>" + key_value_table(header_rows) + "<h2>Image statistics</h2>" + key_value_table(stats_rows)
+    body += "<h2>Intensity histogram</h2>" + figure_block("nifti_histogram.png", "Intensity histogram", "Histogram excludes voxels outside the 5th–95th percentile range for clarity.")
+    output_path.write_text(document_shell("NIfTI Inspector Report", "Read-only header and image statistics", body, footer_html=footer("Read-only analysis; no image data were modified.")), encoding="utf-8")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

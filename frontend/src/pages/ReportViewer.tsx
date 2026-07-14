@@ -101,7 +101,7 @@ function HtmlTab({ datasetId, reportId }: { datasetId: number; reportId: number 
       <iframe
         id="report-iframe"
         src={src}
-        className="flex-1 w-full rounded-lg border border-white/8"
+        className="flex-1 w-full rounded-lg border border-white/8 bg-[#090d18] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
         title="Study Report"
       />
     </div>

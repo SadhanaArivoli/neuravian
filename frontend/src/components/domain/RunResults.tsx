@@ -2629,7 +2629,7 @@ export default function RunResults({ runId }: Props) {
               key={reportUrl}
               src={reportUrl}
               title={currentReport?.name ?? "MRIQC report"}
-              className="w-full border-0"
+              className="w-full border-0 bg-[#090d18] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
               style={{ height: "75vh" }}
             />
           )}
