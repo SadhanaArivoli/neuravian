@@ -16,7 +16,10 @@ function runner(failure: "docker" | "daemon" | "compose" | undefined): CommandRu
 }
 
 async function expectKind(failure: Parameters<typeof runner>[0], kind: SystemCheckError["kind"]): Promise<void> {
-  await expect(runSystemChecks(root, { command: runner(failure), portAvailable: async () => true }))
+  await expect(runSystemChecks(root, {
+    command: runner(failure), portAvailable: async () => true,
+    resolveDocker: async () => failure === "docker" ? undefined : "/usr/local/bin/docker",
+  }))
     .rejects.toMatchObject({ kind });
 }
 
@@ -25,15 +28,42 @@ describe("system checks", () => {
   it("reports a stopped Docker daemon", async () => await expectKind("daemon", "docker-stopped"));
   it("reports Docker Compose missing", async () => await expectKind("compose", "compose-missing"));
 
+  it.each([
+    ["daemon", "docker-stopped", undefined],
+    ["compose", "compose-missing", "unavailable"],
+  ] as const)("preserves resolved Docker diagnostics when %s fails", async (failure, kind, composeVersion) => {
+    let error: SystemCheckError | undefined;
+    try {
+      await runSystemChecks(root, {
+        command: runner(failure), portAvailable: async () => true,
+        resolveDocker: async () => "/usr/local/bin/docker",
+      });
+    } catch (caught) {
+      error = caught as SystemCheckError;
+    }
+    expect(error).toMatchObject({ kind, facts: { dockerPath: "/usr/local/bin/docker", dockerVersion: "Docker version 27" } });
+    expect(error?.facts?.composeVersion).toBe(composeVersion);
+  });
+
   it("records occupied ports for warm-stack detection", async () => {
-    const facts = await runSystemChecks(root, { command: runner(undefined), portAvailable: async (port) => port !== 8000 });
+    const facts = await runSystemChecks(root, {
+      command: runner(undefined), portAvailable: async (port) => port !== 8000,
+      resolveDocker: async () => "/usr/local/bin/docker",
+    });
     expect(facts.occupiedPorts).toEqual([8000]);
   });
 
   it("returns local system facts when every check passes", async () => {
-    const facts = await runSystemChecks(root, { command: runner(undefined), portAvailable: async () => true });
+    const command = runner(undefined);
+    const facts = await runSystemChecks(root, {
+      command, portAvailable: async () => true, resolveDocker: async () => "/usr/local/bin/docker",
+    });
     expect(facts.dockerVersion).toContain("Docker version");
+    expect(facts.dockerPath).toBe("/usr/local/bin/docker");
     expect(facts.composeVersion).toContain("Compose");
+    expect(vi.mocked(command).mock.calls.filter((call) => call[1][0] === "--version")[0]?.[0]).toBe("/usr/local/bin/docker");
+    expect(vi.mocked(command).mock.calls.filter((call) => call[1][0] === "info")[0]?.[0]).toBe("/usr/local/bin/docker");
+    expect(vi.mocked(command).mock.calls.filter((call) => call[1][0] === "compose")[0]?.[0]).toBe("/usr/local/bin/docker");
     expect(facts.memoryGiB).toBeGreaterThan(0);
     expect(facts.diskAvailableGiB).toBeGreaterThan(0);
     expect(facts.occupiedPorts).toEqual([]);

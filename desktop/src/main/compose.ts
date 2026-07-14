@@ -18,19 +18,28 @@ export class DesktopCompose {
   constructor(
     readonly repositoryRoot: string,
     private readonly command = runCommand,
+    private dockerPath?: string,
   ) {}
 
   get ownsServices(): boolean { return this.ownership === "owned"; }
   get serviceOwnership(): "none" | "owned" | "external" { return this.ownership; }
 
   attachExternal(): void { this.ownership = "external"; }
+  setDockerPath(dockerPath: string): void { this.dockerPath = dockerPath; }
+
+  private dockerCommand(): string {
+    if (!this.dockerPath || !path.isAbsolute(this.dockerPath)) {
+      throw new Error("The absolute Docker CLI path must be resolved before running Compose.");
+    }
+    return this.dockerPath;
+  }
 
   private environment(): NodeJS.ProcessEnv {
     return { ...process.env, HOST_UID: String(process.getuid?.() ?? 0), HOST_GID: String(process.getgid?.() ?? 0) };
   }
 
   async start(): Promise<CommandResult> {
-    const result = await this.command("docker", [...composeArguments(this.repositoryRoot), "up", "--build", "--detach"], {
+    const result = await this.command(this.dockerCommand(), [...composeArguments(this.repositoryRoot), "up", "--build", "--detach"], {
       cwd: this.repositoryRoot,
       env: this.environment(),
       timeoutMs: STARTUP_TIMEOUTS.composeStartMs,
@@ -41,7 +50,7 @@ export class DesktopCompose {
 
   async stop(): Promise<CommandResult | undefined> {
     if (!this.ownsServices) return undefined;
-    const result = await this.command("docker", [...composeArguments(this.repositoryRoot), "stop"], {
+    const result = await this.command(this.dockerCommand(), [...composeArguments(this.repositoryRoot), "stop"], {
       cwd: this.repositoryRoot,
       env: this.environment(),
       timeoutMs: 2 * 60_000,
@@ -51,7 +60,7 @@ export class DesktopCompose {
   }
 
   async logs(): Promise<string> {
-    const result = await this.command("docker", [...composeArguments(this.repositoryRoot), "logs", "--tail", "120"], {
+    const result = await this.command(this.dockerCommand(), [...composeArguments(this.repositoryRoot), "logs", "--tail", "120"], {
       cwd: this.repositoryRoot,
       env: this.environment(),
       timeoutMs: 20_000,

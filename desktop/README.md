@@ -15,6 +15,14 @@ Docker is not installed automatically. If it is missing or stopped, the startup
 shell explains the problem, links to Docker Desktop's official macOS installation
 page, and keeps the Retry and privacy controls available.
 
+Finder-launched macOS applications do not reliably inherit the user's shell
+`PATH`. The launcher therefore resolves Docker once, stores its absolute path,
+and uses that path for every version, daemon, Compose, start, stop, and log
+command. Discovery checks the inherited `PATH`, `/usr/local/bin/docker`,
+`/opt/homebrew/bin/docker`, the Docker Desktop application binary,
+`/usr/bin/which docker`, and finally a login-zsh lookup, in that order. The
+sanitized diagnostics report the resolved path and Compose version.
+
 ## Run the development app
 
 From this directory:
@@ -108,3 +116,5 @@ See [prototype-verification.md](../docs/desktop/prototype-verification.md) for
 the regression matrix, output hashes, screenshots, and test totals.
 See [startup-state-fix.md](../docs/desktop/startup-state-fix.md) for the packaged
 app warm/cold startup regression and root-cause evidence.
+See [docker-cli-discovery.md](../docs/desktop/docker-cli-discovery.md) for the
+Finder PATH regression, absolute CLI resolution order, and packaged-app QA.

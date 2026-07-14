@@ -30,6 +30,7 @@ export interface SystemFacts {
   memoryGiB: number;
   diskAvailableGiB: number;
   dockerVersion: string;
+  dockerPath: string;
   composeVersion: string;
   repositoryRoot: string;
   occupiedPorts: number[];

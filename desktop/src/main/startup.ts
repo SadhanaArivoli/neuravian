@@ -28,7 +28,7 @@ const defaults: StartupDependencies = {
 };
 
 export class StartupController {
-  facts?: SystemFacts;
+  facts?: Partial<SystemFacts>;
   lastError?: unknown;
   currentAttemptId?: string;
   private currentPromise?: Promise<boolean>;
@@ -71,11 +71,13 @@ export class StartupController {
     try {
       this.trace(5, "system checks started", undefined, attemptId, 0);
       this.update(attemptId, startedAt, { state: "checking-system", title: "Checking system", detail: "Verifying macOS, storage, Docker, and local services.", stage: "system checks" });
-      this.facts = await withTimeout(
+      const facts = await withTimeout(
         this.dependencies.systemChecks(this.repositoryRoot, (stage, name, detail) => this.trace(stage, name, detail, attemptId, this.dependencies.now() - startedAt)),
         "System check",
         STARTUP_TIMEOUTS.systemCheckMs,
       );
+      this.facts = facts;
+      this.compose.setDockerPath(facts.dockerPath);
       this.trace(6, "system checks completed", undefined, attemptId, this.dependencies.now() - startedAt);
 
       failedStage = "existing service detection";
@@ -95,10 +97,10 @@ export class StartupController {
         return true;
       }
 
-      if (this.facts.occupiedPorts.length) {
+      if (facts.occupiedPorts.length) {
         throw new SystemCheckError(
           "port-conflict",
-          `Local port${this.facts.occupiedPorts.length === 1 ? "" : "s"} ${this.facts.occupiedPorts.join(", ")} ${this.facts.occupiedPorts.length === 1 ? "is" : "are"} occupied, but the NeuroForge health checks did not both succeed.`,
+          `Local port${facts.occupiedPorts.length === 1 ? "" : "s"} ${facts.occupiedPorts.join(", ")} ${facts.occupiedPorts.length === 1 ? "is" : "are"} occupied, but the NeuroForge health checks did not both succeed.`,
         );
       }
 
@@ -125,6 +127,7 @@ export class StartupController {
       if (this.currentAttemptId !== attemptId) return false;
       this.lastError = error;
       const checkKind = error instanceof SystemCheckError ? error.kind : undefined;
+      if (error instanceof SystemCheckError && error.facts) this.facts = { ...this.facts, ...error.facts };
       const kind = checkKind && checkKind !== "system" ? checkKind : "failed";
       const [backend, frontend] = await Promise.all([
         this.dependencies.probe(BACKEND_HEALTH_URL),

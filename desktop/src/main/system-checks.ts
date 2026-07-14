@@ -3,20 +3,21 @@ import { access, mkdir, statfs } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { CommandError, runCommand } from "./command.js";
+import { runCommand } from "./command.js";
+import { resolveDockerCli } from "./docker-cli.js";
 import type { CommandResult, SystemFacts } from "./types.js";
 import { STARTUP_TIMEOUTS } from "./timeouts.js";
 
 export type CheckFailureKind = "docker-missing" | "docker-stopped" | "compose-missing" | "port-conflict" | "system";
 
 export class SystemCheckError extends Error {
-  constructor(readonly kind: CheckFailureKind, message: string) {
+  constructor(readonly kind: CheckFailureKind, message: string, readonly facts?: Partial<SystemFacts>) {
     super(message);
     this.name = "SystemCheckError";
   }
 }
 
-export type CommandRunner = (command: string, args: readonly string[], options?: { cwd?: string; timeoutMs?: number }) => Promise<CommandResult>;
+export type CommandRunner = (command: string, args: readonly string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }) => Promise<CommandResult>;
 export type PortChecker = (port: number) => Promise<boolean>;
 export type CheckTrace = (stage: number, name: string, detail?: string) => void;
 
@@ -35,7 +36,7 @@ function versionText(result: CommandResult): string {
 
 export async function runSystemChecks(
   repositoryRoot: string,
-  dependencies: { command?: CommandRunner; portAvailable?: PortChecker; trace?: CheckTrace } = {},
+  dependencies: { command?: CommandRunner; portAvailable?: PortChecker; trace?: CheckTrace; resolveDocker?: () => Promise<string | undefined> } = {},
 ): Promise<SystemFacts> {
   const command = dependencies.command ?? runCommand;
   const portAvailable = dependencies.portAvailable ?? isPortAvailable;
@@ -52,22 +53,33 @@ export async function runSystemChecks(
   try { await access(dataDirectory, constants.R_OK | constants.W_OK); }
   catch { throw new SystemCheckError("system", "The NeuroForge data directory must be readable and writable."); }
 
-  let docker: CommandResult;
-  try { docker = await command("docker", ["--version"], { timeoutMs: 8_000 }); }
-  catch (error) {
-    if (error instanceof CommandError && error.code === "ENOENT") {
-      throw new SystemCheckError("docker-missing", "Docker CLI was not found. Install and start Docker Desktop, then retry.");
-    }
-    throw new SystemCheckError("docker-missing", "Docker CLI is unavailable. Install and start Docker Desktop, then retry.");
+  const dockerPath = await (dependencies.resolveDocker ?? (() => resolveDockerCli({ command })))();
+  if (!dockerPath) {
+    throw new SystemCheckError("docker-missing", "Docker CLI was not found in the app PATH, standard macOS locations, Docker Desktop, or a login shell.");
   }
-  trace(7, "Docker CLI detected", versionText(docker));
-  try { await command("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: STARTUP_TIMEOUTS.dockerDaemonMs }); }
-  catch { throw new SystemCheckError("docker-stopped", "Docker is installed, but its daemon is not responding. Start Docker Desktop, then retry."); }
+  let docker: CommandResult;
+  try { docker = await command(dockerPath, ["--version"], { timeoutMs: 8_000 }); }
+  catch { throw new SystemCheckError("docker-missing", "The resolved Docker CLI could not be executed.", { dockerPath }); }
+  trace(7, "Docker CLI detected", `path=${dockerPath}; ${versionText(docker)}`);
+  try { await command(dockerPath, ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: STARTUP_TIMEOUTS.dockerDaemonMs }); }
+  catch {
+    throw new SystemCheckError(
+      "docker-stopped",
+      "Docker is installed, but its daemon is not responding. Start Docker Desktop, then retry.",
+      { dockerPath, dockerVersion: versionText(docker) },
+    );
+  }
   trace(8, "Docker daemon healthy");
 
   let compose: CommandResult;
-  try { compose = await command("docker", ["compose", "version"], { timeoutMs: 8_000 }); }
-  catch { throw new SystemCheckError("compose-missing", "Docker Compose is unavailable. Update Docker Desktop to a release that includes Compose v2."); }
+  try { compose = await command(dockerPath, ["compose", "version"], { timeoutMs: 8_000 }); }
+  catch {
+    throw new SystemCheckError(
+      "compose-missing",
+      "Docker Compose is unavailable. Update Docker Desktop to a release that includes Compose v2.",
+      { dockerPath, dockerVersion: versionText(docker), composeVersion: "unavailable" },
+    );
+  }
   trace(9, "Compose detected", versionText(compose));
   trace(10, "Repository/runtime resources resolved");
 
@@ -89,6 +101,7 @@ export async function runSystemChecks(
     memoryGiB: Number((os.totalmem() / 1024 ** 3).toFixed(1)),
     diskAvailableGiB: Number(((disk.bavail * disk.bsize) / 1024 ** 3).toFixed(1)),
     dockerVersion: versionText(docker),
+    dockerPath,
     composeVersion: versionText(compose),
     repositoryRoot,
     occupiedPorts,

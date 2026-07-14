@@ -13,7 +13,7 @@ import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 const root = "/tmp/neuroforge-fixture";
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
-  dockerVersion: "Docker 27", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
+  dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
 };
 
 function composeMock() {
@@ -21,6 +21,7 @@ function composeMock() {
     start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     stop: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     attachExternal: vi.fn(),
+    setDockerPath: vi.fn(),
   } as unknown as DesktopCompose;
 }
 
@@ -53,12 +54,13 @@ describe("Compose orchestration", () => {
       calls.push([...args]);
       return { stdout: "ok", stderr: "", exitCode: 0 };
     });
-    const compose = new DesktopCompose(root, command);
+    const compose = new DesktopCompose(root, command, "/usr/local/bin/docker");
     compose.attachExternal();
     expect(await compose.stop()).toBeUndefined();
     await compose.start();
     await compose.stop();
     expect(calls).toHaveLength(2);
+    expect(command.mock.calls.every((call) => call[0] === "/usr/local/bin/docker")).toBe(true);
     expect(calls[0]).toContain("up");
     expect(calls[1].at(-1)).toBe("stop");
     expect(calls.flat()).not.toContain("down");
@@ -234,5 +236,7 @@ describe("diagnostics privacy", () => {
     const output = formatDiagnostics({ update: { state: "failed", title: "Startup failed", detail: "No daemon" }, facts });
     expect(output).toContain("NeuroForge desktop diagnostics");
     expect(output).toContain("Docker 27");
+    expect(output).toContain("dockerPath: /usr/local/bin/docker");
+    expect(output).toContain("composeVersion: Compose v2");
   });
 });
