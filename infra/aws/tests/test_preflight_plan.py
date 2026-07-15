@@ -55,6 +55,16 @@ elif (service, operation) == ("pricing", "get-products"):
     price = "0.08" if storage else "0.4032"
     product = {"terms": {"OnDemand": {"term": {"priceDimensions": {"dimension": {"unit": unit, "pricePerUnit": {"USD": price}}}}}}}
     print(json.dumps({"PriceList": [json.dumps(product)]}))
+elif (service, operation) == ("iam", "simulate-principal-policy"):
+    action_index = args.index("--action-names") + 1
+    action_names = []
+    for value in args[action_index:]:
+        if value.startswith("--"):
+            break
+        action_names.append(value)
+    print(json.dumps({"EvaluationResults": [{"EvalActionName": value, "EvalDecision": "allowed"} for value in action_names]}))
+elif (service, operation) == ("accessanalyzer", "validate-policy"):
+    print(json.dumps({"findings": []}))
 else:
     print(json.dumps(responses[(service, operation)]))
 '''
@@ -146,6 +156,8 @@ def test_preflight_is_read_only_and_validates_exact_shape(harness: dict) -> None
     assert plan["metadata"] == {"hop_limit": 1, "http_tokens": "required"}
     assert plan["cost"]["compute_hourly"] == pytest.approx(0.4032)
     assert plan["cost"]["gp3_200_gib_month"] == pytest.approx(16.0)
+    assert plan["iam_capability_check"]["status"] == "allowed"
+    assert len(plan["iam_capability_check"]["bootstrap_actions"]) == 13
     assert_no_mutations(harness["log"])
 
 
@@ -212,3 +224,58 @@ def test_config_parser_rejects_command_substitution(harness: dict) -> None:
     assert result.returncode != 0
     assert "Executable syntax is forbidden" in result.stderr
     assert not harness["log"].exists()
+
+
+def test_iam_plan_is_scoped_permissionless_and_idempotent(harness: dict) -> None:
+    result = run_script(harness, "02-bootstrap-iam.sh")
+    assert result.returncode == 0, result.stderr
+    plan_root = ROOT / ".neuroforge-aws/plans"
+    plan_path = plan_root / "iam-plan-nf-x86-test0001.json"
+    plan = json.loads(plan_path.read_text())
+    assert plan["status"] == "GO"
+    assert plan["mutations_performed"] is False
+    assert plan["instance_role_actions"] == []
+    assert "iam:PassRole" in plan["deployer_actions"]
+    deployer_policy_path = Path(plan["rendered_files"]["deployer_policy"])
+    deployer_policy_before = deployer_policy_path.read_bytes()
+    policy = json.loads(deployer_policy_before)
+    pass_role = next(
+        statement for statement in policy["Statement"] if statement.get("Action") == "iam:PassRole"
+    )
+    assert pass_role["Resource"] == plan["instance_role_arn"]
+    assert pass_role["Condition"] == {
+        "StringEquals": {"iam:PassedToService": "ec2.amazonaws.com"}
+    }
+    assert json.loads(Path(plan["rendered_files"]["instance_policy_audit"]).read_text())["Statement"] == []
+    result = run_script(harness, "02-bootstrap-iam.sh")
+    assert result.returncode == 0, result.stderr
+    assert deployer_policy_path.read_bytes() == deployer_policy_before
+    assert_no_mutations(harness["log"])
+
+
+def test_iam_apply_is_blocked_without_reserved_future_approval(harness: dict) -> None:
+    result = run_script(
+        harness,
+        "02-bootstrap-iam.sh",
+        "--apply",
+        "--confirmation",
+        "CREATE NEUROFORGE IAM",
+    )
+    assert result.returncode != 0
+    assert "Live AWS automation approval is absent" in result.stderr
+    assert not harness["log"].exists()
+
+
+def test_committed_iam_templates_are_valid_json_and_contain_no_user_key_actions() -> None:
+    paths = [
+        ROOT / "infra/aws/iam/neuroforge-deployer-trust-policy.json",
+        ROOT / "infra/aws/iam/neuroforge-instance-trust-policy.json",
+        ROOT / "infra/aws/iam/neuroforge-instance-role-policy.json",
+        ROOT / "infra/aws/policies/neuroforge-deployer-policy.json",
+    ]
+    documents = [json.loads(path.read_text()) for path in paths]
+    encoded = json.dumps(documents)
+    assert "iam:CreateAccessKey" not in encoded
+    assert "iam:CreateUser" not in encoded
+    assert "AdministratorAccess" not in encoded
+    assert documents[2]["Statement"] == []

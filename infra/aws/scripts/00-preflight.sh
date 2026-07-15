@@ -65,6 +65,37 @@ CURRENT_IP="$(curl -fsS --connect-timeout 10 --max-time 30 https://checkip.amazo
 
 aws sts get-caller-identity --region "${AWS_REGION}" --output json >"${TEMP_DIR}/identity.json"
 
+read -r CALLER_ARN CALLER_TYPE ROLE_NAME < <(python3 - "${TEMP_DIR}/identity.json" <<'PY'
+import json, sys
+identity = json.load(open(sys.argv[1]))
+arn = identity.get("Arn", "")
+if arn.endswith(":root"):
+    raise SystemExit("AWS account root identity is forbidden")
+if ":user/" in arn:
+    print(arn, "user", "-")
+elif ":assumed-role/" in arn:
+    resource = arn.split(":assumed-role/", 1)[1]
+    role_name = resource.split("/", 1)[0]
+    print(arn, "assumed-role", role_name)
+else:
+    raise SystemExit("caller must be an IAM user or assumed role")
+PY
+)
+if [[ "${CALLER_TYPE}" == "assumed-role" ]]; then
+  SIMULATION_PRINCIPAL="$(aws iam get-role --role-name "${ROLE_NAME}" --query Role.Arn --output text)"
+else
+  SIMULATION_PRINCIPAL="${CALLER_ARN}"
+fi
+[[ "${SIMULATION_PRINCIPAL}" == arn:aws:iam::*:user/* || "${SIMULATION_PRINCIPAL}" == arn:aws:iam::*:role/* ]] || die "Unable to resolve an IAM principal for capability simulation"
+BOOTSTRAP_ACTIONS=(
+  iam:AddRoleToInstanceProfile iam:AttachRolePolicy iam:CreateInstanceProfile
+  iam:CreatePolicy iam:CreatePolicyVersion iam:CreateRole iam:DeletePolicyVersion
+  iam:GetInstanceProfile iam:GetPolicy iam:GetRole iam:ListPolicyVersions
+  iam:SetDefaultPolicyVersion iam:UpdateAssumeRolePolicy
+)
+aws iam simulate-principal-policy --policy-source-arn "${SIMULATION_PRINCIPAL}" \
+  --action-names "${BOOTSTRAP_ACTIONS[@]}" --output json >"${TEMP_DIR}/iam-simulation.json"
+
 if [[ "${VPC_ID}" == "auto" ]]; then
   aws ec2 describe-vpcs --region "${AWS_REGION}" \
     --filters Name=is-default,Values=true --output json >"${TEMP_DIR}/vpcs.json"
@@ -164,8 +195,10 @@ python3 "${SCRIPT_DIR}/lib/render_plan.py" preflight \
   --key-pairs "${TEMP_DIR}/key-pairs.json" \
   --compute-price "${TEMP_DIR}/compute-price.json" \
   --storage-price "${TEMP_DIR}/storage-price.json" \
+  --iam-simulation "${TEMP_DIR}/iam-simulation.json" \
   --ami-id "${AMI_ID}" \
   --current-ip "${CURRENT_IP}" \
+  --simulated-principal-arn "${SIMULATION_PRINCIPAL}" \
   --output "${OUTPUT_PATH}" >"${TEMP_DIR}/rendered.json"
 
 python3 - "${OUTPUT_PATH}" <<'PY'

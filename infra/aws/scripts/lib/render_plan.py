@@ -21,6 +21,21 @@ REQUIRED_TAGS = {
     "Purpose": "x86-verification",
     "ManagedBy": "NeuroForgeProvisioner",
 }
+BOOTSTRAP_IAM_ACTIONS = {
+    "iam:AddRoleToInstanceProfile",
+    "iam:AttachRolePolicy",
+    "iam:CreateInstanceProfile",
+    "iam:CreatePolicy",
+    "iam:CreatePolicyVersion",
+    "iam:CreateRole",
+    "iam:DeletePolicyVersion",
+    "iam:GetInstanceProfile",
+    "iam:GetPolicy",
+    "iam:GetRole",
+    "iam:ListPolicyVersions",
+    "iam:SetDefaultPolicyVersion",
+    "iam:UpdateAssumeRolePolicy",
+}
 
 
 class PlanError(ValueError):
@@ -157,6 +172,18 @@ def count_resources(document: dict[str, Any], key: str) -> int:
     return len(value)
 
 
+def validate_iam_simulation(document: dict[str, Any]) -> list[str]:
+    decisions = {
+        str(item.get("EvalActionName")): str(item.get("EvalDecision"))
+        for item in document.get("EvaluationResults", [])
+    }
+    missing = sorted(BOOTSTRAP_IAM_ACTIONS - decisions.keys())
+    denied = sorted(action for action in BOOTSTRAP_IAM_ACTIONS if decisions.get(action) != "allowed")
+    if missing or denied:
+        raise PlanError(f"caller lacks verifiable IAM bootstrap capability; missing={missing}, denied={denied}")
+    return sorted(BOOTSTRAP_IAM_ACTIONS)
+
+
 def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
     identity = load(args.identity)
     account = str(identity.get("Account", ""))
@@ -203,6 +230,7 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
     public_ipv4_hourly = float(args.public_ipv4_hourly)
     max_hours = int(expected_env("SESSION_A_MAX_HOURS"))
     session_cost = max_hours * (hourly + public_ipv4_hourly) + storage_monthly * max_hours / 730
+    bootstrap_actions = validate_iam_simulation(load(args.iam_simulation))
 
     return {
         "schema_version": 1,
@@ -247,7 +275,11 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
             "application_baseline": expected_env("APPLICATION_BASELINE_COMMIT"),
         },
         "required_tags": {**REQUIRED_TAGS, "DeploymentId": expected_env("RESOLVED_DEPLOYMENT_ID")},
-        "iam_capability_check": "pending policy documents in milestone 3",
+        "iam_capability_check": {
+            "status": "allowed",
+            "simulated_principal_arn": args.simulated_principal_arn,
+            "bootstrap_actions": bootstrap_actions,
+        },
         "warnings": [
             "No AWS resource was created; this plan contains read-only account metadata.",
             "Price estimates are not billing guarantees and must be refreshed before apply.",
@@ -318,12 +350,13 @@ def main() -> int:
     for name in (
         "identity", "vpcs", "subnets", "offerings", "image", "instance_type",
         "quota", "instances", "security_groups", "volumes", "key_pairs",
-        "compute_price", "storage_price",
+        "compute_price", "storage_price", "iam_simulation",
     ):
         preflight.add_argument(f"--{name.replace('_', '-')}", required=True)
     preflight.add_argument("--ami-id", required=True)
     preflight.add_argument("--current-ip", required=True)
     preflight.add_argument("--public-ipv4-hourly", default="0.005")
+    preflight.add_argument("--simulated-principal-arn", required=True)
     preflight.add_argument("--output", type=Path, required=True)
     plan = subparsers.add_parser("plan")
     plan.add_argument("--preflight", type=Path, required=True)

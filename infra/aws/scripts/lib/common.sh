@@ -105,7 +105,7 @@ validate_config() {
   [[ "${PROJECT_TAG}" == "NeuroForge" ]] || die "PROJECT_TAG must be NeuroForge"
   [[ "${PURPOSE_TAG}" == "x86-verification" ]] || die "PURPOSE_TAG must be x86-verification"
   [[ "${MANAGED_BY_TAG}" == "NeuroForgeProvisioner" ]] || die "MANAGED_BY_TAG must be NeuroForgeProvisioner"
-  [[ "${DEPLOYMENT_ID}" == "auto" || "${DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,48}$ ]] || die "Invalid DEPLOYMENT_ID"
+  [[ "${DEPLOYMENT_ID}" == "auto" || "${DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,32}$ ]] || die "Invalid DEPLOYMENT_ID"
   [[ "${SSH_ALLOWED_CIDR}" == "auto" || "${SSH_ALLOWED_CIDR}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$ ]] || die "SSH_ALLOWED_CIDR must be auto or one IPv4 /32"
   validate_boolean ROOT_MFA_CONFIRMED
   [[ "${ROOT_MFA_CONFIRMED}" == "true" ]] || die "Confirm root-user MFA manually, then set ROOT_MFA_CONFIRMED=true"
@@ -133,7 +133,7 @@ PY
     printf '%s\n' "${RESOLVED_DEPLOYMENT_ID}" >"${id_file}"
     chmod 600 "${id_file}"
   fi
-  [[ "${RESOLVED_DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,48}$ ]] || die "Invalid resolved DeploymentId"
+  [[ "${RESOLVED_DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,32}$ ]] || die "Invalid resolved DeploymentId"
   export RESOLVED_DEPLOYMENT_ID
 }
 
