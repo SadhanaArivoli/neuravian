@@ -28,6 +28,7 @@ def test_exact_compute_storage_and_metadata_contract() -> None:
     assert re.search(
         r"disable_api_termination\s*=\s*var\.enable_termination_protection", compute
     )
+    assert "ignore_changes = [associate_public_ip_address]" in compute
     assert 'data "aws_ec2_instance_type_offering" "selected"' in data
     assert 'quota_code   = "L-1216C47A"' in data
     assert "standard_vcpus.value >= data.aws_ec2_instance_type.selected.default_vcpus" in compute

@@ -35,6 +35,11 @@ resource "aws_instance" "neuroforge" {
   tags = local.resource_tags
 
   lifecycle {
+    # AWS clears an automatically assigned public IPv4 address when an instance
+    # stops. That expected drift must never force replacement of the instance
+    # or its delete-on-termination root volume during an in-place resize.
+    ignore_changes = [associate_public_ip_address]
+
     precondition {
       condition     = data.aws_ami.ubuntu.architecture == "x86_64"
       error_message = "The resolved Ubuntu AMI must be x86_64."
