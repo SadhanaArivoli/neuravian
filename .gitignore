@@ -33,6 +33,25 @@ backend/tests/data/dicom-structural/dicoms/
 .neuroforge-aws/
 *.pem
 
+# Terraform working data, state, private inputs, and generated plans
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.known_hosts
+
+# Locally packaged deliverables
+.codex-artifacts/
+
 # Live/redacted decommission reports are generated locally, not committed
 docs/cloud/decommission-runs/*-decommission-report.md
 
