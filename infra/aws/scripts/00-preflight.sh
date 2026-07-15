@@ -90,8 +90,10 @@ fi
 BOOTSTRAP_ACTIONS=(
   iam:AddRoleToInstanceProfile iam:AttachRolePolicy iam:CreateInstanceProfile
   iam:CreatePolicy iam:CreatePolicyVersion iam:CreateRole iam:DeletePolicyVersion
-  iam:GetInstanceProfile iam:GetPolicy iam:GetRole iam:ListPolicyVersions
-  iam:SetDefaultPolicyVersion iam:UpdateAssumeRolePolicy
+  iam:DeleteRole iam:GetInstanceProfile iam:GetPolicy iam:GetPolicyVersion
+  iam:GetRole iam:ListAttachedRolePolicies iam:ListPolicyVersions
+  iam:ListRolePolicies iam:SetDefaultPolicyVersion iam:TagInstanceProfile
+  iam:TagPolicy iam:TagRole iam:UpdateAssumeRolePolicy
 )
 aws iam simulate-principal-policy --policy-source-arn "${SIMULATION_PRINCIPAL}" \
   --action-names "${BOOTSTRAP_ACTIONS[@]}" --output json >"${TEMP_DIR}/iam-simulation.json"

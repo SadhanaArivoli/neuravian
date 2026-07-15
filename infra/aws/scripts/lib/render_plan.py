@@ -29,11 +29,18 @@ BOOTSTRAP_IAM_ACTIONS = {
     "iam:CreatePolicyVersion",
     "iam:CreateRole",
     "iam:DeletePolicyVersion",
+    "iam:DeleteRole",
     "iam:GetInstanceProfile",
     "iam:GetPolicy",
+    "iam:GetPolicyVersion",
     "iam:GetRole",
+    "iam:ListAttachedRolePolicies",
     "iam:ListPolicyVersions",
+    "iam:ListRolePolicies",
     "iam:SetDefaultPolicyVersion",
+    "iam:TagInstanceProfile",
+    "iam:TagPolicy",
+    "iam:TagRole",
     "iam:UpdateAssumeRolePolicy",
 }
 
