@@ -33,6 +33,9 @@ backend/tests/data/dicom-structural/dicoms/
 .neuroforge-aws/
 *.pem
 
+# Live/redacted decommission reports are generated locally, not committed
+docs/cloud/decommission-runs/*-decommission-report.md
+
 # macOS
 .DS_Store
 

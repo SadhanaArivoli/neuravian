@@ -4,6 +4,10 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)](CHANGELOG.md)
 
+Native Linux x86 verification on infrastructure you control is documented in
+the [AWS x86 deployment guide](docs/cloud/aws-x86-deployment-guide.md), including
+least-privilege CloudShell planning, cost controls, and complete decommissioning.
+
 **A local-first neuroimaging research platform that connects your datasets, pipelines, artifacts, methods, and publication outputs in one place.**
 
 Neuroimaging research is not hard because the science is unclear. It is hard because the infrastructure around the science — installation, formatting, execution, logging, comparison, and writing — absorbs enormous time and does not connect. NeuroForge is built to close that gap: not by replacing FSL, FreeSurfer, fMRIPrep, or Nilearn, but by giving those tools a shared workspace with reproducibility, traceability, and publication workflow built in from the start.

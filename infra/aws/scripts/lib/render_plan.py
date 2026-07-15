@@ -167,6 +167,22 @@ def active_instances(document: dict[str, Any]) -> list[str]:
     return result
 
 
+def active_vcpus(document: dict[str, Any]) -> int:
+    """Conservatively count all running/pending vCPUs against Standard quota."""
+    total = 0
+    for reservation in document.get("Reservations", []):
+        for instance in reservation.get("Instances", []):
+            if instance.get("State", {}).get("Name") not in {"pending", "running"}:
+                continue
+            cpu = instance.get("CpuOptions", {})
+            cores = int(cpu.get("CoreCount", 0))
+            threads = int(cpu.get("ThreadsPerCore", 0))
+            if cores <= 0 or threads <= 0:
+                raise PlanError("running instance vCPU usage could not be determined")
+            total += cores * threads
+    return total
+
+
 def count_resources(document: dict[str, Any], key: str) -> int:
     value = document.get(key, [])
     if not isinstance(value, list):
@@ -211,8 +227,13 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
     ami = validate_ami(load(args.image), args.ami_id)
     shape = validate_instance_type(load(args.instance_type))
     quota = float(load(args.quota).get("Value", 0))
-    if quota < 8:
-        raise PlanError(f"On-Demand standard vCPU quota is {quota:g}; at least 8 is required")
+    used_vcpus = active_vcpus(load(args.quota_instances))
+    available_vcpus = quota - used_vcpus
+    if available_vcpus < 8:
+        raise PlanError(
+            f"On-Demand vCPU quota has only {available_vcpus:g} conservatively available; "
+            "at least 8 is required"
+        )
 
     instances = active_instances(load(args.instances))
     if instances:
@@ -228,6 +249,7 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
 
     hourly = parse_price(load(args.compute_price), "Hrs")
     storage_monthly_per_gib = parse_price(load(args.storage_price), "GB-Mo")
+    snapshot_monthly_per_gib = parse_price(load(args.snapshot_price), "GB-Mo")
     storage_monthly = storage_monthly_per_gib * 200
     public_ipv4_hourly = float(args.public_ipv4_hourly)
     max_hours = int(expected_env("SESSION_A_MAX_HOURS"))
@@ -251,7 +273,12 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
         "region": "us-east-1",
         "network": {"vpc_id": vpc_id, **subnet, "ssh_allowed_cidr": resolved_cidr},
         "ami": ami,
-        "compute": {**shape, "on_demand_vcpu_quota": quota},
+        "compute": {
+            **shape,
+            "on_demand_vcpu_quota": quota,
+            "active_vcpus_conservative": used_vcpus,
+            "available_vcpus_conservative": available_vcpus,
+        },
         "storage": {
             "size_gib": 200,
             "type": "gp3",
@@ -268,6 +295,8 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
             "public_ipv4_hourly": public_ipv4_hourly,
             "gp3_per_gib_month": storage_monthly_per_gib,
             "gp3_200_gib_month": storage_monthly,
+            "snapshot_per_gib_month": snapshot_monthly_per_gib,
+            "snapshot_200_gib_upper_bound_month": snapshot_monthly_per_gib * 200,
             "session_a_max_hours": max_hours,
             "session_a_estimate": round(session_cost, 4),
             "pricing_is_live_account_query": True,
@@ -351,8 +380,8 @@ def main() -> int:
     preflight = subparsers.add_parser("preflight")
     for name in (
         "identity", "vpcs", "subnets", "offerings", "image", "instance_type",
-        "quota", "instances", "security_groups", "volumes", "key_pairs",
-        "compute_price", "storage_price", "iam_simulation",
+        "quota", "quota_instances", "instances", "security_groups", "volumes", "key_pairs",
+        "compute_price", "storage_price", "snapshot_price", "iam_simulation",
     ):
         preflight.add_argument(f"--{name.replace('_', '-')}", required=True)
     preflight.add_argument("--ami-id", required=True)

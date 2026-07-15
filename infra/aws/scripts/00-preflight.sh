@@ -143,6 +143,8 @@ aws ec2 describe-instance-types --region "${AWS_REGION}" \
   --instance-types "${INSTANCE_TYPE}" --output json >"${TEMP_DIR}/instance-type.json"
 aws service-quotas get-service-quota --region "${AWS_REGION}" \
   --service-code ec2 --quota-code L-1216C47A --query Quota --output json >"${TEMP_DIR}/quota.json"
+aws ec2 describe-instances --region "${AWS_REGION}" \
+  --filters Name=instance-state-name,Values=pending,running --output json >"${TEMP_DIR}/quota-instances.json"
 
 AMI_ID="$(aws ssm get-parameter --region "${AWS_REGION}" \
   --name "${UBUNTU_AMI_PARAMETER}" --query Parameter.Value --output text)"
@@ -180,6 +182,12 @@ aws pricing get-products --region us-east-1 --service-code AmazonEC2 \
     Type=TERM_MATCH,Field=volumeApiName,Value=gp3 \
     Type=TERM_MATCH,Field=location,Value="US East (N. Virginia)" \
   --max-results 10 --output json >"${TEMP_DIR}/storage-price.json"
+aws pricing get-products --region us-east-1 --service-code AmazonEC2 \
+  --filters \
+    Type=TERM_MATCH,Field=productFamily,Value="Storage Snapshot" \
+    Type=TERM_MATCH,Field=usagetype,Value="EBS:SnapshotUsage" \
+    Type=TERM_MATCH,Field=location,Value="US East (N. Virginia)" \
+  --max-results 10 --output json >"${TEMP_DIR}/snapshot-price.json"
 
 python3 "${SCRIPT_DIR}/lib/render_plan.py" preflight \
   --identity "${TEMP_DIR}/identity.json" \
@@ -189,12 +197,14 @@ python3 "${SCRIPT_DIR}/lib/render_plan.py" preflight \
   --image "${TEMP_DIR}/image.json" \
   --instance-type "${TEMP_DIR}/instance-type.json" \
   --quota "${TEMP_DIR}/quota.json" \
+  --quota-instances "${TEMP_DIR}/quota-instances.json" \
   --instances "${TEMP_DIR}/instances.json" \
   --security-groups "${TEMP_DIR}/security-groups.json" \
   --volumes "${TEMP_DIR}/volumes.json" \
   --key-pairs "${TEMP_DIR}/key-pairs.json" \
   --compute-price "${TEMP_DIR}/compute-price.json" \
   --storage-price "${TEMP_DIR}/storage-price.json" \
+  --snapshot-price "${TEMP_DIR}/snapshot-price.json" \
   --iam-simulation "${TEMP_DIR}/iam-simulation.json" \
   --ami-id "${AMI_ID}" \
   --current-ip "${CURRENT_IP}" \

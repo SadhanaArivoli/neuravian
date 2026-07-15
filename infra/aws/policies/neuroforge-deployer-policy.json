@@ -33,6 +33,7 @@
         "iam:GetPolicyVersion",
         "iam:GetRole",
         "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
         "iam:ListInstanceProfilesForRole",
         "iam:ListPolicyVersions",
         "iam:ListRolePolicies",

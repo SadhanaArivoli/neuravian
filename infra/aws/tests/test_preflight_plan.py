@@ -47,12 +47,17 @@ responses = {
     ("ec2", "describe-volumes"): {"Volumes": []},
     ("ec2", "describe-key-pairs"): {"KeyPairs": []},
 }
-if (service, operation) == ("ssm", "get-parameter"):
+if (service, operation) == ("ec2", "describe-instances") and any("instance-state-name" in arg for arg in args):
+    busy = int(os.environ.get("FAKE_BUSY_VCPUS", "0"))
+    instances = [] if busy == 0 else [{"InstanceId": "i-unrelated", "InstanceType": "m7i.2xlarge", "State": {"Name": "running"}, "CpuOptions": {"CoreCount": busy // 2, "ThreadsPerCore": 2}}]
+    print(json.dumps({"Reservations": [] if not instances else [{"Instances": instances}]}))
+elif (service, operation) == ("ssm", "get-parameter"):
     print("ami-abc123")
 elif (service, operation) == ("pricing", "get-products"):
+    snapshot = any("SnapshotUsage" in arg for arg in args)
     storage = any("volumeApiName" in arg for arg in args)
-    unit = "GB-Mo" if storage else "Hrs"
-    price = "0.08" if storage else "0.4032"
+    unit = "GB-Mo" if storage or snapshot else "Hrs"
+    price = "0.05" if snapshot else "0.08" if storage else "0.4032"
     product = {"terms": {"OnDemand": {"term": {"priceDimensions": {"dimension": {"unit": unit, "pricePerUnit": {"USD": price}}}}}}}
     print(json.dumps({"PriceList": [json.dumps(product)]}))
 elif (service, operation) == ("iam", "simulate-principal-policy"):
@@ -144,6 +149,8 @@ def test_preflight_is_read_only_and_validates_exact_shape(harness: dict) -> None
     assert plan["read_only"] is True
     assert plan["ami"]["architecture"] == "x86_64"
     assert plan["compute"]["instance_type"] == "m7i.2xlarge"
+    assert plan["compute"]["active_vcpus_conservative"] == 0
+    assert plan["compute"]["available_vcpus_conservative"] == 64
     assert plan["network"]["ssh_allowed_cidr"] == "198.51.100.42/32"
     assert plan["storage"] == {
         "delete_on_termination": True,
@@ -156,6 +163,7 @@ def test_preflight_is_read_only_and_validates_exact_shape(harness: dict) -> None
     assert plan["metadata"] == {"hop_limit": 1, "http_tokens": "required"}
     assert plan["cost"]["compute_hourly"] == pytest.approx(0.4032)
     assert plan["cost"]["gp3_200_gib_month"] == pytest.approx(16.0)
+    assert plan["cost"]["snapshot_200_gib_upper_bound_month"] == pytest.approx(10.0)
     assert plan["iam_capability_check"]["status"] == "allowed"
     assert len(plan["iam_capability_check"]["bootstrap_actions"]) == 13
     assert_no_mutations(harness["log"])
@@ -214,6 +222,14 @@ def test_arm_ami_is_rejected(harness: dict) -> None:
     result = run_script(harness, "00-preflight.sh")
     assert result.returncode != 0
     assert "architecture" in result.stderr
+    assert_no_mutations(harness["log"])
+
+
+def test_insufficient_remaining_vcpu_quota_is_rejected(harness: dict) -> None:
+    harness["env"]["FAKE_BUSY_VCPUS"] = "58"
+    result = run_script(harness, "00-preflight.sh")
+    assert result.returncode != 0
+    assert "only 6 conservatively available" in result.stderr
     assert_no_mutations(harness["log"])
 
 
@@ -369,3 +385,51 @@ def test_deploy_apply_is_blocked_before_state_or_network(harness: dict) -> None:
     assert result.returncode != 0
     assert "Live AWS automation approval is absent" in result.stderr
     assert not harness["log"].exists()
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "06-status.sh",
+        "07-stop.sh",
+        "08-start.sh",
+        "09-collect-evidence.sh",
+        "10-cost-controls.sh",
+        "11-decommission-plan.sh",
+        "12-decommission.sh",
+        "13-decommission-verify.sh",
+        "emergency-stop.sh",
+    ],
+)
+def test_lifecycle_and_decommission_dry_runs_make_no_aws_calls(harness: dict, script: str) -> None:
+    result = run_script(harness, script, "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert not harness["log"].exists()
+
+
+def test_optional_budget_apply_is_separately_blocked(harness: dict) -> None:
+    result = run_script(
+        harness,
+        "10-cost-controls.sh",
+        "--apply",
+        "--email",
+        "researcher@example.org",
+        "--confirmation",
+        "CREATE NEUROFORGE BUDGET",
+    )
+    assert result.returncode != 0
+    assert "Live AWS automation approval is absent" in result.stderr
+    assert not harness["log"].exists()
+
+
+def test_optional_budget_policy_uses_documented_iam_actions() -> None:
+    policy = json.loads(
+        (ROOT / "infra/aws/policies/neuroforge-optional-budget-policy.json").read_text()
+    )
+    assert policy["Statement"][0]["Action"] == ["budgets:ModifyBudget", "budgets:ViewBudget"]
+    assert policy["Statement"][1] == {
+        "Sid": "ReadBillingViewRequiredByViewBudget",
+        "Effect": "Allow",
+        "Action": "billing:GetBillingViewData",
+        "Resource": "*",
+    }

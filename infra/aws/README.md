@@ -20,7 +20,8 @@ Start in **CLOUDSHELL**:
 ```bash
 git clone https://github.com/SadhanaArivoli/neuroforge.git
 cd neuroforge
-git checkout --detach 7881cd6ce56a9ccb838ef8dc1d90b7ff86a36fd3
+git fetch origin main
+git checkout --detach origin/main
 mkdir -p .neuroforge-aws
 cp infra/aws/config/neuroforge-x86.env.example .neuroforge-aws/config.env
 chmod 600 .neuroforge-aws/config.env
@@ -47,3 +48,5 @@ Architecture and security rationale:
 
 - [`docs/cloud/aws-automated-deployment-architecture.md`](../../docs/cloud/aws-automated-deployment-architecture.md)
 - [`docs/cloud/aws-security-model.md`](../../docs/cloud/aws-security-model.md)
+- [`docs/cloud/aws-x86-deployment-guide.md`](../../docs/cloud/aws-x86-deployment-guide.md)
+- [`docs/cloud/aws-decommissioning-guide.md`](../../docs/cloud/aws-decommissioning-guide.md)

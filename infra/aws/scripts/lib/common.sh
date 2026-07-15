@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+# AWS CLI standard retry mode handles throttling and transient service failures.
+# Keep the retry budget bounded so lifecycle commands never wait indefinitely.
+export AWS_RETRY_MODE="${AWS_RETRY_MODE:-standard}"
+export AWS_MAX_ATTEMPTS="${AWS_MAX_ATTEMPTS:-5}"
+
 AWS_INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$(cd "${AWS_INFRA_ROOT}/../.." && pwd)"
 STATE_ROOT="${REPO_ROOT}/.neuroforge-aws"
@@ -105,6 +110,8 @@ validate_config() {
   [[ "${PROJECT_TAG}" == "NeuroForge" ]] || die "PROJECT_TAG must be NeuroForge"
   [[ "${PURPOSE_TAG}" == "x86-verification" ]] || die "PURPOSE_TAG must be x86-verification"
   [[ "${MANAGED_BY_TAG}" == "NeuroForgeProvisioner" ]] || die "MANAGED_BY_TAG must be NeuroForgeProvisioner"
+  # Populated dynamically by the validated configuration parser.
+  # shellcheck disable=SC2153
   [[ "${DEPLOYMENT_ID}" == "auto" || "${DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,32}$ ]] || die "Invalid DEPLOYMENT_ID"
   [[ "${SSH_ALLOWED_CIDR}" == "auto" || "${SSH_ALLOWED_CIDR}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$ ]] || die "SSH_ALLOWED_CIDR must be auto or one IPv4 /32"
   validate_boolean ROOT_MFA_CONFIRMED
@@ -151,4 +158,85 @@ assert_repo_commits() {
   require_command git
   git -C "${REPO_ROOT}" cat-file -e "${NEUROFORGE_VM_COMMIT}^{commit}" 2>/dev/null || die "VM commit is not present in this checkout"
   git -C "${REPO_ROOT}" merge-base --is-ancestor "${APPLICATION_BASELINE_COMMIT}" "${NEUROFORGE_VM_COMMIT}" || die "Application baseline is not an ancestor of VM commit"
+}
+
+require_live_approval() {
+  [[ "${NEUROFORGE_AWS_LIVE_APPROVAL:-}" == "APPROVE NEUROFORGE AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
+}
+
+state_value() {
+  local state_path="$1"
+  local key="$2"
+  python3 - "${state_path}" "${key}" <<'PY'
+import json, sys
+value = json.load(open(sys.argv[1]))
+for component in sys.argv[2].split("."):
+    value = value[component]
+print(value)
+PY
+}
+
+assume_deployer_session() {
+  local state_path="$1"
+  local iam_plan_path="$2"
+  local session_name="$3"
+  local credentials_file role_arn
+  role_arn="$(python3 - "${state_path}" "${iam_plan_path}" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+iam = json.load(open(sys.argv[2]))
+print(f"arn:aws:iam::{state['account_id']}:role/{iam['deployer_role_name']}")
+PY
+)"
+  credentials_file="$(mktemp "${TMPDIR:-/tmp}/neuroforge-sts.XXXXXX")"
+  chmod 600 "${credentials_file}"
+  aws sts assume-role --role-arn "${role_arn}" --role-session-name "${session_name}" \
+    --duration-seconds 3600 --output json >"${credentials_file}"
+  read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN < <(python3 - "${credentials_file}" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))["Credentials"]
+print(c["AccessKeyId"], c["SecretAccessKey"], c["SessionToken"])
+PY
+)
+  export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+  rm -f "${credentials_file}"
+}
+
+clear_deployer_session() {
+  unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+}
+
+sha256_file() {
+  local path="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "${path}" | awk '{print $1}'
+  else
+    sha256sum "${path}" | awk '{print $1}'
+  fi
+}
+
+verify_current_account_matches_state() {
+  local state_path="$1"
+  local expected actual
+  expected="$(state_value "${state_path}" account_id)"
+  actual="$(aws sts get-caller-identity --query Account --output text)"
+  [[ "${actual}" == "${expected}" ]] || die "Current AWS account differs from deployment state"
+}
+
+verify_owned_instance() {
+  local state_path="$1"
+  local output_path="$2"
+  local instance_id deployment_id
+  instance_id="$(state_value "${state_path}" instance_id)"
+  deployment_id="$(state_value "${state_path}" deployment_id)"
+  aws ec2 describe-instances --region "${AWS_REGION}" --instance-ids "${instance_id}" --output json >"${output_path}"
+  python3 - "${output_path}" "${instance_id}" "${deployment_id}" <<'PY'
+import json, sys
+document, instance_id, deployment = sys.argv[1:]
+instances = [i for r in json.load(open(document)).get("Reservations", []) for i in r.get("Instances", [])]
+assert len(instances) == 1 and instances[0].get("InstanceId") == instance_id
+tags = {item["Key"]: item["Value"] for item in instances[0].get("Tags", [])}
+required = {"Project": "NeuroForge", "Purpose": "x86-verification", "ManagedBy": "NeuroForgeProvisioner", "DeploymentId": deployment}
+assert all(tags.get(key) == value for key, value in required.items()), "instance ownership tags mismatch"
+PY
 }
