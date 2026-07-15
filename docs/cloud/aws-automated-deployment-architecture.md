@@ -22,10 +22,10 @@ preparation commit `8b9614c328463c9dfcb5337303cadde447985299`.
 | Application access | SSH forwarding to VM loopback ports 3000 and 8000 | A generated Compose override binds both published ports to `127.0.0.1`; the canonical Compose file and frontend/backend logic stay unchanged. |
 | SSH strategy | One deployment-specific EC2 key pair | This is the clearest option for `rsync` fixture transfer and two-port SSH forwarding. Its PEM is short-lived, never printed, downloaded from CloudShell to the local Mac, and deleted separately during decommissioning. |
 | Instance permissions | Instance profile with an EC2-trusted role and no attached permissions policy | Bootstrap needs public package, Git, and registry access, but no AWS API. An empty-permission role makes the trust boundary explicit without granting credentials useful against AWS APIs. |
-| Storage | One 200 GiB encrypted gp3 root volume, 3,000 IOPS, 125 MiB/s | No extra data volume. Encryption is mandatory. `DeleteOnTermination=false` protects evidence from accidental termination, so retained EBS continues charging until explicitly deleted. |
-| Metadata | IMDS enabled, IMDSv2 tokens required, hop limit 2 | Required explicitly at launch and verified afterward; hop limit 2 supports container networking. |
+| Storage | One 200 GiB encrypted gp3 root volume, 3,000 IOPS, 125 MiB/s | No extra data volume. Encryption is mandatory. `DeleteOnTermination=true` is the temporary-VM default, but decommissioning must verify downloaded evidence before termination and offer explicit retention alternatives. |
+| Metadata | IMDS enabled, IMDSv2 tokens required, hop limit 1 | Required explicitly at launch and verified afterward. Containers do not need metadata access because the instance role has no AWS API permissions. A change to 2 requires empirical evidence and a new human review. |
 | Lifecycle | Shutdown behavior `stop`; termination protection enabled | Stop is reversible. Termination requires the evidence gate, an exact instance-ID confirmation, and explicit protection removal. |
-| Decommission default | Retain the root volume unless the user explicitly selects snapshot-and-delete or delete | This is the safest evidence-preservation default and the most expensive after termination. The plan must display the continuing monthly estimate. |
+| Decommission default | Delete the root volume with the instance only after the evidence gate | This avoids silent EBS retention. `retain-root-volume`, `snapshot-then-delete-volume`, and `retain-selected-volumes` are deliberate alternatives that must show continuing cost. |
 
 ## Trust bootstrap
 
@@ -176,18 +176,21 @@ key; a customer-managed key would add key-policy and retention complexity and
 is not necessary for this non-participant public fixture. Source participant
 data must never be uploaded under this workflow.
 
-`DeleteOnTermination=false` is selected because accidental evidence loss is
-harder to repair than an explicitly reported storage charge. Consequences are
-intentional:
+`DeleteOnTermination=true` is selected because this is a temporary verification
+VM whose public fixture and repository exist elsewhere. Evidence protection is
+implemented as a mandatory pre-termination gate rather than silent storage
+retention. Consequences are intentional:
 
 - stopping the instance retains and charges for the 200 GiB volume;
-- terminating the instance also retains and charges for the volume;
-- complete removal requires a separate volume decision and exact typed
-  confirmation;
-- default decommission mode is `retain`;
-- `snapshot-then-delete` must wait for an encrypted completed snapshot;
-- `delete` is blocked until evidence is present and verified, unless the user
-  types the evidence-loss override phrase.
+- default termination deletes the root volume only after evidence has been
+  downloaded, checksum-verified, and opened successfully;
+- `retain-root-volume` changes the attachment to persist before termination and
+  reports the continuing EBS estimate;
+- `snapshot-then-delete-volume` must wait for an encrypted completed snapshot;
+- `retain-selected-volumes` requires an explicit allow-list and continuing-cost
+  report;
+- termination is blocked until evidence is present and verified, unless the
+  user types the evidence-loss override phrase.
 
 The plan and final report calculate continuing EBS/snapshot estimates. The
 decommission verifier returns nonzero for any unexpected billable owned
@@ -243,7 +246,7 @@ Permanent teardown flows only through `11-decommission-plan.sh`,
 1. verify and locally preserve evidence;
 2. stop services and the exact instance;
 3. disable termination protection after exact instance-ID confirmation;
-4. ensure the root volume is retained, then terminate the instance;
+4. apply the explicitly selected volume mode, then terminate the instance;
 5. wait for termination and ENI detachment;
 6. retain, snapshot-then-delete, or explicitly delete the volume;
 7. remove the dedicated security group;
@@ -305,7 +308,8 @@ reviews these four material choices:
 1. deployment-specific EC2 key pair rather than EIC or SSM;
 2. explicitly scoped deployer role plus an instance role with no AWS API
    permissions;
-3. `DeleteOnTermination=false` and default `retain` volume policy;
+3. `DeleteOnTermination=true` with evidence-gated deletion and explicit
+   retention alternatives;
 4. existing default VPC/public subnet with SSH `/32` and loopback-only app
    ports.
 

@@ -96,7 +96,8 @@ escalation, or cross-account access blocks apply until reviewed.
 - Docker Engine comes from Docker's official Ubuntu repository; Compose uses the
   plugin package.
 - IMDS is explicitly configured with `HttpTokens=required`, endpoint enabled,
-  and hop limit 2, then verified from EC2 control-plane data.
+  and hop limit 1, then verified from EC2 control-plane data. Containers do not
+  need metadata access because the instance role has no AWS API permissions.
 - The root volume is 200 GiB encrypted gp3. Encryption, size, type, IOPS,
   throughput, and delete-on-termination setting are post-launch assertions.
 - Termination protection is enabled; instance-initiated shutdown stops rather
@@ -191,12 +192,14 @@ These actions are intentionally distinct:
   for termination, volume/snapshot decisions, IAM removal, and local-key
   deletion. It is restartable and derives progress from live AWS state.
 
-The selected root-volume setting is `DeleteOnTermination=false`; default
-decommission policy is `retain`. This avoids implicit evidence destruction but
-can leave approximately 200 GiB of EBS billed until the user deliberately
-deletes it. Snapshot retention also incurs charges. Final verification uses both
-service-specific APIs and the Resource Groups Tagging API and fails if an
-unexpected owned billable resource remains.
+The selected root-volume setting is `DeleteOnTermination=true`. Termination is
+blocked until evidence has been downloaded, checksum-verified, and opened.
+Explicit alternatives are `retain-root-volume`,
+`snapshot-then-delete-volume`, and `retain-selected-volumes`; each reports
+continuing charges and requires deliberate selection. Snapshot and retained
+volume storage incur charges. Final verification uses both service-specific
+APIs and the Resource Groups Tagging API and fails if an unexpected owned
+billable resource remains.
 
 ## Threats and mitigations
 
@@ -208,7 +211,7 @@ unexpected owned billable resource remains.
 | Public application exposure | SSH-only `/32`, no 3000/8000 ingress, loopback Compose override | SSH remains public to one address; operator IP may be shared/NATed. |
 | Malicious or compromised container | Digest pins, x86 platform check, no AWS permissions on instance role | Docker socket grants host-root capability; registries and images remain supply-chain dependencies. |
 | Secret leakage in logs/evidence | No shell tracing, content exclusions, sanitizer, scans, redacted reports | Novel secret formats or manual screenshots may evade automated detection. |
-| Accidental evidence deletion | Termination protection, persistent root volume, evidence gate, typed confirmations | Persistent storage continues charging and must be cleaned deliberately. |
+| Accidental evidence deletion | Termination protection, mandatory local evidence gate, exact confirmations, explicit retention alternatives | The evidence-loss override remains available and must be treated as destructive. |
 | Wrong-resource deletion | State plus identifiers plus tags plus identity/region checks | AWS tagging coverage is incomplete; service-specific checks are required. |
 | Runaway cost | One-instance invariant, plan estimates, status/emergency stop, optional separately approved budget | Pricing and billing reports can lag; retained EBS/snapshots continue charging. |
 | Participant-data exposure | Public fixture only, explicit prohibition, no S3 or uploads | A user with shell access could manually violate the workflow. |

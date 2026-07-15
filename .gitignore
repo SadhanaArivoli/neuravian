@@ -29,6 +29,10 @@ backend/tests/data/dicom-structural/dicoms/
 .env
 .env.local
 
+# AWS deployment live state and private keys
+.neuroforge-aws/
+*.pem
+
 # macOS
 .DS_Store
 
