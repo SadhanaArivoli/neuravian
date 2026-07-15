@@ -115,7 +115,10 @@ wait_for_run() {
     now="$(date +%s)"
     if (( now - started >= timeout_seconds )); then
       log "Run ${run_id} exceeded ${timeout_seconds}s; requesting cancellation"
-      api POST "/runs/${run_id}/cancel" '{}' >>"${LOG_FILE}" || true
+      if ! api POST "/runs/${run_id}/cancel" '{}' >>"${LOG_FILE}"; then
+        log "ERROR: cancellation request failed for timed-out run ${run_id}"
+        return 125
+      fi
       return 124
     fi
     sleep 30

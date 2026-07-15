@@ -17,7 +17,7 @@ runtime guarantee or a scientific verification result.
 - **Fixture transfer:** exactly 52,914,200 bytes (about 52.915 MB decimal), six
   files, validated against `verification/fixtures/fixture-manifest.json`.
 - **Image transfer:** three digest-pinned images; the local-cache planning
-  estimate is 4,733,173,392 compressed bytes total. Registry transfer and
+  estimate is 4,733,143,337 compressed bytes total. Registry transfer and
   expanded disk use can differ.
 
 ## Paid-time order
@@ -47,9 +47,10 @@ printing either. Then run the checked-in script from a temporary checkout or a
 trusted copy:
 
 ```bash
-FS_LICENSE=/secure/license.txt \
+VM_PREPARATION_COMMIT=PENDING_AFTER_AUDIT_COMMIT
+FS_LICENSE="$HOME/.neuroforge-secrets/freesurfer-license.txt" \
   ./scripts/cloud/bootstrap-x86-ubuntu.sh \
-  --commit <FINAL_COMMIT_SHA> \
+  --commit "$VM_PREPARATION_COMMIT" \
   --fixture-dir "$HOME/neuroforge-fixture" \
   --license-file "$FS_LICENSE" \
   --prepull

@@ -171,9 +171,9 @@ known_errors:
       This should not happen with the official poldracklab/pydeface image
       — it means a different or corrupted image was used.
     fix_hint: >
-      Make sure you are using the poldracklab/pydeface:latest image and
-      that it was pulled successfully. Try "docker pull poldracklab/pydeface"
-      and resubmit the run.
+      Make sure you are using the pinned poldracklab/pydeface image digest and
+      that it was pulled successfully. Run "verification/x86/prepull-images.sh"
+      to pull and verify the frozen linux/amd64 image, then resubmit the run.
 
   - pattern: "FLIRT.*failed|registration.*failed|flirt exited"
     explanation: >

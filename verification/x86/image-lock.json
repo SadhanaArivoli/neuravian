@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "Local Docker image inspection on 2026-07-14; no image pulls were performed",
+  "generated_from": "Read-only Docker Hub manifest inspection at 2026-07-15T00:30Z; no image pulls were performed",
   "required_platform": "linux/amd64",
   "images": [
     {
@@ -11,8 +11,8 @@
       "pull_reference": "poldracklab/pydeface@sha256:40855352a8dd6dde3f0bcd9ed0fff110b07849871c7c70f62db8bac5ab099541",
       "os": "linux",
       "architecture": "amd64",
-      "estimated_compressed_pull_bytes": 223914574,
-      "estimate_basis": "Docker image inspect Size from the existing local amd64 cache",
+      "estimated_compressed_pull_bytes": 223911610,
+      "estimate_basis": "Sum of compressed layer sizes in the resolved registry manifest",
       "license_requirement": "No application license; source fixture must be approved for de-identification testing",
       "known_templates_or_models": "Face template and FSL FLIRT dependencies are included in the image",
       "upstream_documentation": "https://github.com/poldracklab/pydeface"
@@ -25,8 +25,8 @@
       "pull_reference": "nipreps/fmriprep@sha256:15cbf8dcd17440d26ff5e80e9f7313f1cb3c54f13673f1ec4aed4465e8e12d77",
       "os": "linux",
       "architecture": "amd64",
-      "estimated_compressed_pull_bytes": 2650746333,
-      "estimate_basis": "Docker image inspect Size from the existing local amd64 cache",
+      "estimated_compressed_pull_bytes": 2650733239,
+      "estimate_basis": "Sum of compressed layer sizes in the resolved registry manifest",
       "license_requirement": "A valid FreeSurfer license file is required and is mounted read-only",
       "known_templates_or_models": "TemplateFlow templates are downloaded to the persistent cache on first use; FreeSurfer resources are included",
       "upstream_documentation": "https://fmriprep.org/en/stable/"
@@ -36,17 +36,18 @@
       "repository": "deepmi/fastsurfer",
       "tag": "cpu-v2.5.4",
       "digest": "sha256:34c8ff3eb96ad1d14eadbb0cd468ae6bae83072a5845dcb96d7dbc2f7109c14f",
+      "resolved_linux_amd64_manifest_digest": "sha256:de0e93135b54d636316e3f9601b702662794e003365cec07a58b0f613888a5fa",
       "pull_reference": "deepmi/fastsurfer@sha256:34c8ff3eb96ad1d14eadbb0cd468ae6bae83072a5845dcb96d7dbc2f7109c14f",
       "os": "linux",
       "architecture": "amd64",
-      "estimated_compressed_pull_bytes": 1858512485,
-      "estimate_basis": "Docker image inspect Size from the existing local amd64 cache",
+      "estimated_compressed_pull_bytes": 1858498488,
+      "estimate_basis": "Sum of compressed layer sizes in the resolved linux/amd64 registry manifest",
       "license_requirement": "A valid FreeSurfer license file is required and is mounted read-only",
       "known_templates_or_models": "FastSurferCNN, CerebNet, and FreeSurfer resources are included in the CPU image",
       "upstream_documentation": "https://deep-mi.org/FastSurfer/dev/overview/docker.html"
     }
   ],
-  "estimated_total_compressed_pull_bytes": 4733173392,
+  "estimated_total_compressed_pull_bytes": 4733143337,
   "notes": [
     "All executable references use repository plus digest; no mutable latest tag is used.",
     "Pull-size values are planning estimates from the locally cached image metadata, not registry billing guarantees.",

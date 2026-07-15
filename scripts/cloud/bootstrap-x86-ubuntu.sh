@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+APPLICATION_BASELINE_COMMIT="aec1aea247659f43a92a8f2fc39208d15a68914a"
 COMMIT=""
 FIXTURE_DIR="${FIXTURE_DIR:-${HOME}/neuroforge-fixture}"
 REPO_DIR="${NEUROFORGE_DIR:-${HOME}/neuroforge}"
@@ -9,6 +10,9 @@ FS_LICENSE="${FS_LICENSE:-}"
 PREPULL=0
 DRY_RUN=0
 LOG_FILE="${NEUROFORGE_BOOTSTRAP_LOG:-${HOME}/neuroforge-bootstrap.log}"
+APT_TIMEOUT_SECONDS="${APT_TIMEOUT_SECONDS:-1800}"
+DOWNLOAD_TIMEOUT_SECONDS="${DOWNLOAD_TIMEOUT_SECONDS:-900}"
+BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-3600}"
 
 usage() {
   cat <<'EOF'
@@ -37,6 +41,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${COMMIT}" ]] || { usage >&2; exit 2; }
+[[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "--commit must be an exact 40-character lowercase Git SHA" >&2
+  exit 2
+}
 if [[ "${DRY_RUN}" != 1 ]]; then
   exec > >(tee -a "${LOG_FILE}") 2>&1
 else
@@ -71,13 +79,15 @@ elif [[ "${DRY_RUN}" != 1 ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-run sudo apt-get update
-run sudo apt-get install -y ca-certificates curl git jq python3 python3-pip \
+run timeout --signal=TERM --kill-after=60s "${APT_TIMEOUT_SECONDS}" sudo apt-get update
+run timeout --signal=TERM --kill-after=60s "${APT_TIMEOUT_SECONDS}" \
+  sudo apt-get install -y ca-certificates curl git jq python3 python3-pip \
   python3-venv coreutils zip unzip gnupg
 
 if ! command -v docker >/dev/null; then
   run sudo install -m 0755 -d /etc/apt/keyrings
-  run sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  run timeout --signal=TERM --kill-after=30s "${DOWNLOAD_TIMEOUT_SECONDS}" \
+    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
     -o /etc/apt/keyrings/docker.asc
   run sudo chmod a+r /etc/apt/keyrings/docker.asc
   if [[ "${DRY_RUN}" == 1 ]]; then
@@ -88,22 +98,25 @@ if ! command -v docker >/dev/null; then
     echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable" \
       | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   fi
-  run sudo apt-get update
-  run sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  run timeout --signal=TERM --kill-after=60s "${APT_TIMEOUT_SECONDS}" sudo apt-get update
+  run timeout --signal=TERM --kill-after=60s "${APT_TIMEOUT_SECONDS}" \
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
     docker-buildx-plugin docker-compose-plugin
 fi
-run sudo systemctl enable --now docker
+run timeout --signal=TERM --kill-after=30s 300 sudo systemctl enable --now docker
 run sudo usermod -aG docker "${USER}"
 
 docker_cmd=(docker)
 if ! docker info >/dev/null 2>&1; then docker_cmd=(sudo docker); fi
-run "${docker_cmd[@]}" version
-run "${docker_cmd[@]}" compose version
+run timeout --signal=TERM --kill-after=30s 120 "${docker_cmd[@]}" version
+run timeout --signal=TERM --kill-after=30s 120 "${docker_cmd[@]}" compose version
 
 if [[ -d "${REPO_DIR}/.git" ]]; then
-  run git -C "${REPO_DIR}" fetch --prune origin
+  run timeout --signal=TERM --kill-after=30s "${DOWNLOAD_TIMEOUT_SECONDS}" \
+    git -C "${REPO_DIR}" fetch --prune origin
 else
-  run git clone "${REPO_URL}" "${REPO_DIR}"
+  run timeout --signal=TERM --kill-after=30s "${DOWNLOAD_TIMEOUT_SECONDS}" \
+    git clone "${REPO_URL}" "${REPO_DIR}"
 fi
 run git -C "${REPO_DIR}" checkout --detach "${COMMIT}"
 if [[ "${DRY_RUN}" != 1 ]]; then
@@ -112,6 +125,21 @@ if [[ "${DRY_RUN}" != 1 ]]; then
   [[ "${actual_commit}" == "${expected_commit}" ]] || {
     echo "Checkout does not match requested commit" >&2; exit 4;
   }
+  git -C "${REPO_DIR}" merge-base --is-ancestor \
+    "${APPLICATION_BASELINE_COMMIT}" "${actual_commit}" || {
+    echo "Preparation commit does not contain the application baseline" >&2
+    exit 4
+  }
+  for required in \
+    verification/x86/transfer-fixture.sh \
+    verification/x86/prepull-images.sh \
+    verification/x86/image-lock.json \
+    docs/cloud/aws-launch-checklist.md; do
+    [[ -f "${REPO_DIR}/${required}" ]] || {
+      echo "Preparation commit is missing required file: ${required}" >&2
+      exit 4
+    }
+  done
 fi
 
 run mkdir -p "${REPO_DIR}/data" "${REPO_DIR}/verification/x86/work" \
@@ -120,7 +148,8 @@ VENV="${REPO_DIR}/.x86-verification-venv"
 if [[ ! -x "${VENV}/bin/python" ]]; then
   run python3 -m venv "${VENV}"
 fi
-run "${VENV}/bin/python" -m pip install --disable-pip-version-check \
+run timeout --signal=TERM --kill-after=30s "${DOWNLOAD_TIMEOUT_SECONDS}" \
+  "${VENV}/bin/python" -m pip install --disable-pip-version-check \
   'nibabel==5.4.2' 'numpy==2.5.0' 'jsonschema==4.26.0'
 
 if [[ -d "${FIXTURE_DIR}" ]]; then
@@ -156,12 +185,18 @@ if [[ "${docker_cmd[0]}" == sudo ]]; then
   compose_cmd=(sudo env "HOST_DATASETS_DIR=$(dirname "${FIXTURE_DIR}")" \
     "HOST_UID=$(id -u)" "HOST_GID=$(id -g)" docker compose)
 fi
-run "${compose_cmd[@]}" -f "${REPO_DIR}/docker-compose.yml" up -d --build
+run timeout --signal=TERM --kill-after=60s "${BUILD_TIMEOUT_SECONDS}" \
+  "${compose_cmd[@]}" -f "${REPO_DIR}/docker-compose.yml" up -d --build
 if [[ "${DRY_RUN}" != 1 ]]; then
+  healthy=0
   for _ in $(seq 1 60); do
-    curl -fsS --max-time 5 http://127.0.0.1:8000/api/health >/dev/null && break
+    if curl -fsS --max-time 5 http://127.0.0.1:8000/api/health >/dev/null; then
+      healthy=1
+      break
+    fi
     sleep 2
   done
+  [[ "${healthy}" == 1 ]] || { echo "NeuroForge health check timed out" >&2; exit 6; }
   curl -fsS --max-time 5 http://127.0.0.1:8000/api/health | jq .
 fi
 printf '[%s] Bootstrap complete. Log: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${LOG_FILE}"

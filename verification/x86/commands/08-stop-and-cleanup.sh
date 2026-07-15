@@ -14,7 +14,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
 run_cmd docker ps --filter label=neuroforge.run_id --format '{{.ID}} {{.Names}} {{.Status}}'
 if [[ "${STOP_SERVICES}" == 1 ]]; then
-  run_cmd docker compose -f "${NF_ROOT}/docker-compose.yml" stop
+  run_cmd timeout --signal=TERM --kill-after=30s 300 \
+    docker compose -f "${NF_ROOT}/docker-compose.yml" stop
 else
   log "NeuroForge services left running; pass --stop-services to stop without deleting them"
 fi
