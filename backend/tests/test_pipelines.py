@@ -14,6 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.execution.docker_executor import DockerExecutor
 from app.execution.executor import RunContext
@@ -1753,6 +1754,82 @@ def test_bids_validator_known_errors_cover_exit_16_cases():
     assert any("MISSING_DATASET_DESCRIPTION" in p for p in patterns)
     assert any("MISSING_REQUIRED_ENTITY" in p for p in patterns)
     assert any("INVALID_LOCATION" in p for p in patterns)
+
+
+def test_bids_validator_cloud_path_uses_host_bind_and_child_command(tmp_path):
+    """Cloud datasets bind from /srv while the tool receives only /inputs."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    ctx = RunContext(
+        run_id=99,
+        manifest=manifest,
+        params={"bids-dir": "/host-data/x86-minimal-bids"},
+        dataset_path="/host-data/x86-minimal-bids",
+        output_dir=str(tmp_path / "out"),
+    )
+
+    with patch.object(settings, "host_datasets_mount", "/srv/neuroforge/datasets"), \
+         patch.object(settings, "backend_datasets_mount", "/host-data"):
+        sdk = DockerExecutor()._build_sdk_params(ctx)
+
+    source = "/srv/neuroforge/datasets/x86-minimal-bids"
+    child = "/inputs/bids-dir/x86-minimal-bids"
+    assert sdk.volumes[source] == {"bind": child, "mode": "ro"}
+    assert sdk.command[-1] == child
+    assert "/host-data/x86-minimal-bids" not in sdk.command
+
+
+def test_existing_cloud_dataset_record_can_create_validator_run(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    """Regression: canonical backend records must not be probed as host paths."""
+    backend_root = tmp_path / "backend-host-data"
+    dataset_root = backend_root / "x86-minimal-bids"
+    dataset_root.mkdir(parents=True)
+    host_root = tmp_path / "host-root-not-visible-here"
+    dataset = _make_dataset(db_session_for_runs, str(dataset_root))
+
+    with patch.object(settings, "host_datasets_mount", str(host_root)), \
+         patch.object(settings, "backend_datasets_mount", str(backend_root)), \
+         patch.object(settings, "data_dir", str(tmp_path)), \
+         patch("app.services.run._execute_run_background"):
+        response = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "bids-validator",
+                "dataset_id": dataset.id,
+                "params": {"bids-dir": str(dataset_root)},
+            },
+        )
+
+    assert not host_root.exists()
+    assert response.status_code == 201, response.json()
+
+
+def test_missing_cloud_dataset_error_does_not_leak_host_root(
+    fmriprep_api_client, db_session_for_runs, tmp_path
+):
+    backend_root = tmp_path / "backend-host-data"
+    backend_root.mkdir()
+    logical_path = backend_root / "missing-dataset"
+    host_root = Path("/srv/private-neuroforge-datasets")
+    dataset = _make_dataset(db_session_for_runs, str(logical_path))
+
+    with patch.object(settings, "host_datasets_mount", str(host_root)), \
+         patch.object(settings, "backend_datasets_mount", str(backend_root)):
+        response = fmriprep_api_client.post(
+            "/api/runs",
+            json={
+                "pipeline_id": "bids-validator",
+                "dataset_id": dataset.id,
+                "params": {"bids-dir": str(logical_path)},
+            },
+        )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "path not found" in detail.lower()
+    assert str(host_root) not in detail
 
 
 def test_pydeface_manifest_loads_and_validates():

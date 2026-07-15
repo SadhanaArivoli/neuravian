@@ -22,13 +22,23 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.execution.progress_parser import parse_tqdm_line
-from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, from_host_path, to_host_path, translate_errors
+from app.execution.docker_executor import (
+    DockerExecutor,
+    _is_running_in_docker,
+    from_host_path,
+    to_host_path,  # compatibility import for existing test/mocking integrations
+    translate_errors,
+)
 from app.execution.native_executor import NativeExecutor
 from app.execution.executor import Executor, RunContext
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
 from app.models.run import ProvenanceEvent, Run, RunLog
 from app.schemas.run import ResourceWarningSchema, RunCreate, RunRead, RunSummary
+from app.services.dataset_paths import (
+    dataset_translation_configured,
+    try_resolve_dataset_path,
+)
 from app.services.pipeline import get_registry
 
 log = logging.getLogger(__name__)
@@ -677,20 +687,32 @@ class RunService:
                         f"Parameter '{name}' is required for {manifest['display_name']}."
                     )
                 continue  # optional mounted param with no value — skip
-            translated = to_host_path(val)
-            # Only check existence when the path is reachable from inside the
-            # container. to_host_path() returns the input unchanged when no
-            # mount covers it (e.g. ~/freesurfer/license.txt when only
-            # ~/Documents is mounted). In that case the container can't see the
-            # file, but the Docker daemon on the host can — so we skip the check
-            # and let Docker fail with "bind source path does not exist" if the
-            # path is genuinely wrong.
-            #
-            # path_is_reachable is True when either:
-            #   - to_host_path() translated the path (file is under a known mount), OR
-            #   - we're not inside Docker at all (local dev / test environment)
-            path_is_reachable = (translated != val) or not _is_running_in_docker()
-            if path_is_reachable and not Path(translated).exists():
+            candidate_value = val
+            if not Path(candidate_value).is_absolute():
+                candidate_value = str(Path(dataset.path) / candidate_value)
+            resolved_dataset_path = (
+                try_resolve_dataset_path(candidate_value)
+                if dataset_translation_configured()
+                else None
+            )
+            # Existence is checked only in the backend namespace. The Docker
+            # daemon receives the equivalent host path later, when the bind is
+            # constructed by DockerExecutor.
+            candidate: Path | None = (
+                resolved_dataset_path.backend
+                if resolved_dataset_path is not None
+                else None
+            )
+            if candidate is None and not _is_running_in_docker():
+                candidate = Path(candidate_value).expanduser().resolve()
+            expected_directory = p.get("type") == "directory_path"
+            if candidate is None:
+                available = True
+            elif expected_directory:
+                available = candidate.is_dir()
+            else:
+                available = candidate.is_file()
+            if not available:
                 raise ValueError(
                     f"Parameter '{name}': path not found: '{val}'. "
                     "Check that the file exists and the path is correct."

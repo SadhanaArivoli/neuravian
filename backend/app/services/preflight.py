@@ -14,7 +14,10 @@ import psutil
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.schemas.preflight import PipelinePreflightResponse, PreflightCheck
-from app.services.dataset import _translate_host_path
+from app.services.dataset_paths import (
+    dataset_translation_configured,
+    try_resolve_dataset_path,
+)
 
 
 def _normalise_architecture(value: str) -> str:
@@ -36,7 +39,12 @@ def _image_reference(manifest: dict[str, Any]) -> str | None:
 
 
 def _path_for_parameter(raw: object) -> Path:
-    return _translate_host_path(Path(str(raw)).expanduser()).resolve()
+    path = Path(str(raw)).expanduser()
+    if dataset_translation_configured():
+        resolved = try_resolve_dataset_path(path)
+        if resolved is not None:
+            return resolved.backend
+    return path.resolve()
 
 
 class PreflightService:

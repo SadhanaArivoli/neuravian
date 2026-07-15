@@ -17,9 +17,15 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from app.execution.executor import Executor, ResourceWarning, RunContext
+from app.services.dataset_paths import (
+    DatasetPathConfigurationError,
+    dataset_translation_configured,
+    to_host_dataset_path,
+    try_resolve_dataset_path,
+)
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +105,17 @@ def to_host_path(container_path: str) -> str:
     return container_path
 
 
+def _dataset_bind_source(path: str) -> str:
+    """Return an absolute host bind source for a canonical dataset path."""
+    if dataset_translation_configured():
+        return str(to_host_dataset_path(path))
+    if _is_running_in_docker():
+        raise DatasetPathConfigurationError(
+            "HOST_DATASETS_MOUNT is required to launch dataset pipelines."
+        )
+    return path
+
+
 def from_host_path(host_path: str) -> str:
     """
     Translate a host filesystem path to the equivalent backend-container-internal
@@ -146,7 +163,7 @@ class DockerExecutor(Executor):
         params = ctx.params
         container = manifest["container"]
 
-        dataset_host = to_host_path(ctx.dataset_path)
+        dataset_host = _dataset_bind_source(ctx.dataset_path)
         output_host = to_host_path(ctx.output_dir)
 
         # dataset_positional: true (default) → BIDS-style pipelines that take
@@ -195,8 +212,21 @@ class DockerExecutor(Executor):
             # while browsing their dataset.
             if not Path(raw).is_absolute():
                 raw = str(Path(ctx.dataset_path) / raw)
-            host_path = to_host_path(raw)
-            basename = Path(raw).name
+            resolved_dataset_path = (
+                try_resolve_dataset_path(raw)
+                if dataset_translation_configured()
+                else None
+            )
+            host_path = (
+                str(resolved_dataset_path.host)
+                if resolved_dataset_path is not None
+                else to_host_path(raw)
+            )
+            basename = (
+                resolved_dataset_path.backend.name
+                if resolved_dataset_path is not None
+                else Path(raw).name
+            )
             container_path = f"/inputs/{name}/{basename}"
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
             _mounted_paths[name] = container_path

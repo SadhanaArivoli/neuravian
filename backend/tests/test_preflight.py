@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 from app.models.dataset import Dataset
 from app.services.pipeline import get_registry
@@ -79,6 +80,53 @@ def test_parameterized_preflight_checks_inputs_bids_and_license(tmp_path: Path) 
     assert _check(result, "bids_validity").status == "pass"
     assert _check(result, "license:fs-license-file").status == "pass"
     assert result.can_launch is True
+
+
+def test_cloud_dataset_preflight_uses_backend_namespace(tmp_path: Path) -> None:
+    backend_root = tmp_path / "backend-host-data"
+    dataset_root = backend_root / "x86-minimal-bids"
+    dataset_root.mkdir(parents=True)
+    host_root = tmp_path / "host-root-not-visible-in-backend"
+    dataset = Dataset(path=str(dataset_root), validation_status="valid")
+
+    with patch.object(settings, "host_datasets_mount", str(host_root)), \
+         patch.object(settings, "backend_datasets_mount", str(backend_root)):
+        result = _run(
+            "bids-validator",
+            tmp_path,
+            params={"bids-dir": str(dataset_root)},
+            dataset=dataset,
+            parameterized=True,
+        )
+
+    assert not host_root.exists()
+    assert _check(result, "input_readable:bids-dir").status == "pass"
+    assert str(host_root) not in " ".join(check.message for check in result.checks)
+
+
+def test_missing_cloud_dataset_blocks_without_host_path_leak(
+    tmp_path: Path,
+) -> None:
+    backend_root = tmp_path / "backend-host-data"
+    backend_root.mkdir()
+    logical_path = backend_root / "missing-dataset"
+    host_root = Path("/srv/private-neuroforge-datasets")
+    dataset = Dataset(path=str(logical_path), validation_status="valid")
+
+    with patch.object(settings, "host_datasets_mount", str(host_root)), \
+         patch.object(settings, "backend_datasets_mount", str(backend_root)):
+        result = _run(
+            "bids-validator",
+            tmp_path,
+            params={"bids-dir": str(logical_path)},
+            dataset=dataset,
+            parameterized=True,
+        )
+
+    check = _check(result, "input_readable:bids-dir")
+    assert check.status == "fail"
+    assert check.blocking is True
+    assert str(host_root) not in check.message
 
 
 def test_missing_required_parameter_is_blocking(tmp_path: Path) -> None:
