@@ -7,9 +7,10 @@ Virginia), excluding tax and data transfer. Recheck immediately before launch.
 Application/scientific baseline commit:
 `aec1aea247659f43a92a8f2fc39208d15a68914a`.
 
-Exact VM preparation checkout commit: `PENDING_AFTER_AUDIT_COMMIT`. This value
-is locked by the documentation-only follow-up commit because a Git commit
-cannot contain its own final SHA.
+Exact VM preparation checkout commit:
+`8b9614c328463c9dfcb5337303cadde447985299`. This tooling commit descends from
+the application baseline and changes verification orchestration, documentation,
+timeouts, and tests only; it does not change scientific pipeline behavior.
 
 ## Decision and cost envelope
 
@@ -65,7 +66,7 @@ NAT Gateway, or public application port.
 ```bash
 export AWS_REGION=us-east-1
 export APPLICATION_BASELINE_COMMIT=aec1aea247659f43a92a8f2fc39208d15a68914a
-export VM_PREPARATION_COMMIT=PENDING_AFTER_AUDIT_COMMIT
+export VM_PREPARATION_COMMIT=8b9614c328463c9dfcb5337303cadde447985299
 export INSTANCE_TYPE=m7i.2xlarge
 export KEY_NAME=neuroforge-x86-oneoff
 export KEY_FILE="$HOME/.ssh/neuroforge-x86-oneoff.pem"
@@ -302,7 +303,7 @@ security group, no key pair, and no orphan EBS volume or snapshot.
 | License | GO | Secret transfer pending by design | Use the separate 0600 workflow; never log or commit contents. |
 | Images | GO | Native execution pending | Digests resolve and linux/amd64 metadata is confirmed; pull only by digest. |
 | Bootstrap | GO | VM execution pending | Run only the exact VM preparation commit; verify it contains application baseline `aec1aea...`. |
-| Scripts | NO-GO | Audit additions are currently uncommitted and therefore absent from a literal fresh clone | Commit the audit-only files, then repeat shell syntax, executable-bit, dry-run, and transfer tests from a fresh clone. Keep the VM application checkout pinned to `aec1aea...`. |
+| Scripts | GO | None | Use exact VM preparation commit `8b9614c...`; retain `aec1aea...` as the application baseline. |
 | Timeouts | GO | None | Keep both script watchdogs and 4/14-hour operator ceilings. |
 | Validators | GO | Real output absent by design | Require `all_valid: true` after Session B. |
 | Evidence | GO | Remote evidence absent by design | Download and validate ZIP before every stop/termination. |
@@ -312,8 +313,8 @@ security group, no key pair, and no orphan EBS volume or snapshot.
 | Costs | GO | Prices can change | Recheck immediately before launch; create `$15` budget and stop alarm. |
 | Cleanup | GO | Resources do not yet exist | Use exact stop/terminate/SG/key commands and confirm no orphan EBS. |
 
-**Pre-launch verdict: NO-GO until the audit-only changes are committed and the
-fresh-clone dry run passes.** After that one reproducibility gate, the technical
-plan is GO, contingent on the immediately-before-launch price, quota, AMI,
-`/32`, and console/CLI configuration rechecks. Native scientific verification
-remains pending until Sessions A and B succeed.
+**Pre-launch verdict: GO after origin/main and fresh-clone verification confirm
+the exact preparation commit above.** Launch remains contingent on the
+immediately-before-launch price, quota, AMI, `/32`, and console/CLI configuration
+rechecks. Native scientific verification remains pending until Sessions A and B
+succeed.

@@ -47,7 +47,7 @@ printing either. Then run the checked-in script from a temporary checkout or a
 trusted copy:
 
 ```bash
-VM_PREPARATION_COMMIT=PENDING_AFTER_AUDIT_COMMIT
+VM_PREPARATION_COMMIT=8b9614c328463c9dfcb5337303cadde447985299
 FS_LICENSE="$HOME/.neuroforge-secrets/freesurfer-license.txt" \
   ./scripts/cloud/bootstrap-x86-ubuntu.sh \
   --commit "$VM_PREPARATION_COMMIT" \
