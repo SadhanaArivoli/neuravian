@@ -22,6 +22,7 @@ REQUIRED_TAGS = {
     "ManagedBy": "NeuroForgeProvisioner",
 }
 BOOTSTRAP_IAM_ACTIONS = {
+    "access-analyzer:ValidatePolicy",
     "iam:AddRoleToInstanceProfile",
     "iam:AttachRolePolicy",
     "iam:CreateInstanceProfile",

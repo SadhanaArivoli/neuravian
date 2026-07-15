@@ -165,7 +165,8 @@ def test_preflight_is_read_only_and_validates_exact_shape(harness: dict) -> None
     assert plan["cost"]["gp3_200_gib_month"] == pytest.approx(16.0)
     assert plan["cost"]["snapshot_200_gib_upper_bound_month"] == pytest.approx(10.0)
     assert plan["iam_capability_check"]["status"] == "allowed"
-    assert len(plan["iam_capability_check"]["bootstrap_actions"]) == 20
+    assert len(plan["iam_capability_check"]["bootstrap_actions"]) == 21
+    assert "access-analyzer:ValidatePolicy" in plan["iam_capability_check"]["bootstrap_actions"]
     assert "iam:DeleteRole" in plan["iam_capability_check"]["bootstrap_actions"]
     assert "iam:TagRole" in plan["iam_capability_check"]["bootstrap_actions"]
     assert_no_mutations(harness["log"])

@@ -88,6 +88,7 @@ else
 fi
 [[ "${SIMULATION_PRINCIPAL}" == arn:aws:iam::*:user/* || "${SIMULATION_PRINCIPAL}" == arn:aws:iam::*:role/* ]] || die "Unable to resolve an IAM principal for capability simulation"
 BOOTSTRAP_ACTIONS=(
+  access-analyzer:ValidatePolicy
   iam:AddRoleToInstanceProfile iam:AttachRolePolicy iam:CreateInstanceProfile
   iam:CreatePolicy iam:CreatePolicyVersion iam:CreateRole iam:DeletePolicyVersion
   iam:DeleteRole iam:GetInstanceProfile iam:GetPolicy iam:GetPolicyVersion
