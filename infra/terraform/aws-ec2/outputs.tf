@@ -38,6 +38,11 @@ output "local_backend_health_url" {
   value       = "http://127.0.0.1:8000/api/health"
 }
 
+output "public_frontend_url" {
+  description = "HTTPS URL for the optional authenticated gateway. Reconfigure the gateway after any public-IP change."
+  value       = var.enable_public_frontend ? "https://${replace(aws_instance.neuroforge.public_ip, ".", "-")}.sslip.io" : null
+}
+
 output "deployed_git_commit" {
   description = "Exact Git commit requested by cloud-init."
   value       = var.git_commit

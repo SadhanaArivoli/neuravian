@@ -161,6 +161,32 @@ verifies the bundle and exact commit, preserves any failed checkout, starts the
 same loopback-only Compose service, and writes the normal completion marker.
 The GitHub credential never reaches EC2.
 
+### Authenticated public HTTPS access
+
+NeuroForge has no built-in user authentication, and its frontend proxies the
+backend API. Never expose container ports 3000 or 8000 directly. Public access
+is therefore disabled by default and must use the authenticated HTTPS gateway.
+
+Set `enable_public_frontend = true` in the private `terraform.tfvars`, review a
+plan that adds only TCP 80/443 to the existing security group, and apply it.
+Then generate a strong password and bcrypt hash locally, transfer only the hash
+and gateway helper over SSH, and run:
+
+```bash
+# REMOTE VM
+sudo /tmp/configure-public-gateway.sh \
+  PUBLIC_HOSTNAME AUTH_USERNAME /tmp/password.bcrypt
+```
+
+The helper pins Caddy by image digest, obtains a trusted HTTPS certificate,
+requires Basic authentication for the frontend and API, adds security headers,
+and proxies only to `127.0.0.1:3000`. Keep the plaintext password outside Git,
+Terraform, user-data, shell history, and the VM.
+
+The generated `sslip.io` URL follows the ephemeral public IP. After stopping
+and restarting EC2, update the gateway for the new IP-derived hostname. Use a
+domain you control for a stable long-term URL.
+
 On the VM, bootstrap logs are at:
 
 ```text

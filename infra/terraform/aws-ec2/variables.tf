@@ -99,6 +99,12 @@ variable "enable_termination_protection" {
   default     = true
 }
 
+variable "enable_public_frontend" {
+  description = "Open HTTP/HTTPS for a separately configured authenticated public gateway. Backend and application container ports remain private."
+  type        = bool
+  default     = false
+}
+
 variable "additional_tags" {
   description = "Optional non-sensitive tags. Reserved ownership keys cannot be overridden."
   type        = map(string)

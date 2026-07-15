@@ -11,6 +11,18 @@ resource "aws_security_group" "neuroforge" {
     cidr_blocks = [var.operator_ssh_cidr]
   }
 
+  dynamic "ingress" {
+    for_each = var.enable_public_frontend ? toset([80, 443]) : toset([])
+
+    content {
+      description = ingress.value == 80 ? "HTTP for HTTPS certificate issuance and redirect" : "Authenticated NeuroForge HTTPS gateway"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
   egress {
     description = "Outbound package, GitHub, and container registry access"
     from_port   = 0

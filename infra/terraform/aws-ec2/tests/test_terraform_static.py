@@ -42,6 +42,9 @@ def test_network_is_ssh_only_and_application_is_loopback_only() -> None:
     assert "cidr_blocks = [var.operator_ssh_cidr]" in network
     assert "from_port   = 3000" not in network
     assert "from_port   = 8000" not in network
+    assert "toset([80, 443])" in network
+    assert 'cidr_blocks = ["0.0.0.0/0"]' in network
+    assert "var.enable_public_frontend" in network
     assert '"127.0.0.1:3000:3000"' in override
     assert '"127.0.0.1:8000:8000"' in override
 
@@ -73,6 +76,17 @@ def test_private_repository_bootstrap_is_credential_free_and_exact() -> None:
     assert '"source_transfer": "authenticated-local-git-bundle"' in helper
     assert "GITHUB_TOKEN" not in helper
     assert "AWS_SECRET_ACCESS_KEY" not in helper
+
+
+def test_public_gateway_requires_https_auth_and_loopback_upstream() -> None:
+    gateway = read("scripts/configure-public-gateway.sh")
+    assert 'readonly CADDY_TAG="caddy:2.10.2-alpine"' in gateway
+    assert "CADDY_IMAGE" in gateway and "@sha256:" in gateway
+    assert "basic_auth" in gateway
+    assert "reverse_proxy 127.0.0.1:3000" in gateway
+    assert "Strict-Transport-Security" in gateway
+    assert "--network host" in gateway
+    assert "127.0.0.1:8000" not in gateway
 
 
 def test_no_secret_or_private_key_material_is_committed() -> None:
