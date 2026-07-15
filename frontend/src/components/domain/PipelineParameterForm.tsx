@@ -1,10 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { CornerDownLeft, ArrowUp } from "lucide-react";
-import type { ComputeProfile, Pipeline, PipelineParameter, PrefillContext } from "../../api/client";
+import {
+  fetchPipelinePreflight,
+  type Pipeline,
+  type PipelineParameter,
+  type PipelinePreflightResult,
+  type PrefillContext,
+} from "../../api/client";
 import { useDatasets } from "../../hooks/useDatasets";
 import { useRemoteHosts } from "../../hooks/useRemoteHosts";
 import { useCreateRun, useRuns } from "../../hooks/useRuns";
+import { PipelinePreflightPanel } from "./PipelinePreflightPanel";
 
 interface Props {
   pipeline: Pipeline;
@@ -381,85 +388,6 @@ function buildWarnings(
   return warnings;
 }
 
-// ── Pre-flight confirmation dialog ────────────────────────────────────────────
-
-const PREFLIGHT_COPY: Record<
-  "local-slow" | "local-unsafe",
-  { title: string; body: string; cta: string }
-> = {
-  "local-slow": {
-    title: "This pipeline will run slowly on Apple Silicon",
-    body:
-      "FastSurfer's CNN inference runs under Rosetta 2 x86_64 emulation on Apple Silicon Macs. " +
-      "Confirmed runtime is ~154 seconds per batch × 256 batches × 3 orientations = approximately 33 hours " +
-      "per subject (vs 30–90 minutes on native x86_64 Linux). " +
-      "The run is healthy and will eventually complete — just plan for an overnight computation. " +
-      "If you need results sooner, run on native x86_64 hardware.",
-    cta: "Start anyway (will take ~33h)",
-  },
-  "local-unsafe": {
-    title: "This pipeline may hang indefinitely on Apple Silicon",
-    body:
-      "fMRIPrep's spatial normalisation step (ANTs SyN registration with correlation-coefficient metric) " +
-      "requires AVX2/AVX-512 SIMD instructions. Under Rosetta 2 emulation these instructions are not fully " +
-      "supported: confirmed runs 14–15 stalled at 99.9% CPU utilisation for over 6 hours with no progress. " +
-      "The run will likely never complete on this machine. Consider using native x86_64 hardware " +
-      "or a cloud/HPC environment.",
-    cta: "Start anyway (may hang)",
-  },
-};
-
-function PreflightDialog({
-  pipeline,
-  onConfirm,
-  onCancel,
-}: {
-  pipeline: Pipeline;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const profile = pipeline.compute_profile as "local-slow" | "local-unsafe" | undefined;
-  if (!profile || !(profile in PREFLIGHT_COPY)) return null;
-  const copy = PREFLIGHT_COPY[profile];
-  const isUnsafe = profile === "local-unsafe";
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200 mx-4">
-        <div className={`flex items-start gap-3 rounded-t-xl px-5 pt-5 pb-4 ${isUnsafe ? "bg-red-50" : "bg-amber-50"}`}>
-          <span className="text-xl mt-0.5">{isUnsafe ? "⛔" : "⏱"}</span>
-          <div>
-            <h3 className={`font-semibold text-base ${isUnsafe ? "text-red-800" : "text-amber-800"}`}>
-              {copy.title}
-            </h3>
-            <p className="mt-1 text-sm text-gray-700 leading-relaxed">{copy.body}</p>
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 px-5 py-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${
-              isUnsafe
-                ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
-                : "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
-            }`}
-          >
-            {copy.cta}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 function buildDefaults(params: PipelineParameter[]): FormValues {
@@ -512,7 +440,9 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [showPreflightDialog, setShowPreflightDialog] = useState(false);
+  const [preflight, setPreflight] = useState<PipelinePreflightResult | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
   // Track whether the user has edited a prefilled field away from its prefilled value.
   const [prefillOverridden, setPrefillOverridden] = useState(false);
 
@@ -545,6 +475,38 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
     }
     return params;
   }
+
+  useEffect(() => {
+    if (!selectedDatasetId || remoteHostId) {
+      setPreflight(null);
+      setPreflightLoading(false);
+      setPreflightError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setPreflightLoading(true);
+    setPreflightError(null);
+    const timer = window.setTimeout(() => {
+      fetchPipelinePreflight(
+        pipeline.id,
+        { dataset_id: selectedDatasetId, params: buildParams() },
+        controller.signal,
+      )
+        .then((result) => setPreflight(result))
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return;
+          setPreflight(null);
+          setPreflightError(error instanceof Error ? error.message : "Could not run preflight checks.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setPreflightLoading(false);
+        });
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [pipeline.id, selectedDatasetId, remoteHostId, values]);
 
   async function doSubmit() {
     setSubmitError(null);
@@ -583,23 +545,10 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       return;
     }
 
-    // Skip the local performance warning when running on a remote host
-    const profile = pipeline.compute_profile as ComputeProfile | undefined;
-    if (!remoteHostId && (profile === "local-slow" || profile === "local-unsafe")) {
-      setShowPreflightDialog(true);
+    if (!remoteHostId && preflight && !preflight.can_launch) {
+      setSubmitError("Resolve the blocking preflight checks before starting this run.");
       return;
     }
-
-    // TODO: Pre-flight BIDS validation suggestion
-    // Before submitting MRIQC, fMRIPrep, FastSurfer, or any pipeline that
-    // requires a valid BIDS dataset, check whether the selected dataset has a
-    // recent successful BIDS Validator run (within the last N days). If not,
-    // surface a non-blocking suggestion: "This pipeline works best with a
-    // validated BIDS dataset. Run BIDS Validator first?" with a "Skip" option.
-    // Implementation: query GET /api/runs?pipeline_id=bids-validator&dataset_id=X
-    // and check for a recent status=success entry. The manifest can declare
-    // `preflight_for: ["mriqc", "fmriprep", "fastsurfer"]` to drive this logic
-    // without hardcoding pipeline IDs here.
 
     void doSubmit();
   }
@@ -772,6 +721,13 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
         </div>
       ))}
 
+      <PipelinePreflightPanel
+        result={preflight}
+        loading={preflightLoading}
+        error={preflightError}
+        remote={remoteHostId !== null}
+      />
+
       {/* Submit error */}
       {submitError && (
         <p role="alert" className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -782,24 +738,17 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       <div className="pt-1">
         <button
           type="submit"
-          disabled={createRun.isPending}
+          disabled={
+            createRun.isPending ||
+            preflightLoading ||
+            (!remoteHostId && preflight?.can_launch === false)
+          }
           className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-accent/15 transition-all hover:-translate-y-px hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           {createRun.isPending ? "Starting…" : "Start run"}
         </button>
       </div>
 
-      {/* Pre-flight confirmation dialog for local-slow / local-unsafe pipelines */}
-      {showPreflightDialog && (
-        <PreflightDialog
-          pipeline={pipeline}
-          onConfirm={() => {
-            setShowPreflightDialog(false);
-            void doSubmit();
-          }}
-          onCancel={() => setShowPreflightDialog(false)}
-        />
-      )}
     </form>
   );
 }

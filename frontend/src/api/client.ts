@@ -180,6 +180,39 @@ export function fetchPipeline(id: string): Promise<Pipeline> {
   return apiFetch<Pipeline>(`/pipelines/${id}`);
 }
 
+export type PipelinePreflightStatus = "pass" | "warning" | "fail" | "unknown";
+
+export interface PipelinePreflightCheck {
+  id: string;
+  label: string;
+  status: PipelinePreflightStatus;
+  message: string;
+  remediation: string | null;
+  blocking: boolean;
+  measured_value: string | number | boolean | null;
+  required_value: string | number | boolean | null;
+}
+
+export interface PipelinePreflightResult {
+  pipeline_id: string;
+  empirical_status: string;
+  can_launch: boolean;
+  checks: PipelinePreflightCheck[];
+}
+
+export function fetchPipelinePreflight(
+  pipelineId: string,
+  body: { dataset_id: number | null; params: Record<string, unknown> },
+  signal?: AbortSignal,
+): Promise<PipelinePreflightResult> {
+  return apiFetch<PipelinePreflightResult>(`/pipelines/${pipelineId}/preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
 // ------------------------------------------------------------------ //
 // Runs                                                                 //
 // ------------------------------------------------------------------ //
@@ -455,7 +488,7 @@ export interface RemoteHostCreate {
   notes?: string | null;
 }
 
-export interface PreflightCheck {
+export interface RemotePreflightCheck {
   name: string;
   passed: boolean;
   value: string | null;
@@ -464,7 +497,7 @@ export interface PreflightCheck {
 
 export interface PreflightResult {
   connected: boolean;
-  checks: PreflightCheck[];
+  checks: RemotePreflightCheck[];
   errors: string[];
   warnings: string[];
 }
