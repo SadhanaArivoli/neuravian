@@ -79,6 +79,7 @@ run "secure_single_instance_plan" {
 
   variables {
     deployment_id     = "nf-tf-20260714-test0001"
+    instance_type     = "m7i.2xlarge"
     operator_ssh_cidr = "203.0.113.10/32"
     ssh_public_key    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGV4YW1wbGVleGFtcGxlZXhhbXBsZQ test"
     git_commit        = "245c000a6092333429f5dea03befeea8bff982f7"

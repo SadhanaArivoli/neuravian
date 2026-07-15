@@ -20,13 +20,13 @@ variable "deployment_id" {
 }
 
 variable "instance_type" {
-  description = "Frozen native x86 verification instance type."
+  description = "Native x86 deployment shape. Use m7i-flex.large for AWS Free account plans or m7i.2xlarge for full verification."
   type        = string
   default     = "m7i.2xlarge"
 
   validation {
-    condition     = var.instance_type == "m7i.2xlarge"
-    error_message = "The reviewed deployment requires m7i.2xlarge."
+    condition     = contains(["m7i.2xlarge", "m7i-flex.large"], var.instance_type)
+    error_message = "instance_type must be m7i.2xlarge or the Free-plan-compatible m7i-flex.large."
   }
 }
 

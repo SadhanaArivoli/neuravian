@@ -47,21 +47,29 @@ resource "aws_instance" "neuroforge" {
 
     precondition {
       condition = (
-        data.aws_ec2_instance_type.selected.default_vcpus == 8 &&
-        data.aws_ec2_instance_type.selected.memory_size == 32768 &&
+        (
+          var.instance_type == "m7i.2xlarge" &&
+          data.aws_ec2_instance_type.selected.default_vcpus == 8 &&
+          data.aws_ec2_instance_type.selected.memory_size == 32768
+          ) || (
+          var.instance_type == "m7i-flex.large" &&
+          data.aws_ec2_instance_type.selected.default_vcpus == 2 &&
+          data.aws_ec2_instance_type.selected.memory_size == 8192
+        )
+        ) && (
         contains(data.aws_ec2_instance_type.selected.supported_architectures, "x86_64")
       )
-      error_message = "m7i.2xlarge must resolve to the expected x86_64, 8-vCPU, 32-GiB shape."
+      error_message = "The selected instance type must resolve to its reviewed x86_64 CPU and memory shape."
     }
 
     precondition {
       condition     = data.aws_ec2_instance_type_offering.selected.instance_type == var.instance_type
-      error_message = "m7i.2xlarge must be offered in the selected availability zone."
+      error_message = "The selected instance type must be offered in the selected availability zone."
     }
 
     precondition {
-      condition     = data.aws_servicequotas_service_quota.standard_vcpus.value >= 8
-      error_message = "The regional On-Demand Standard instance quota must be at least 8 vCPUs."
+      condition     = data.aws_servicequotas_service_quota.standard_vcpus.value >= data.aws_ec2_instance_type.selected.default_vcpus
+      error_message = "The regional On-Demand Standard instance quota must cover the selected instance vCPUs."
     }
 
     precondition {

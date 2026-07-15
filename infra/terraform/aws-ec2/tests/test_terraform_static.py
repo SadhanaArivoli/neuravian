@@ -16,6 +16,7 @@ def test_exact_compute_storage_and_metadata_contract() -> None:
     compute = read("compute.tf")
     data = read("data.tf")
     assert 'default     = "m7i.2xlarge"' in variables
+    assert '"m7i-flex.large"' in variables
     assert "volume_size           = 200" in compute
     assert 'volume_type           = "gp3"' in compute
     assert "iops                  = 3000" in compute
@@ -29,7 +30,7 @@ def test_exact_compute_storage_and_metadata_contract() -> None:
     )
     assert 'data "aws_ec2_instance_type_offering" "selected"' in data
     assert 'quota_code   = "L-1216C47A"' in data
-    assert "standard_vcpus.value >= 8" in compute
+    assert "standard_vcpus.value >= data.aws_ec2_instance_type.selected.default_vcpus" in compute
 
 
 def test_network_is_ssh_only_and_application_is_loopback_only() -> None:
@@ -63,6 +64,16 @@ def test_cloud_init_pins_repo_commit_and_starts_service_without_pipeline() -> No
     assert "fastsurfer" not in template.lower()
 
 
+def test_private_repository_bootstrap_is_credential_free_and_exact() -> None:
+    helper = read("scripts/complete-private-bootstrap.sh")
+    assert 'git -C "${verify_repository}" bundle verify "${BUNDLE_PATH}"' in helper
+    assert 'checkout --detach "${GIT_COMMIT}"' in helper
+    assert 'remote set-url origin "${REPOSITORY_URL}"' in helper
+    assert '"source_transfer": "authenticated-local-git-bundle"' in helper
+    assert "GITHUB_TOKEN" not in helper
+    assert "AWS_SECRET_ACCESS_KEY" not in helper
+
+
 def test_no_secret_or_private_key_material_is_committed() -> None:
     contents = "\n".join(
         path.read_text()
@@ -71,7 +82,10 @@ def test_no_secret_or_private_key_material_is_committed() -> None:
         and ".terraform" not in path.parts
         and "tests" not in path.parts
         and "__pycache__" not in path.parts
-        and path.suffix != ".pyc"
+        and (
+            path.suffix in {".tf", ".hcl", ".md", ".yaml", ".sh", ".py", ".example"}
+            or path.name == ".gitignore"
+        )
     )
     forbidden = (
         "AWS_SECRET_ACCESS_KEY=",

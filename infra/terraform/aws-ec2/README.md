@@ -9,7 +9,8 @@ keys, participant data, FreeSurfer licenses, and application secrets are not.
 
 ## What this creates
 
-- one `m7i.2xlarge` EC2 instance in `us-east-1`;
+- one native x86 EC2 instance in `us-east-1`: `m7i.2xlarge` by default or the
+  smaller Free-plan-compatible `m7i-flex.large` profile;
 - the current Canonical Ubuntu Server 24.04 LTS AMD64 gp3 AMI resolved through
   its public SSM parameter and independently owner/architecture filtered;
 - one encrypted 200 GiB gp3 root volume with 3,000 IOPS, 125 MiB/s, and
@@ -26,6 +27,11 @@ keys, participant data, FreeSurfer licenses, and application secrets are not.
 
 It does not create a VPC, NAT Gateway, Elastic IP, load balancer, S3 bucket,
 database, DNS record, TLS certificate, cluster, or scientific pipeline.
+
+For AWS Free account plans, set `instance_type = "m7i-flex.large"`. This is an
+x86_64, Free Tier-eligible 2-vCPU/8-GiB profile intended to bring up the app for
+functional verification. It is slower and is not equivalent to the 8-vCPU,
+32-GiB `m7i.2xlarge` full x86 verification environment.
 
 ## Authentication and prerequisites
 
@@ -128,6 +134,32 @@ terraform output -raw tunnel_command
 
 Open the displayed tunnel, then use `http://127.0.0.1:3000`. Do not add public
 rules for ports 3000 or 8000.
+
+### Private GitHub repository
+
+Do not put a GitHub token, deploy-key private key, or other repository secret
+in Terraform variables, state, user-data, or the VM image. For a private
+repository, transfer a Git bundle containing the exact configured commit over
+the deployment SSH connection and run the credential-free completion helper:
+
+```bash
+# LOCAL MAC, from the repository root
+git bundle create /private/tmp/neuroforge.bundle codex/aws-terraform-ec2-deployment
+scp -i "$HOME/.ssh/neuroforge-terraform" \
+  /private/tmp/neuroforge.bundle \
+  infra/terraform/aws-ec2/scripts/complete-private-bootstrap.sh \
+  "ubuntu@$(terraform -chdir=infra/terraform/aws-ec2 output -raw public_ip):/tmp/"
+
+ssh -i "$HOME/.ssh/neuroforge-terraform" \
+  "ubuntu@$(terraform -chdir=infra/terraform/aws-ec2 output -raw public_ip)" \
+  "sudo bash /tmp/complete-private-bootstrap.sh /tmp/neuroforge.bundle \
+  $(terraform -chdir=infra/terraform/aws-ec2 output -raw deployed_git_commit)"
+```
+
+Use a local branch or ref that contains the configured commit. The helper
+verifies the bundle and exact commit, preserves any failed checkout, starts the
+same loopback-only Compose service, and writes the normal completion marker.
+The GitHub credential never reaches EC2.
 
 On the VM, bootstrap logs are at:
 
