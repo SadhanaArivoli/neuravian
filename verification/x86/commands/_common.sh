@@ -8,6 +8,8 @@ EVIDENCE_DIR="${EVIDENCE_DIR:-${NF_ROOT}/verification/x86/evidence}"
 RUN_STATE_DIR="${RUN_STATE_DIR:-${EVIDENCE_DIR}/run-state}"
 LOG_DIR="${LOG_DIR:-${EVIDENCE_DIR}/logs}"
 DRY_RUN="${DRY_RUN:-0}"
+VERIFY_PYTHON="${VERIFY_PYTHON:-${NF_ROOT}/.x86-verification-venv/bin/python}"
+if [[ ! -x "${VERIFY_PYTHON}" ]]; then VERIFY_PYTHON=python3; fi
 
 mkdir -p "${LOG_DIR}" "${RUN_STATE_DIR}"
 SCRIPT_NAME="$(basename "${0}" .sh)"
@@ -123,6 +125,9 @@ wait_for_run() {
 verify_common_environment() {
   require_command curl
   require_command jq
+  if [[ "${DRY_RUN}" == 1 ]]; then
+    return 0
+  fi
   require_command docker
   [[ -d "${FIXTURE_DIR}" ]] || die "Fixture directory not found: ${FIXTURE_DIR}"
 }

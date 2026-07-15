@@ -7,7 +7,9 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
-command -v docker >/dev/null || { echo "Docker CLI is required" >&2; exit 2; }
+if [[ "${DRY_RUN}" != 1 ]]; then
+  command -v docker >/dev/null || { echo "Docker CLI is required" >&2; exit 2; }
+fi
 
 while IFS= read -r image; do
   if [[ "${DRY_RUN}" == 1 ]]; then
