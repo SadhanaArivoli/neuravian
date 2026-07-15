@@ -118,6 +118,7 @@ def validate_ami(document: dict[str, Any], expected_id: str) -> dict[str, str]:
         "architecture": image.get("Architecture") == "x86_64",
         "state": image.get("State") == "available",
         "root_device": image.get("RootDeviceType") == "ebs",
+        "root_device_name": str(image.get("RootDeviceName", "")).startswith("/dev/"),
         "ubuntu_noble": bool(
             re.search(r"ubuntu.*noble.*24\.04.*amd64", str(image.get("Name", "")), re.I)
         ),
@@ -130,6 +131,7 @@ def validate_ami(document: dict[str, Any], expected_id: str) -> dict[str, str]:
         "architecture": "x86_64",
         "name": str(image["Name"]),
         "owner_verified": True,
+        "root_device_name": str(image["RootDeviceName"]),
     }
 
 

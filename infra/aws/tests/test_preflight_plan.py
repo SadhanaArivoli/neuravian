@@ -41,7 +41,7 @@ responses = {
     ("ec2", "describe-instance-type-offerings"): {"InstanceTypeOfferings": [{"InstanceType": "m7i.2xlarge", "LocationType": "availability-zone", "Location": "us-east-1a"}]},
     ("ec2", "describe-instance-types"): {"InstanceTypes": [{"InstanceType": "m7i.2xlarge", "ProcessorInfo": {"SupportedArchitectures": ["x86_64"]}, "VCpuInfo": {"DefaultVCpus": 8}, "MemoryInfo": {"SizeInMiB": 32768}}]},
     ("service-quotas", "get-service-quota"): {"Value": 64.0, "QuotaCode": "L-1216C47A"},
-    ("ec2", "describe-images"): {"Images": [{"ImageId": "ami-abc123", "OwnerId": owner, "Architecture": "arm64" if bad_arch else "x86_64", "State": "available", "RootDeviceType": "ebs", "Name": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260701"}]},
+    ("ec2", "describe-images"): {"Images": [{"ImageId": "ami-abc123", "OwnerId": owner, "Architecture": "arm64" if bad_arch else "x86_64", "State": "available", "RootDeviceType": "ebs", "RootDeviceName": "/dev/sda1", "Name": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260701"}]},
     ("ec2", "describe-instances"): {"Reservations": []},
     ("ec2", "describe-security-groups"): {"SecurityGroups": []},
     ("ec2", "describe-volumes"): {"Volumes": []},
@@ -279,3 +279,93 @@ def test_committed_iam_templates_are_valid_json_and_contain_no_user_key_actions(
     assert "iam:CreateUser" not in encoded
     assert "AdministratorAccess" not in encoded
     assert documents[2]["Statement"] == []
+
+
+def test_provision_dry_run_generates_exact_safe_request(harness: dict) -> None:
+    result = run_script(harness, "03-provision.sh", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    request_path = (
+        ROOT
+        / ".neuroforge-aws/plans/provision-nf-x86-test0001/run-instances.json"
+    )
+    request = json.loads(request_path.read_text())
+    assert request["MinCount"] == request["MaxCount"] == 1
+    assert request["InstanceType"] == "m7i.2xlarge"
+    assert request["NetworkInterfaces"] == [
+        {
+            "AssociatePublicIpAddress": True,
+            "DeleteOnTermination": True,
+            "DeviceIndex": 0,
+            "Groups": ["sg-planned00000000"],
+            "SubnetId": "subnet-abc123",
+        }
+    ]
+    assert request["BlockDeviceMappings"][0]["Ebs"] == {
+        "DeleteOnTermination": True,
+        "Encrypted": True,
+        "Iops": 3000,
+        "Throughput": 125,
+        "VolumeSize": 200,
+        "VolumeType": "gp3",
+    }
+    assert request["MetadataOptions"] == {
+        "HttpEndpoint": "enabled",
+        "HttpPutResponseHopLimit": 1,
+        "HttpTokens": "required",
+        "InstanceMetadataTags": "disabled",
+    }
+    assert request["DisableApiTermination"] is True
+    assert request["InstanceInitiatedShutdownBehavior"] == "stop"
+    assert {item["ResourceType"] for item in request["TagSpecifications"]} == {
+        "instance",
+        "network-interface",
+        "volume",
+    }
+    import base64
+
+    user_data = base64.b64decode(request["UserData"]).decode()
+    assert "8b9614c328463c9dfcb5337303cadde447985299" in user_data
+    assert "HttpPutResponseHopLimit" not in user_data
+    assert "license.txt" not in user_data
+    assert "AWS_SECRET_ACCESS_KEY" not in user_data
+    assert "verification/x86/commands/02" not in user_data
+    assert "docker run" not in user_data
+    assert_no_mutations(harness["log"])
+
+
+def test_provision_apply_is_blocked_before_any_aws_call(harness: dict) -> None:
+    result = run_script(
+        harness,
+        "03-provision.sh",
+        "--apply",
+        "--confirmation",
+        "LAUNCH ONE M7I.2XLARGE",
+    )
+    assert result.returncode != 0
+    assert "Live AWS automation approval is absent" in result.stderr
+    assert not harness["log"].exists()
+
+
+def test_wait_and_deploy_dry_runs_are_non_mutating(harness: dict) -> None:
+    wait = run_script(harness, "04-wait-and-verify.sh", "--dry-run")
+    assert wait.returncode == 0, wait.stderr
+    assert "no container or scientific pipeline ran" in wait.stdout
+    deploy = run_script(harness, "05-deploy-neuroforge.sh", "--dry-run")
+    assert deploy.returncode == 0, deploy.stderr
+    assert "no scientific pipeline" in deploy.stdout.lower()
+    assert "127.0.0.1:3000" in deploy.stdout
+    assert "127.0.0.1:8000" in deploy.stdout
+    assert not harness["log"].exists()
+
+
+def test_deploy_apply_is_blocked_before_state_or_network(harness: dict) -> None:
+    result = run_script(
+        harness,
+        "05-deploy-neuroforge.sh",
+        "--apply",
+        "--confirmation",
+        "DEPLOY LOCAL-ONLY NEUROFORGE",
+    )
+    assert result.returncode != 0
+    assert "Live AWS automation approval is absent" in result.stderr
+    assert not harness["log"].exists()
