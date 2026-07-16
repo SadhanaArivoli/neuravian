@@ -13,6 +13,7 @@ import {
   computeDisplayStatistics,
   DISPLAY_PROFILES,
 } from "../src/lib/scientificDisplayProfiles";
+import { freeSurferLabelName } from "../src/lib/freesurferLut";
 
 const mocks = vi.hoisted(() => ({
   instances: [] as Array<Record<string, unknown>>,
@@ -57,6 +58,7 @@ vi.mock("@niivue/niivue", () => ({
       setColormapNegative: vi.fn(),
       setGamma: vi.fn(),
       setInterpolation: vi.fn(),
+      setAtlasOutline: vi.fn(),
       setFrame4D: vi.fn(),
       setCrosshairColor: vi.fn(),
       setCrosshairWidth: vi.fn(),
@@ -86,6 +88,7 @@ function latest() {
     setColormapNegative: ReturnType<typeof vi.fn>;
     setGamma: ReturnType<typeof vi.fn>;
     setInterpolation: ReturnType<typeof vi.fn>;
+    setAtlasOutline: ReturnType<typeof vi.fn>;
     setFrame4D: ReturnType<typeof vi.fn>;
     setCrosshairWidth: ReturnType<typeof vi.fn>;
     setPan2Dxyzmm: ReturnType<typeof vi.fn>;
@@ -220,6 +223,14 @@ describe("shared NIfTI viewer UI", () => {
     await waitFor(() => expect(latest().setInterpolation).toHaveBeenCalledWith(true));
     fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     expect(screen.getByLabelText("Colormap")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    expect(latest().setAtlasOutline).toHaveBeenCalledWith(1);
+  });
+
+  it("uses stable FreeSurfer names and explicit numeric fallbacks", () => {
+    expect(freeSurferLabelName(17)).toBe("Left-Hippocampus");
+    expect(freeSurferLabelName(251)).toBe("CC-Posterior");
+    expect(freeSurferLabelName(9999)).toBe("FreeSurfer label 9999");
   });
 
   it("exposes 4D volume navigation, playback controls, and header metadata", async () => {

@@ -24,6 +24,8 @@ const ENTRIES: AsegEntry[] = [
   [24,  60,  60,  60,  255, "CSF"],
   [26,  255, 165, 0,   255, "Left-Accumbens-area"],
   [28,  165, 42,  42,  255, "Left-VentralDC"],
+  [30,  160, 32,  240, 255, "Left-Vessel"],
+  [31,  0,   200, 200, 255, "Left-Choroid-Plexus"],
   [41,  0,   225, 0,   255, "Right-Cerebral-White-Matter"],
   [42,  205, 62,  78,  255, "Right-Cerebral-Cortex"],
   [43,  120, 18,  134, 255, "Right-Lateral-Ventricle"],
@@ -38,9 +40,29 @@ const ENTRIES: AsegEntry[] = [
   [54,  103, 255, 255, 255, "Right-Amygdala"],
   [58,  255, 165, 0,   255, "Right-Accumbens-area"],
   [60,  165, 42,  42,  255, "Right-VentralDC"],
+  [62,  160, 32,  240, 255, "Right-Vessel"],
+  [63,  0,   200, 200, 255, "Right-Choroid-Plexus"],
+  [72,  120, 190, 150, 255, "5th-Ventricle"],
   [77,  200, 70,  255, 255, "WM-hypointensities"],
+  [78,  255, 148, 10,  255, "Left-WM-hypointensities"],
+  [79,  255, 148, 10,  255, "Right-WM-hypointensities"],
+  [80,  164, 108, 226, 255, "non-WM-hypointensities"],
+  [81,  164, 108, 226, 255, "Left-non-WM-hypointensities"],
+  [82,  164, 108, 226, 255, "Right-non-WM-hypointensities"],
   [85,  234, 169, 30,  255, "Optic-Chiasm"],
+  [251, 0,   0,   64,  255, "CC-Posterior"],
+  [252, 0,   0,   112, 255, "CC-Mid-Posterior"],
+  [253, 0,   0,   160, 255, "CC-Central"],
+  [254, 0,   0,   208, 255, "CC-Mid-Anterior"],
+  [255, 0,   0,   255, 255, "CC-Anterior"],
 ];
+
+export const ASEG_LABEL_BY_ID = new Map(ENTRIES.map(([index, , , , , label]) => [index, label]));
+
+export function freeSurferLabelName(value: number) {
+  const id = Math.round(value);
+  return ASEG_LABEL_BY_ID.get(id) ?? (id === 0 ? "Background" : `FreeSurfer label ${id}`);
+}
 
 // NiiVue ColorMap format: parallel arrays, I[] maps each entry to a voxel label value.
 export const ASEG_COLOR_MAP = {
