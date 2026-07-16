@@ -20,6 +20,30 @@ from app.services.dataset_paths import (
 )
 
 
+READABLE_PATH_PARAMETER_TYPES = frozenset({"file_path", "directory_path"})
+
+
+def _requires_readability_check(parameter: dict[str, Any], raw: object) -> bool:
+    """Return whether *raw* denotes a user-supplied host input path.
+
+    Optional path parameters with an unchanged default are commonly managed
+    output/container paths (for example ``/out`` or ``{output_dir}``). They are
+    not readable inputs in the backend namespace. If the user changes such a
+    value, it becomes user-supplied and is validated normally.
+    """
+    if parameter.get("type") not in READABLE_PATH_PARAMETER_TYPES:
+        return False
+    if raw is None or raw == "":
+        return False
+    unchanged_optional_default = (
+        not parameter.get("required")
+        and not parameter.get("mount")
+        and "default" in parameter
+        and raw == parameter.get("default")
+    )
+    return not unchanged_optional_default
+
+
 def _normalise_architecture(value: str) -> str:
     lowered = value.lower()
     if lowered in {"amd64", "x86_64", "x64"}:
@@ -181,7 +205,6 @@ class PreflightService:
         for parameter in manifest.get("parameters", []):
             name = parameter["name"]
             raw = params.get(name, parameter.get("default"))
-            is_path = parameter.get("type") in {"file_path", "directory_path"}
             if parameter.get("required") and parameterized and (raw is None or raw == ""):
                 add(f"required_input:{name}", f"Required input: {name}", "fail", f"Required parameter '{name}' is missing.", remediation="Provide the required input before launch.", blocking=True, measured="missing", required="provided")
                 continue
@@ -193,7 +216,7 @@ class PreflightService:
                     valid = candidate.is_file() and os.access(candidate, os.R_OK) and candidate.stat().st_size > 0
                     add(f"license:{name}", "FreeSurfer license", "pass" if valid else "fail", "License file is present and readable; contents were not inspected." if valid else "License file is missing, empty, or unreadable.", remediation=None if valid else "Provide a non-empty readable FreeSurfer license.txt at the selected path.", blocking=not valid, measured="readable" if valid else "unavailable", required="readable non-empty file")
                 continue
-            if is_path and raw:
+            if _requires_readability_check(parameter, raw):
                 candidate = _path_for_parameter(raw)
                 expected_directory = parameter.get("type") == "directory_path"
                 exists = candidate.is_dir() if expected_directory else candidate.is_file()
