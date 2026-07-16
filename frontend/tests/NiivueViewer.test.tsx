@@ -221,6 +221,9 @@ describe("shared NIfTI viewer UI", () => {
   it("uses nearest-neighbor interpolation automatically for label maps", async () => {
     render(<NeuroImageViewer layers={[{ ...structural[0], isSegmentation: true }]} label="Labels" mapType="segmentation" modal />);
     await waitFor(() => expect(latest().setInterpolation).toHaveBeenCalledWith(true));
+    const labelVolume = (mocks.instances[0].volumes as Array<Record<string, unknown>>)[0];
+    expect(labelVolume.colormapLabel).toBeTruthy();
+    expect(latest().setColormap).not.toHaveBeenCalledWith("volume-0", "roi_i256");
     fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     expect(screen.getByLabelText("Colormap")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Outline" }));

@@ -179,7 +179,16 @@ function applyVolumeDisplay(
   min: number,
   max: number,
 ) {
-  if (profile.signed && colormap === "blue2red") {
+  if (isLabelProfile(profile)) {
+    // The label LUT is attached as colormapLabel while the volume is loaded.
+    // Calling setColormap here replaces that categorical LUT with a scalar
+    // palette, so label volumes deliberately retain their loaded color table.
+    volume.cal_min = min;
+    volume.cal_max = max;
+    volume.cal_minNeg = Number.NaN;
+    volume.cal_maxNeg = Number.NaN;
+    volume.colormapType = 1;
+  } else if (profile.signed && colormap === "blue2red") {
     // NiiVue's paired positive/negative LUTs keep exact zero transparent while
     // preserving a perceptually neutral center over a black or anatomical base.
     nv.setColormap(volume.id, "red");
