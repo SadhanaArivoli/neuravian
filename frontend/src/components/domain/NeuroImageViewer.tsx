@@ -76,7 +76,13 @@ type ContourMode = "filled" | "filled-contour" | "contour";
 interface ViewerLocation {
   mm?: number[];
   vox?: number[];
-  values?: number[];
+  values?: Array<number | { value?: number }>;
+}
+
+export function viewerLocationValue(location: ViewerLocation, index: number) {
+  const entry = location.values?.[index];
+  const value = typeof entry === "number" ? entry : entry?.value;
+  return Number.isFinite(value) ? Number(value) : null;
 }
 
 interface VolumeMetadata {
@@ -470,8 +476,9 @@ export default function NeuroImageViewer({
       (raw) => volume?.intensityRaw2Scaled(raw) ?? raw,
     );
   }, [activeFrameCount, activeLayer, location]);
-  const activeLabelValue = isLabelProfile(profiles[activeLayer]) && location.values?.[activeLayer] != null
-    ? Math.round(Number(location.values[activeLayer])) : null;
+  const activeVoxelValue = viewerLocationValue(location, activeLayer);
+  const activeLabelValue = isLabelProfile(profiles[activeLayer]) && activeVoxelValue != null
+    ? Math.round(activeVoxelValue) : null;
 
   const setFrame = useCallback((index: number, frame: number) => {
     const nv = nvRef.current;
@@ -1043,7 +1050,7 @@ export default function NeuroImageViewer({
               <div className="flex items-center justify-between"><span>Crosshair</span><label className="flex items-center gap-1"><input aria-label="Show crosshair" type="checkbox" checked={crosshairVisible} onChange={(event) => changeCrosshairVisible(event.target.checked)} /> Show</label></div>
               <label className="block">Thickness <span className="float-right">{crosshairWidth.toFixed(1)}</span><input aria-label="Crosshair thickness" type="range" min="0.2" max="3" step="0.1" value={crosshairWidth} onChange={(event) => changeCrosshairWidth(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></label>
               <label className="flex items-center justify-between">Color<input aria-label="Crosshair color" type="color" value={crosshairColor} onChange={(event) => { setCrosshairColor(event.target.value); nvRef.current?.setCrosshairColor(hexToRgba(event.target.value)); }} /></label>
-              <div className="rounded bg-black/20 p-2 font-mono text-[10px] tabular-nums"><div>mm {location.mm?.slice(0, 3).map((value) => Number(value).toFixed(1)).join(", ") || "—"}</div><div>vox {location.vox?.slice(0, 3).map((value) => Math.round(Number(value))).join(", ") || "—"}</div><div>value {location.values?.[activeLayer] != null ? Number(location.values[activeLayer]).toPrecision(5) : "—"}</div>{activeLabelValue != null && <div className="mt-1 border-t border-white/8 pt-1 text-cyan-200">label {activeLabelValue}: {freeSurferLabelName(activeLabelValue)}</div>}</div>
+              <div className="rounded bg-black/20 p-2 font-mono text-[10px] tabular-nums"><div>mm {location.mm?.slice(0, 3).map((value) => Number(value).toFixed(1)).join(", ") || "—"}</div><div>vox {location.vox?.slice(0, 3).map((value) => Math.round(Number(value))).join(", ") || "—"}</div><div>value {activeVoxelValue != null ? activeVoxelValue.toPrecision(5) : "—"}</div>{activeLabelValue != null && <div className="mt-1 border-t border-white/8 pt-1 text-cyan-200">label {activeLabelValue}: {freeSurferLabelName(activeLabelValue)}</div>}</div>
               {activeMetadata && <details className="rounded border border-white/8 bg-black/15 p-2"><summary className="cursor-pointer text-[10px] font-medium text-slate-300">Volume metadata</summary><dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 font-mono text-[9px] text-slate-500"><dt>dimensions</dt><dd className="text-right text-slate-300">{activeMetadata.dimensions}</dd><dt>voxel size</dt><dd className="text-right text-slate-300">{activeMetadata.voxelSize}</dd><dt>datatype</dt><dd className="text-right text-slate-300">{activeMetadata.datatype}</dd><dt>frames</dt><dd className="text-right text-slate-300">{activeMetadata.frameCount}</dd><dt>scale</dt><dd className="text-right text-slate-300">slope {activeMetadata.slope ?? "—"}, intercept {activeMetadata.intercept ?? "—"}</dd><dt>forms</dt><dd className="text-right text-slate-300">q {activeMetadata.qformCode ?? "—"}, s {activeMetadata.sformCode ?? "—"}</dd><dt>finite range</dt><dd className="text-right text-slate-300">{current.dataMin.toPrecision(4)} – {current.dataMax.toPrecision(4)}</dd></dl></details>}
               <div><span className="mb-1 block">Jump to mm</span><div className="flex gap-1">{([0, 1, 2] as const).map((index) => <input key={index} aria-label={`Jump ${["X", "Y", "Z"][index]} coordinate`} type="number" value={jumpMm[index]} onChange={(event) => setJumpMm((previous) => previous.map((value, item) => item === index ? Number(event.target.value) : value) as [number, number, number])} className="min-w-0 flex-1 rounded border border-white/10 bg-slate-900 px-1 py-1" />)}<button type="button" onClick={jumpToCoordinate} className="rounded bg-cyan-500/20 px-2 text-cyan-200">Go</button></div></div>
               <div><span className="mb-1 block">Layout</span><div className="flex flex-wrap gap-1">{(["axial", "coronal", "sagittal", "multiplanar", "four-pane", "render"] as ViewLayout[]).map((layout) => { const renderDisabled = layout === "render" && profiles[activeLayer].threeD !== "volume" && !hasCompatibleUnderlay; return <button key={layout} type="button" disabled={renderDisabled} title={renderDisabled ? "3D requires a structural volume or compatible anatomical underlay" : undefined} onClick={() => changeLayout(layout)} className={`rounded px-2 py-1 capitalize disabled:cursor-not-allowed disabled:opacity-35 ${viewLayout === layout ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{layout === "multiplanar" ? "2D" : layout === "render" ? "3D" : layout.replace("-", " ")}</button>; })}</div></div>

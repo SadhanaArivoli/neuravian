@@ -6,6 +6,7 @@ import NeuroImageViewer, {
   extractVoxelTimeSeries,
   finiteScaledSamples,
   inferMapType,
+  viewerLocationValue,
 } from "../src/components/domain/NeuroImageViewer";
 import NiivuePanel from "../src/components/domain/NiivuePanel";
 import NiivueViewer from "../src/components/domain/NiivueViewer";
@@ -237,6 +238,12 @@ describe("shared NIfTI viewer UI", () => {
     expect(freeSurferLabelName(17)).toBe("Left-Hippocampus");
     expect(freeSurferLabelName(251)).toBe("CC-Posterior");
     expect(freeSurferLabelName(9999)).toBe("FreeSurfer label 9999");
+  });
+
+  it("normalizes current NiiVue location objects and legacy numeric values", () => {
+    expect(viewerLocationValue({ values: [{ value: 17 }] }, 0)).toBe(17);
+    expect(viewerLocationValue({ values: [42] }, 0)).toBe(42);
+    expect(viewerLocationValue({ values: [{ value: Number.NaN }] }, 0)).toBeNull();
   });
 
   it("exposes 4D volume navigation, playback controls, and header metadata", async () => {
