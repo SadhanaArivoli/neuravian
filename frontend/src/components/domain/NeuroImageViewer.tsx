@@ -87,6 +87,7 @@ interface VolumeMetadata {
   intercept: number | null;
   qformCode: number | null;
   sformCode: number | null;
+  repetitionTime: number | null;
 }
 
 type VolumeOption = Parameters<Niivue["loadVolumes"]>[0][number];
@@ -218,6 +219,30 @@ export function finiteScaledSamples(
     // must use the same scaled intensity domain.
     const value = intensityRawToScaled(Number(image[index]));
     if (Number.isFinite(value)) values.push(value);
+  }
+  return values;
+}
+
+export function extractVoxelTimeSeries(
+  image: NumericArray | null | undefined,
+  dimensions: number[],
+  voxel: number[],
+  frameCount: number,
+  intensityRawToScaled: (raw: number) => number = (raw) => raw,
+) {
+  if (!image || dimensions.length < 3 || voxel.length < 3 || frameCount < 1) return [];
+  const [nx, ny, nz] = dimensions.slice(0, 3).map((value) => Math.trunc(value));
+  const [x, y, z] = voxel.slice(0, 3).map((value) => Math.round(value));
+  if ([nx, ny, nz].some((value) => value <= 0)
+      || x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return [];
+  const voxelsPerFrame = nx * ny * nz;
+  const base = x + y * nx + z * nx * ny;
+  const values: number[] = [];
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const index = base + frame * voxelsPerFrame;
+    if (index >= image.length) break;
+    const value = intensityRawToScaled(Number(image[index]));
+    values.push(Number.isFinite(value) ? value : Number.NaN);
   }
   return values;
 }
@@ -428,6 +453,18 @@ export default function NeuroImageViewer({
   const activeFrameCount = frameCounts[activeLayer] ?? 1;
   const activeFrame = currentFrames[activeLayer] ?? 0;
   const activeMetadata = volumeMetadata[activeLayer];
+  const voxelTimeSeries = useMemo(() => {
+    const volume = nvRef.current?.volumes[activeLayer];
+    const header = (volume as unknown as { hdr?: { dims?: number[] } } | undefined)?.hdr;
+    const voxel = location.vox?.slice(0, 3).map(Number) ?? [];
+    return extractVoxelTimeSeries(
+      volume?.img as NumericArray | undefined,
+      header?.dims?.slice(1, 4).map(Number) ?? [],
+      voxel,
+      activeFrameCount,
+      (raw) => volume?.intensityRaw2Scaled(raw) ?? raw,
+    );
+  }, [activeFrameCount, activeLayer, location]);
 
   const setFrame = useCallback((index: number, frame: number) => {
     const nv = nvRef.current;
@@ -607,6 +644,9 @@ export default function NeuroImageViewer({
         ...(profiles[index].signed ? { colormapNegative: "blue", ignoreZeroVoxels: true } : {}),
         ...(profiles[index].zeroBackground !== "data" ? { ignoreZeroVoxels: true } : {}),
         ...(!isLabelProfile(profiles[index]) ? { trustCalMinMax: false } : {}),
+        // Bound decoded 4D memory. Run 5 (300 frames) remains fully available;
+        // larger series fail closed at a documented inspection limit.
+        limitFrames4D: 500,
       })) as VolumeOption[];
       const options = await Promise.all(rawOptions.map((option, index) =>
         prepareVolumeOption(layers[index], option, NVImage, requestController.signal)
@@ -643,6 +683,7 @@ export default function NeuroImageViewer({
           intercept: Number.isFinite(Number(header.scl_inter)) ? Number(header.scl_inter) : null,
           qformCode: Number.isFinite(Number(header.qform_code ?? header.qformCode)) ? Number(header.qform_code ?? header.qformCode) : null,
           sformCode: Number.isFinite(Number(header.sform_code ?? header.sformCode)) ? Number(header.sform_code ?? header.sformCode) : null,
+          repetitionTime: pixDims && Number.isFinite(Number(pixDims[4])) && Number(pixDims[4]) > 0 ? Number(pixDims[4]) : null,
         };
       }));
       const structuralIndex = profiles.findIndex((profile) => profile.id === "structural");
@@ -783,6 +824,15 @@ export default function NeuroImageViewer({
       setExporting(false);
     }
   }, [background, crosshairColor, crosshairVisible, crosshairWidth, current?.gamma, currentFrames, exportScale, frameCounts, label, layerStates, location, nearest, profiles, radiological, showColorbarState, showOrientation, transparentExport, unitLabel, viewLayout]);
+
+  const exportVoxelTimeSeries = useCallback(() => {
+    if (!voxelTimeSeries.length) return;
+    const tr = activeMetadata?.repetitionTime;
+    const rows = ["frame,time_seconds,value", ...voxelTimeSeries.map((value, frame) =>
+      `${frame},${tr ? (frame * tr).toFixed(6) : ""},${Number.isFinite(value) ? value : ""}`
+    )];
+    downloadBlob(new Blob([`${rows.join("\n")}\n`], { type: "text/csv;charset=utf-8" }), "voxel-time-series.csv");
+  }, [activeMetadata?.repetitionTime, voxelTimeSeries]);
 
   const changeColormap = (value: string) => {
     const volume = nvRef.current?.volumes[activeLayer];
@@ -931,7 +981,20 @@ export default function NeuroImageViewer({
               <div><div className="flex items-center justify-between"><span>Opacity</span><label className="flex items-center gap-1"><input aria-label="Overlay opacity percentage" type="number" min="0" max="100" value={Math.round(current.opacity * 100)} onChange={(event) => changeOpacity(Math.max(0, Math.min(100, Number(event.target.value))) / 100)} className="w-14 rounded border border-white/10 bg-slate-900 px-1 py-0.5 text-right tabular-nums" />%</label></div><input aria-label="Overlay opacity" type="range" min="0" max="1" step="0.01" value={current.opacity} onChange={(event) => changeOpacity(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></div>
               <div><span className="mb-1 block">Interpolation</span><div className="flex gap-1">{(["auto", "smooth", "nearest"] as InterpolationMode[]).map((mode) => <button key={mode} type="button" onClick={() => changeInterpolation(mode)} className={`rounded px-2 py-1 capitalize ${interpolationMode === mode ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{mode === "nearest" ? "Nearest" : mode}</button>)}</div></div>
               <div className="grid grid-cols-3 gap-2"><label>Brightness <input aria-label="Brightness" type="range" min="-50" max="50" value={current.brightness} onChange={(event) => updateTone({ brightness: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Contrast <input aria-label="Contrast" type="range" min="0.25" max="3" step="0.05" value={current.contrast} onChange={(event) => updateTone({ contrast: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Gamma <input aria-label="Gamma" type="range" min="0.2" max="3" step="0.05" value={current.gamma} onChange={(event) => updateTone({ gamma: Number(event.target.value) })} className="w-full accent-cyan-400" /></label></div>
-              {activeFrameCount > 1 && <div className="rounded-lg border border-violet-400/15 bg-violet-400/[0.05] p-2" data-testid="four-d-controls"><div className="mb-1 flex items-center justify-between"><span className="font-medium text-violet-100">Time series</span><span className="font-mono text-[10px] text-violet-300">volume {activeFrame + 1} / {activeFrameCount}</span></div><input aria-label="4D volume" type="range" min="0" max={activeFrameCount - 1} step="1" value={activeFrame} onChange={(event) => setFrame(activeLayer, Number(event.target.value))} className="w-full accent-violet-400" /><div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setPlaying4d((value) => !value)} className="rounded bg-violet-500/20 px-2 py-1 text-violet-100">{playing4d ? "Pause" : "Play"}</button><label className="ml-auto flex items-center gap-1">Speed<select aria-label="Playback speed" value={playbackFps} onChange={(event) => setPlaybackFps(Number(event.target.value))} className="rounded border border-white/10 bg-slate-900 px-1 py-1"><option value={2}>2 fps</option><option value={6}>6 fps</option><option value={12}>12 fps</option></select></label></div><p className="mt-1 text-[9px] text-slate-500">The intensity window is computed from the complete loaded series and remains stable during playback.</p></div>}
+              {activeFrameCount > 1 && <div className="rounded-lg border border-violet-400/15 bg-violet-400/[0.05] p-2" data-testid="four-d-controls">
+                <div className="mb-1 flex items-center justify-between"><span className="font-medium text-violet-100">Time series</span><span className="font-mono text-[10px] text-violet-300">frame {activeFrame + 1} / {activeFrameCount}{activeMetadata?.repetitionTime ? ` · ${(activeFrame * activeMetadata.repetitionTime).toFixed(1)} s` : ""}</span></div>
+                <input aria-label="4D volume" type="range" min="0" max={activeFrameCount - 1} step="1" value={activeFrame} onChange={(event) => setFrame(activeLayer, Number(event.target.value))} className="w-full accent-violet-400" />
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <button type="button" aria-label="First frame" onClick={() => setFrame(activeLayer, 0)} className="rounded bg-white/5 px-2 py-1">|‹</button>
+                  <button type="button" aria-label="Previous frame" onClick={() => setFrame(activeLayer, activeFrame - 1)} className="rounded bg-white/5 px-2 py-1">‹</button>
+                  <button type="button" onClick={() => setPlaying4d((value) => !value)} className="rounded bg-violet-500/20 px-2 py-1 text-violet-100">{playing4d ? "Pause" : "Play"}</button>
+                  <button type="button" aria-label="Next frame" onClick={() => setFrame(activeLayer, activeFrame + 1)} className="rounded bg-white/5 px-2 py-1">›</button>
+                  <button type="button" aria-label="Last frame" onClick={() => setFrame(activeLayer, activeFrameCount - 1)} className="rounded bg-white/5 px-2 py-1">›|</button>
+                  <label className="ml-auto flex items-center gap-1">Speed<select aria-label="Playback speed" value={playbackFps} onChange={(event) => setPlaybackFps(Number(event.target.value))} className="rounded border border-white/10 bg-slate-900 px-1 py-1"><option value={2}>2 fps</option><option value={6}>6 fps</option><option value={12}>12 fps</option></select></label>
+                </div>
+                {voxelTimeSeries.length > 1 && <div className="mt-2" data-testid="voxel-time-series"><div className="mb-1 flex items-center justify-between"><span className="text-[9px] text-slate-400">Selected voxel signal</span><button type="button" onClick={exportVoxelTimeSeries} className="text-[9px] text-violet-200 hover:text-white">Export CSV</button></div><svg viewBox={`0 0 ${Math.max(2, voxelTimeSeries.length - 1)} 100`} preserveAspectRatio="none" className="h-16 w-full rounded bg-black/20" role="img" aria-label="Selected voxel time series"><polyline fill="none" stroke="#a78bfa" strokeWidth={Math.max(0.5, voxelTimeSeries.length / 500)} vectorEffect="non-scaling-stroke" points={(() => { const finite = voxelTimeSeries.filter(Number.isFinite); const low = Math.min(...finite); const high = Math.max(...finite); const span = Math.max(Number.EPSILON, high - low); return voxelTimeSeries.map((value, index) => `${index},${Number.isFinite(value) ? 96 - ((value - low) / span) * 92 : 50}`).join(" "); })()} /></svg></div>}
+                <p className="mt-1 text-[9px] text-slate-500">A stable global series window is used. Decoding is capped at 500 frames to protect browser memory.</p>
+              </div>}
             </section>
 
             <section className="space-y-2 rounded-lg border border-white/8 bg-white/[0.025] p-3">

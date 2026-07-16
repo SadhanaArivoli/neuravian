@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import NeuroImageViewer, {
   calculateHistogram,
   defaultColormap,
+  extractVoxelTimeSeries,
   finiteScaledSamples,
   inferMapType,
 } from "../src/components/domain/NeuroImageViewer";
@@ -133,6 +134,16 @@ describe("shared NIfTI visualization semantics", () => {
     expect(statistics.displayMax).toBeLessThanOrEqual(1258);
   });
 
+  it("extracts a scaled voxel time series in frame-major storage order", () => {
+    const values = new Int16Array([
+      1, 2, 3, 4,
+      11, 12, 13, 14,
+      21, 22, 23, 24,
+    ]);
+    expect(extractVoxelTimeSeries(values, [2, 2, 1], [1, 0, 0], 3, (value) => value * 2)).toEqual([4, 24, 44]);
+    expect(extractVoxelTimeSeries(values, [2, 2, 1], [9, 0, 0], 3)).toEqual([]);
+  });
+
   it("applies slope/intercept while preserving signed values and filtering non-finite samples", () => {
     expect(finiteScaledSamples(new Int16Array([-10, 0, 10]), (value) => value * 2 + 5)).toEqual([-15, 5, 25]);
     const signed = finiteScaledSamples(new Float32Array([-8, -2, 0, 3, 9]));
@@ -217,9 +228,11 @@ describe("shared NIfTI viewer UI", () => {
     render(<NeuroImageViewer layers={[{ url, name: "sub-01_task-rest_desc-preproc_bold.nii.gz", artifactType: "fmriprep_bold" }]} label="Preprocessed BOLD" modal />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
-    expect(screen.getByTestId("four-d-controls")).toHaveTextContent("volume 1 / 12");
+    expect(screen.getByTestId("four-d-controls")).toHaveTextContent("frame 1 / 12 · 0.0 s");
     fireEvent.change(screen.getByLabelText("4D volume"), { target: { value: "7" } });
     expect(latest().setFrame4D).toHaveBeenCalledWith("volume-0", 7);
+    fireEvent.click(screen.getByRole("button", { name: "Last frame" }));
+    expect(latest().setFrame4D).toHaveBeenCalledWith("volume-0", 11);
     fireEvent.click(screen.getByText("Volume metadata"));
     expect(screen.getByText("64 × 64 × 40 × 12")).toBeInTheDocument();
     expect(screen.getByText("NIfTI code 16")).toBeInTheDocument();
