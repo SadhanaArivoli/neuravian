@@ -87,6 +87,10 @@ def test_public_gateway_requires_https_auth_and_loopback_upstream() -> None:
     assert "Strict-Transport-Security" in gateway
     assert "--network host" in gateway
     assert "127.0.0.1:8000" not in gateway
+    assert "^/api/runs/[0-9]+/files/.+\\\\.(?:html|svg)$" in gateway
+    assert 'X-Frame-Options "SAMEORIGIN"' in gateway
+    assert 'Content-Security-Policy "frame-ancestors \'self\'"' in gateway
+    assert 'header X-Frame-Options "DENY"' in gateway
 
 
 def test_no_secret_or_private_key_material_is_committed() -> None:

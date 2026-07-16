@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVolumeCompatibility, type VolumeGeometry } from "../src/lib/volumeCompatibility";
+import { checkVolumeCompatibility, volumeGeometry, type VolumeGeometry } from "../src/lib/volumeCompatibility";
 
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const base: VolumeGeometry = {
@@ -8,6 +8,16 @@ const base: VolumeGeometry = {
 };
 
 describe("anatomical underlay compatibility", () => {
+  it("prefers canonical NIfTI header geometry over derived NVImage dimensions", () => {
+    const geometry = volumeGeometry({
+      dims: [3, 1, 2, 3],
+      pixDims: [1, 9, 9, 9],
+      hdr: { dims: [3, 160, 192, 192], pixDims: [1, 1, 1.333333, 1.333333] },
+    });
+    expect(geometry.dimensions).toEqual([160, 192, 192]);
+    expect(geometry.voxelSize).toEqual([1, 1.333333, 1.333333]);
+  });
+
   it("accepts exact geometry and coordinate-space matches", () => {
     expect(checkVolumeCompatibility(base, { ...base })).toMatchObject({ compatible: true, spaceInferredFromAffine: false });
   });

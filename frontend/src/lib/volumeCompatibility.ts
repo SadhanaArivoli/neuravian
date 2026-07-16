@@ -15,6 +15,7 @@ export interface CompatibilityResult {
 interface GeometrySource {
   dims?: number[];
   pixDims?: number[];
+  hdr?: { dims?: number[]; pixDims?: number[] } | null;
   matRAS?: ArrayLike<number>;
   permRAS?: number[];
 }
@@ -31,8 +32,10 @@ export function volumeGeometry(
   volume: GeometrySource,
   metadata?: Record<string, unknown>,
 ): VolumeGeometry {
-  const dimensions = (volume.dims ?? []).slice(1, 4).map(Number);
-  const voxelSize = (volume.pixDims ?? []).slice(1, 4).map((value) => Math.abs(Number(value)));
+  // NVImage.dims can describe a derived display/texture shape. The parsed
+  // NIfTI header is the canonical geometry across intensity and label types.
+  const dimensions = (volume.hdr?.dims ?? volume.dims ?? []).slice(1, 4).map(Number);
+  const voxelSize = (volume.hdr?.pixDims ?? volume.pixDims ?? []).slice(1, 4).map((value) => Math.abs(Number(value)));
   return {
     dimensions,
     voxelSize,

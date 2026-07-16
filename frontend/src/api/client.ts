@@ -284,6 +284,7 @@ export function fetchRun(id: number): Promise<Run> {
 export interface RunResultFile {
   name: string;
   path: string;
+  size?: number;
 }
 
 export interface RunArtifact {
@@ -351,6 +352,7 @@ export interface RunMetadata {
 }
 
 export interface RunResults {
+  files?: RunResultFile[];
   reports: RunResultFile[];
   metrics: RunResultFile[];
   group_tables?: RunResultFile[];

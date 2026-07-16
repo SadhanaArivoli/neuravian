@@ -292,7 +292,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
-            "niftis": [], "artifacts": [],
+            "niftis": [], "files": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -303,7 +303,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
-            "niftis": [], "artifacts": [],
+            "niftis": [], "files": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -377,9 +377,16 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     # serving as application/octet-stream is correct for all three.
     _VOL_EXTS = (".nii.gz", ".nii", ".mgz")
     niftis = [
-        {"name": f.name, "path": f.relative_to(output_root).as_posix()}
+        {"name": f.name, "path": f.relative_to(output_root).as_posix(), "size": f.stat().st_size}
         for f in sorted(output_root.rglob("*"))
         if any(f.name.endswith(ext) for ext in _VOL_EXTS)
+    ]
+    # Complete run-scoped inventory for scientific output browsers. Paths are
+    # always relative to output_root; host paths are never exposed.
+    files = [
+        {"name": f.name, "path": f.relative_to(output_root).as_posix(), "size": f.stat().st_size}
+        for f in sorted(output_root.rglob("*"))
+        if f.is_file()
     ]
     # Resolved artifact types from the manifest's produces[] declarations.
     # Used by the frontend to query compatible downstream pipelines.
@@ -425,6 +432,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "cluster_files": cluster_files,
         "group_summary": group_summary,
         "niftis": niftis,
+        "files": files,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),
     }
@@ -495,7 +503,15 @@ def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc))
     if not requested.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    return FileResponse(str(requested))
+    headers: dict[str, str] = {}
+    if requested.suffix.lower() in {".html", ".svg"}:
+        # Official tool reports are embeddable only by NeuroForge on the same
+        # origin. The public gateway mirrors this narrow policy.
+        headers = {
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": "frame-ancestors 'self'",
+        }
+    return FileResponse(str(requested), headers=headers)
 
 
 @router.websocket("/runs/{run_id}/logs/stream")

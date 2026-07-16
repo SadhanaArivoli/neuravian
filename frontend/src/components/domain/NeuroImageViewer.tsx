@@ -77,6 +77,17 @@ interface ViewerLocation {
   values?: number[];
 }
 
+interface VolumeMetadata {
+  dimensions: string;
+  voxelSize: string;
+  datatype: string;
+  frameCount: number;
+  slope: number | null;
+  intercept: number | null;
+  qformCode: number | null;
+  sformCode: number | null;
+}
+
 type VolumeOption = Parameters<Niivue["loadVolumes"]>[0][number];
 
 function refreshVolume(nv: Niivue, volume: Niivue["volumes"][number]) {
@@ -374,6 +385,11 @@ export default function NeuroImageViewer({
   const [jumpMm, setJumpMm] = useState<[number, number, number]>([0, 0, 0]);
   const [underlayStatus, setUnderlayStatus] = useState("");
   const [hasCompatibleUnderlay, setHasCompatibleUnderlay] = useState(false);
+  const [frameCounts, setFrameCounts] = useState<number[]>([]);
+  const [currentFrames, setCurrentFrames] = useState<number[]>([]);
+  const [playing4d, setPlaying4d] = useState(false);
+  const [playbackFps, setPlaybackFps] = useState(6);
+  const [volumeMetadata, setVolumeMetadata] = useState<VolumeMetadata[]>([]);
 
   useEffect(() => {
     if (syncedLayerKeyRef.current === requestedLayerKey) return;
@@ -386,6 +402,25 @@ export default function NeuroImageViewer({
   const current = layerStates[activeLayer];
   const unitLabel = profiles[activeLayer]?.colorbarLabel
     ?? (effectiveMapType ? STAT_MAP_UNIT[effectiveMapType] : "");
+  const activeFrameCount = frameCounts[activeLayer] ?? 1;
+  const activeFrame = currentFrames[activeLayer] ?? 0;
+  const activeMetadata = volumeMetadata[activeLayer];
+
+  const setFrame = useCallback((index: number, frame: number) => {
+    const nv = nvRef.current;
+    const volume = nv?.volumes[index];
+    const count = frameCounts[index] ?? 1;
+    if (!nv || !volume || count <= 1) return;
+    const next = Math.max(0, Math.min(count - 1, Math.round(frame)));
+    nv.setFrame4D(volume.id, next);
+    setCurrentFrames((previous) => previous.map((value, item) => item === index ? next : value));
+  }, [frameCounts]);
+
+  useEffect(() => {
+    if (!playing4d || activeFrameCount <= 1) return;
+    const timer = window.setInterval(() => setFrame(activeLayer, ((currentFrames[activeLayer] ?? 0) + 1) % activeFrameCount), 1000 / playbackFps);
+    return () => window.clearInterval(timer);
+  }, [activeFrameCount, activeLayer, currentFrames, playbackFps, playing4d, setFrame]);
 
   const applyWindow = useCallback((index: number, min: number, max: number) => {
     const nv = nvRef.current;
@@ -468,13 +503,18 @@ export default function NeuroImageViewer({
     setRadiological(false);
     nv.setRadiologicalConvention(false);
     setViewLayout(multiplanar ? "multiplanar" : "axial");
+    setPlaying4d(false);
+    nv.volumes.forEach((volume, index) => {
+      if ((frameCounts[index] ?? 1) > 1) nv.setFrame4D(volume.id, 0);
+    });
+    setCurrentFrames(frameCounts.map(() => 0));
     nv.opts.multiplanarShowRender = 0;
     nv.setSliceType(multiplanar ? 3 : 0);
     nv.setGamma(1);
     nv.setPan2Dxyzmm([0, 0, 0, 1]);
     nv.volScaleMultiplier = 1;
     nv.drawScene();
-  }, [hasLabelLayer, layers, multiplanar, profiles, showColorbar]);
+  }, [frameCounts, hasLabelLayer, layers, multiplanar, profiles, showColorbar]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -512,6 +552,10 @@ export default function NeuroImageViewer({
     setLayerStates([]);
     setActiveLayer(0);
     samplesRef.current = [];
+    setPlaying4d(false);
+    setFrameCounts([]);
+    setCurrentFrames([]);
+    setVolumeMetadata([]);
 
     loadNiivue().then(async ({ Niivue, cmapper }) => {
       if (cancelled) return;
@@ -555,6 +599,25 @@ export default function NeuroImageViewer({
         (raw) => volume.intensityRaw2Scaled(raw),
       ));
       samplesRef.current = samples;
+      const nextFrameCounts = nv.volumes.map((volume) => Math.max(1, Number((volume as unknown as { nFrame4D?: number }).nFrame4D ?? 1)));
+      setFrameCounts(nextFrameCounts);
+      setCurrentFrames(nextFrameCounts.map(() => 0));
+      setVolumeMetadata(nv.volumes.map((volume) => {
+        const header = (volume as unknown as { hdr?: Record<string, unknown> }).hdr ?? {};
+        const dims = (header.dims ?? header.dim) as ArrayLike<number> | undefined;
+        const pixDims = (header.pixDims ?? header.pixdim) as ArrayLike<number> | undefined;
+        const datatypeCode = Number(header.datatypeCode ?? header.datatype ?? 0);
+        return {
+          dimensions: dims ? Array.from(dims).slice(1, 5).filter((value) => Number(value) > 0).join(" × ") : "—",
+          voxelSize: pixDims ? `${Array.from(pixDims).slice(1, 4).map((value) => Number(value).toPrecision(3)).join(" × ")} mm` : "—",
+          datatype: datatypeCode ? `NIfTI code ${datatypeCode}` : "—",
+          frameCount: Math.max(1, Number((volume as unknown as { nFrame4D?: number }).nFrame4D ?? 1)),
+          slope: Number.isFinite(Number(header.scl_slope)) ? Number(header.scl_slope) : null,
+          intercept: Number.isFinite(Number(header.scl_inter)) ? Number(header.scl_inter) : null,
+          qformCode: Number.isFinite(Number(header.qform_code ?? header.qformCode)) ? Number(header.qform_code ?? header.qformCode) : null,
+          sformCode: Number.isFinite(Number(header.sform_code ?? header.sformCode)) ? Number(header.sform_code ?? header.sformCode) : null,
+        };
+      }));
       const structuralIndex = profiles.findIndex((profile) => profile.id === "structural");
       const requestedOverlayIndices = profiles
         .map((profile, index) => profile.anatomicalUnderlay && index !== structuralIndex ? index : -1)
@@ -676,6 +739,7 @@ export default function NeuroImageViewer({
         if (!isLabelProfile(profiles[index])) applyVolumeDisplay(exportNv, volume, profiles[index], state.colormap, center - span / 2, center + span / 2);
         volume.colormapInvert = state.inverted;
         exportNv.setOpacity(index, state.visible ? state.opacity : 0);
+        if ((frameCounts[index] ?? 1) > 1) exportNv.setFrame4D(volume.id, currentFrames[index] ?? 0);
       });
       exportNv.setGamma(current?.gamma ?? 1);
       exportNv.drawScene();
@@ -690,7 +754,7 @@ export default function NeuroImageViewer({
       exportCanvas?.remove();
       setExporting(false);
     }
-  }, [background, crosshairColor, crosshairVisible, crosshairWidth, current?.gamma, exportScale, label, layerStates, location, nearest, profiles, radiological, showColorbarState, showOrientation, transparentExport, unitLabel, viewLayout]);
+  }, [background, crosshairColor, crosshairVisible, crosshairWidth, current?.gamma, currentFrames, exportScale, frameCounts, label, layerStates, location, nearest, profiles, radiological, showColorbarState, showOrientation, transparentExport, unitLabel, viewLayout]);
 
   const changeColormap = (value: string) => {
     const volume = nvRef.current?.volumes[activeLayer];
@@ -839,6 +903,7 @@ export default function NeuroImageViewer({
               <div><div className="flex items-center justify-between"><span>Opacity</span><label className="flex items-center gap-1"><input aria-label="Overlay opacity percentage" type="number" min="0" max="100" value={Math.round(current.opacity * 100)} onChange={(event) => changeOpacity(Math.max(0, Math.min(100, Number(event.target.value))) / 100)} className="w-14 rounded border border-white/10 bg-slate-900 px-1 py-0.5 text-right tabular-nums" />%</label></div><input aria-label="Overlay opacity" type="range" min="0" max="1" step="0.01" value={current.opacity} onChange={(event) => changeOpacity(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></div>
               <div><span className="mb-1 block">Interpolation</span><div className="flex gap-1">{(["auto", "smooth", "nearest"] as InterpolationMode[]).map((mode) => <button key={mode} type="button" onClick={() => changeInterpolation(mode)} className={`rounded px-2 py-1 capitalize ${interpolationMode === mode ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{mode === "nearest" ? "Nearest" : mode}</button>)}</div></div>
               <div className="grid grid-cols-3 gap-2"><label>Brightness <input aria-label="Brightness" type="range" min="-50" max="50" value={current.brightness} onChange={(event) => updateTone({ brightness: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Contrast <input aria-label="Contrast" type="range" min="0.25" max="3" step="0.05" value={current.contrast} onChange={(event) => updateTone({ contrast: Number(event.target.value) })} className="w-full accent-cyan-400" /></label><label>Gamma <input aria-label="Gamma" type="range" min="0.2" max="3" step="0.05" value={current.gamma} onChange={(event) => updateTone({ gamma: Number(event.target.value) })} className="w-full accent-cyan-400" /></label></div>
+              {activeFrameCount > 1 && <div className="rounded-lg border border-violet-400/15 bg-violet-400/[0.05] p-2" data-testid="four-d-controls"><div className="mb-1 flex items-center justify-between"><span className="font-medium text-violet-100">Time series</span><span className="font-mono text-[10px] text-violet-300">volume {activeFrame + 1} / {activeFrameCount}</span></div><input aria-label="4D volume" type="range" min="0" max={activeFrameCount - 1} step="1" value={activeFrame} onChange={(event) => setFrame(activeLayer, Number(event.target.value))} className="w-full accent-violet-400" /><div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setPlaying4d((value) => !value)} className="rounded bg-violet-500/20 px-2 py-1 text-violet-100">{playing4d ? "Pause" : "Play"}</button><label className="ml-auto flex items-center gap-1">Speed<select aria-label="Playback speed" value={playbackFps} onChange={(event) => setPlaybackFps(Number(event.target.value))} className="rounded border border-white/10 bg-slate-900 px-1 py-1"><option value={2}>2 fps</option><option value={6}>6 fps</option><option value={12}>12 fps</option></select></label></div><p className="mt-1 text-[9px] text-slate-500">The intensity window is computed from the complete loaded series and remains stable during playback.</p></div>}
             </section>
 
             <section className="space-y-2 rounded-lg border border-white/8 bg-white/[0.025] p-3">
@@ -846,6 +911,7 @@ export default function NeuroImageViewer({
               <div className="flex items-center justify-between"><span>Intensity window</span><div className="flex gap-1"><button type="button" onClick={autoWindow} className={`rounded px-2 py-1 ${current.windowMode === "auto" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Auto</button><button type="button" onClick={robustWindow} className={`rounded px-2 py-1 ${current.windowMode === "robust" ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>Robust 2–98%</button><button type="button" onClick={autoWindow} className="rounded bg-white/5 px-2 py-1">Reset</button></div></div>
               {profiles[activeLayer].signed && <label className="flex items-center gap-2"><input aria-label="Symmetric range around zero" type="checkbox" checked={current.symmetric} onChange={(event) => { const symmetric = event.target.checked; setLayerStates((states) => states.map((state, index) => index === activeLayer ? { ...state, symmetric } : state)); if (symmetric) { const magnitude = Math.max(Math.abs(current.windowMin), Math.abs(current.windowMax)); setWindow("manual", -magnitude, magnitude); } }} /> Symmetric around zero</label>}
               <div className="grid grid-cols-2 gap-2"><label>Manual min<input aria-label="Manual minimum" type="number" value={Number(current.windowMin.toPrecision(6))} onChange={(event) => setWindow("manual", Number(event.target.value), current.windowMax)} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label><label>Manual max<input aria-label="Manual maximum" type="number" value={Number(current.windowMax.toPrecision(6))} onChange={(event) => setWindow("manual", current.windowMin, Number(event.target.value))} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label></div>
+              {profiles[activeLayer].id === "probability" && <label className="block rounded border border-cyan-400/15 bg-cyan-400/[0.04] p-2">Probability threshold <span className="float-right font-mono">{current.windowMin.toPrecision(3)}</span><input aria-label="Probability threshold" type="range" min={current.dataMin} max={current.dataMax} step={domainSpan / 200} value={current.windowMin} onChange={(event) => setWindow("manual", Math.min(Number(event.target.value), current.windowMax - domainSpan / 200), current.windowMax)} className="mt-1 w-full accent-cyan-400" /><span className="text-[9px] text-slate-500">Continuous probabilities remain continuous above the display threshold.</span></label>}
               <div className="grid grid-cols-2 gap-2"><label>Window<input aria-label="Window width" type="number" min="0" value={Number((current.windowMax - current.windowMin).toPrecision(6))} onChange={(event) => { const width = Math.max(Number.EPSILON, Number(event.target.value)); const level = (current.windowMax + current.windowMin) / 2; setWindow("manual", level - width / 2, level + width / 2); }} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label><label>Level<input aria-label="Window level" type="number" value={Number(((current.windowMax + current.windowMin) / 2).toPrecision(6))} onChange={(event) => { const level = Number(event.target.value); const width = current.windowMax - current.windowMin; setWindow("manual", level - width / 2, level + width / 2); }} className="mt-1 w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-xs" /></label></div>
               <button type="button" onClick={() => setHistogramOpen((value) => !value)} className="text-cyan-300 hover:text-cyan-100">{histogramOpen ? "Hide" : "Show"} histogram <span className="text-slate-500">(H)</span></button>
               {histogramOpen && <div className="relative h-24 rounded bg-black/25 px-1 pt-2" data-testid="intensity-histogram">
@@ -863,6 +929,7 @@ export default function NeuroImageViewer({
               <label className="block">Thickness <span className="float-right">{crosshairWidth.toFixed(1)}</span><input aria-label="Crosshair thickness" type="range" min="0.2" max="3" step="0.1" value={crosshairWidth} onChange={(event) => changeCrosshairWidth(Number(event.target.value))} className="mt-1 w-full accent-cyan-400" /></label>
               <label className="flex items-center justify-between">Color<input aria-label="Crosshair color" type="color" value={crosshairColor} onChange={(event) => { setCrosshairColor(event.target.value); nvRef.current?.setCrosshairColor(hexToRgba(event.target.value)); }} /></label>
               <div className="rounded bg-black/20 p-2 font-mono text-[10px] tabular-nums"><div>mm {location.mm?.slice(0, 3).map((value) => Number(value).toFixed(1)).join(", ") || "—"}</div><div>vox {location.vox?.slice(0, 3).map((value) => Math.round(Number(value))).join(", ") || "—"}</div><div>value {location.values?.[activeLayer] != null ? Number(location.values[activeLayer]).toPrecision(5) : "—"}</div></div>
+              {activeMetadata && <details className="rounded border border-white/8 bg-black/15 p-2"><summary className="cursor-pointer text-[10px] font-medium text-slate-300">Volume metadata</summary><dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 font-mono text-[9px] text-slate-500"><dt>dimensions</dt><dd className="text-right text-slate-300">{activeMetadata.dimensions}</dd><dt>voxel size</dt><dd className="text-right text-slate-300">{activeMetadata.voxelSize}</dd><dt>datatype</dt><dd className="text-right text-slate-300">{activeMetadata.datatype}</dd><dt>frames</dt><dd className="text-right text-slate-300">{activeMetadata.frameCount}</dd><dt>scale</dt><dd className="text-right text-slate-300">slope {activeMetadata.slope ?? "—"}, intercept {activeMetadata.intercept ?? "—"}</dd><dt>forms</dt><dd className="text-right text-slate-300">q {activeMetadata.qformCode ?? "—"}, s {activeMetadata.sformCode ?? "—"}</dd><dt>finite range</dt><dd className="text-right text-slate-300">{current.dataMin.toPrecision(4)} – {current.dataMax.toPrecision(4)}</dd></dl></details>}
               <div><span className="mb-1 block">Jump to mm</span><div className="flex gap-1">{([0, 1, 2] as const).map((index) => <input key={index} aria-label={`Jump ${["X", "Y", "Z"][index]} coordinate`} type="number" value={jumpMm[index]} onChange={(event) => setJumpMm((previous) => previous.map((value, item) => item === index ? Number(event.target.value) : value) as [number, number, number])} className="min-w-0 flex-1 rounded border border-white/10 bg-slate-900 px-1 py-1" />)}<button type="button" onClick={jumpToCoordinate} className="rounded bg-cyan-500/20 px-2 text-cyan-200">Go</button></div></div>
               <div><span className="mb-1 block">Layout</span><div className="flex flex-wrap gap-1">{(["axial", "coronal", "sagittal", "multiplanar", "four-pane", "render"] as ViewLayout[]).map((layout) => { const renderDisabled = layout === "render" && profiles[activeLayer].threeD !== "volume" && !hasCompatibleUnderlay; return <button key={layout} type="button" disabled={renderDisabled} title={renderDisabled ? "3D requires a structural volume or compatible anatomical underlay" : undefined} onClick={() => changeLayout(layout)} className={`rounded px-2 py-1 capitalize disabled:cursor-not-allowed disabled:opacity-35 ${viewLayout === layout ? "bg-cyan-500/20 text-cyan-200" : "bg-white/5"}`}>{layout === "multiplanar" ? "2D" : layout === "render" ? "3D" : layout.replace("-", " ")}</button>; })}</div></div>
               <div className="grid grid-cols-2 gap-2"><label className="flex items-center gap-1"><input aria-label="Radiological convention" type="checkbox" checked={radiological} onChange={(event) => { setRadiological(event.target.checked); nvRef.current?.setRadiologicalConvention(event.target.checked); }} /> Radiological</label><label className="flex items-center gap-1"><input aria-label="Show orientation labels" type="checkbox" checked={showOrientation} onChange={(event) => { setShowOrientation(event.target.checked); nvRef.current?.setIsOrientationTextVisible(event.target.checked); }} /> Labels</label><label className="flex items-center gap-1"><input aria-label="Show colorbar" type="checkbox" checked={showColorbarState} onChange={(event) => { setShowColorbarState(event.target.checked); if (nvRef.current) { nvRef.current.opts.isColorbar = event.target.checked; nvRef.current.drawScene(); } }} /> Colorbar</label></div>

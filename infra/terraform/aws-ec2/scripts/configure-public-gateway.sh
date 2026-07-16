@@ -44,12 +44,23 @@ ${PUBLIC_HOSTNAME} {
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
     Referrer-Policy "no-referrer"
     -Server
   }
 
-  reverse_proxy 127.0.0.1:3000
+  @run_report_asset path_regexp run_report_asset ^/api/runs/[0-9]+/files/.+\\.(?:html|svg)$
+  handle @run_report_asset {
+    header {
+      X-Frame-Options "SAMEORIGIN"
+      Content-Security-Policy "frame-ancestors 'self'"
+    }
+    reverse_proxy 127.0.0.1:3000
+  }
+
+  handle {
+    header X-Frame-Options "DENY"
+    reverse_proxy 127.0.0.1:3000
+  }
 }
 EOF
 chmod 0640 "${CADDYFILE}"

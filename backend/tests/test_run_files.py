@@ -68,7 +68,10 @@ def run_with_output(db_session, tmp_path):
 
     # Realistic MRIQC output structure
     html_report = output_dir / "sub-01_T1w.html"
-    html_report.write_text("<html><body>MRIQC report</body></html>")
+    html_report.write_text('<html><body>MRIQC report<object data="./sub-01/figures/sub-01_dseg.svg"></object></body></html>')
+    reportlet_dir = output_dir / "sub-01" / "figures"
+    reportlet_dir.mkdir(parents=True)
+    (reportlet_dir / "sub-01_dseg.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><text>segmentation</text></svg>')
 
     iqm_dir = output_dir / "sub-01" / "anat"
     iqm_dir.mkdir(parents=True)
@@ -131,6 +134,10 @@ def test_results_returns_html_and_json(api_client, run_with_output):
     assert body["reports"][0]["path"] == "sub-01_T1w.html"
     assert len(body["metrics"]) == 1
     assert body["metrics"][0]["path"] == "sub-01/anat/sub-01_T1w.json"
+    inventory = {item["path"]: item["size"] for item in body["files"]}
+    assert inventory["sub-01_T1w.html"] > 0
+    assert inventory["sub-01/figures/sub-01_dseg.svg"] > 0
+    assert all(not path.startswith("/") for path in inventory)
 
 
 def test_results_empty_for_failed_run_no_files(api_client, run_without_output):
@@ -156,6 +163,18 @@ def test_serve_html_report(api_client, run_with_output):
     resp = api_client.get(f"/api/runs/{run.id}/files/sub-01_T1w.html")
     assert resp.status_code == 200
     assert b"MRIQC report" in resp.content
+    assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert resp.headers["content-security-policy"] == "frame-ancestors 'self'"
+
+
+def test_serve_relative_svg_reportlet_with_scoped_frame_policy(api_client, run_with_output):
+    run, _ = run_with_output
+    resp = api_client.get(f"/api/runs/{run.id}/files/sub-01/figures/sub-01_dseg.svg")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert b"segmentation" in resp.content
+    assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert resp.headers["content-security-policy"] == "frame-ancestors 'self'"
 
 
 def test_serve_iqm_json(api_client, run_with_output):
@@ -164,6 +183,7 @@ def test_serve_iqm_json(api_client, run_with_output):
     assert resp.status_code == 200
     data = resp.json()
     assert data["snr_total"] == pytest.approx(4.73)
+    assert "x-frame-options" not in resp.headers
 
 
 def test_serve_missing_file_returns_404(api_client, run_with_output):
