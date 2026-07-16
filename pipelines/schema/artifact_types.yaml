@@ -56,6 +56,11 @@ artifact_types:
     description: "A BIDS dataset that has passed bids-validator with no errors"
     extensions: []
 
+  bids_validation_report:
+    label: "BIDS Validation Report"
+    description: "Human-readable or JSON BIDS Validator results"
+    extensions: [".txt", ".json"]
+
   freesurfer_dir:
     label: "FreeSurfer Subject Directory"
     description: "Output directory from recon-all or FastSurfer containing surf/, mri/, stats/"

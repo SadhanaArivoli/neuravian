@@ -12,7 +12,7 @@ import json
 import logging
 import shutil
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Any
 
@@ -395,6 +395,33 @@ def _seed_output_from_lineage(source: Path | None, output_dir: Path) -> None:
     shutil.copy2(source, output_dir / source.name)
 
 
+def _read_declared_output_log(ctx: RunContext) -> list[str]:
+    """Read a safely scoped ``/out`` file when a tool emits no stdout."""
+    raw_outfile = str(ctx.params.get("outfile") or "").strip()
+    if not raw_outfile:
+        return []
+    container_path = PurePosixPath(raw_outfile)
+    try:
+        relative = container_path.relative_to(PurePosixPath("/out"))
+    except ValueError:
+        return []
+    if relative == PurePosixPath(".") or ".." in relative.parts:
+        return []
+
+    output_root = Path(ctx.output_dir).resolve()
+    report_path = (output_root / Path(*relative.parts)).resolve()
+    try:
+        report_path.relative_to(output_root)
+    except ValueError:
+        return []
+    if not report_path.is_file():
+        return []
+    try:
+        return report_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+
 async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     """
     Runs the pipeline in the background. Opens its own DB session
@@ -478,6 +505,12 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     except Exception as exc:
         log.exception("Executor raised during run %d", run_id)
         _log_and_collect(f"[neuroforge] Executor error: {exc}")
+
+    # Some tools write exclusively to an explicitly declared /out file. Keep
+    # their report available in the execution log without duplicating stdout.
+    if not log_lines:
+        for line in _read_declared_output_log(ctx):
+            _log_and_collect(line)
 
     # Close the incrementally-written log file.
     log_file_path: str | None = str(lf_path)

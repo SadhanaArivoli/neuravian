@@ -1779,6 +1779,50 @@ def test_bids_validator_cloud_path_uses_host_bind_and_child_command(tmp_path):
     assert "/host-data/x86-minimal-bids" not in sdk.command
 
 
+def test_bids_validator_report_is_ingested_and_captured_as_log(tmp_path):
+    """Regression: --outfile must surface as an artifact and execution log."""
+    from app.services.artifact_registry import resolve_run_artifacts
+    from app.services.run import _read_declared_output_log
+
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    dataset_root = tmp_path / "dataset"
+    dataset_root.mkdir()
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    report = output_root / "validation-report.txt"
+    report.write_text("Summary: BIDS valid\nNo errors found.\n", encoding="utf-8")
+    params = {
+        "bids-dir": str(dataset_root),
+        "outfile": "/out/validation-report.txt",
+    }
+    ctx = RunContext(
+        run_id=2,
+        manifest=manifest,
+        params=params,
+        dataset_path=str(dataset_root),
+        output_dir=str(output_root),
+    )
+
+    with patch.object(settings, "host_datasets_mount", str(tmp_path / "host-data")), \
+         patch.object(settings, "backend_datasets_mount", str(tmp_path)), \
+         patch("app.execution.docker_executor.from_host_path") as legacy_translation:
+        artifacts = resolve_run_artifacts(
+            manifest, str(output_root), params, "success"
+        )
+    report_artifact = next(
+        artifact for artifact in artifacts if artifact.type == "bids_validation_report"
+    )
+
+    assert report_artifact.resolved is True
+    assert report_artifact.paths == [str(report)]
+    legacy_translation.assert_not_called()
+    assert _read_declared_output_log(ctx) == [
+        "Summary: BIDS valid",
+        "No errors found.",
+    ]
+
+
 def test_existing_cloud_dataset_record_can_create_validator_run(
     fmriprep_api_client, db_session_for_runs, tmp_path
 ):
