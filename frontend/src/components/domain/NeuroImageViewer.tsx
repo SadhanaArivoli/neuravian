@@ -15,6 +15,7 @@ import {
 } from "../../lib/scientificDisplayProfiles";
 import { checkVolumeCompatibility, volumeGeometry } from "../../lib/volumeCompatibility";
 import { WorkbenchIcons } from "../../lib/iconRegistry";
+import { decompressMgz, fetchRunScopedMgh, isMghPath, parseMgh } from "../../lib/mgh";
 
 export interface NiivueLayer {
   url: string;
@@ -115,8 +116,30 @@ const DARK_BACKGROUND = [0.07, 0.07, 0.07, 1] as [number, number, number, number
 const LIGHT_BACKGROUND = [0.96, 0.97, 0.98, 1] as [number, number, number, number];
 
 async function loadNiivue() {
-  const { Niivue, cmapper } = await import("@niivue/niivue");
-  return { Niivue, cmapper };
+  const { Niivue, NVImage, cmapper } = await import("@niivue/niivue");
+  return { Niivue, NVImage, cmapper };
+}
+
+async function prepareVolumeOption(
+  layer: NiivueLayer,
+  option: VolumeOption,
+  NVImage: typeof import("@niivue/niivue").NVImage,
+  signal: AbortSignal,
+): Promise<VolumeOption> {
+  if (!isMghPath(layer.name)) return option;
+  const compressed = await fetchRunScopedMgh(layer.url, signal);
+  if (signal.aborted) throw new DOMException("Viewer request was cancelled.", "AbortError");
+  const parsed = parseMgh(await decompressMgz(compressed));
+  const nifti = NVImage.createNiftiArray(
+    [4, ...parsed.dimensions],
+    [1, ...parsed.voxelSize, 1],
+    parsed.affine,
+    parsed.datatypeCode,
+    parsed.data,
+  );
+  // NiiVue accepts ArrayBuffer at runtime (and in NVImage.loadFromUrl), while
+  // its loadVolumes option type still narrows url to string in this release.
+  return { ...option, url: nifti.buffer, name: `${layer.name}.nii` } as unknown as VolumeOption;
 }
 
 function isStatMap(mapType?: StatMapType) {
@@ -547,6 +570,7 @@ export default function NeuroImageViewer({
     if (!canvas) return;
     let cancelled = false;
     let mountedNv: Niivue | null = null;
+    const requestController = new AbortController();
     setLoading(true);
     setError(null);
     setLayerStates([]);
@@ -557,7 +581,7 @@ export default function NeuroImageViewer({
     setCurrentFrames([]);
     setVolumeMetadata([]);
 
-    loadNiivue().then(async ({ Niivue, cmapper }) => {
+    loadNiivue().then(async ({ Niivue, NVImage, cmapper }) => {
       if (cancelled) return;
       const nv = new Niivue({
         ...NIIVUE_MULTIPLANAR_OPTIONS,
@@ -569,7 +593,7 @@ export default function NeuroImageViewer({
       const lut = hasLabelLayer
         ? cmapper.makeLabelLut(ASEG_COLOR_MAP)
         : null;
-      const options = layers.map((layer, index) => ({
+      const rawOptions = layers.map((layer, index) => ({
         url: layer.url,
         // Client-generated comparison maps use blob: URLs, which have no
         // extension for NiiVue to inspect. Always provide a NIfTI filename
@@ -583,7 +607,10 @@ export default function NeuroImageViewer({
         ...(profiles[index].signed ? { colormapNegative: "blue", ignoreZeroVoxels: true } : {}),
         ...(profiles[index].zeroBackground !== "data" ? { ignoreZeroVoxels: true } : {}),
         ...(!isLabelProfile(profiles[index]) ? { trustCalMinMax: false } : {}),
-      }));
+      })) as VolumeOption[];
+      const options = await Promise.all(rawOptions.map((option, index) =>
+        prepareVolumeOption(layers[index], option, NVImage, requestController.signal)
+      ));
       volumeOptionsRef.current = options;
       await nv.loadVolumes(options);
       if (cancelled) return;
@@ -684,6 +711,7 @@ export default function NeuroImageViewer({
 
     return () => {
       cancelled = true;
+      requestController.abort();
       nvRef.current = null;
       mountedNv?.cleanup?.();
       onUnmount?.();

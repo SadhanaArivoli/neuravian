@@ -8,6 +8,7 @@ import NiivuePanel from "./NiivuePanel";
 import RunMetadataPanel from "./RunMetadataPanel";
 import RunNextCard from "./RunNextCard";
 import FmriprepResultsPanel from "./FmriprepResultsPanel";
+import FastSurferResultsPanel from "./FastSurferResultsPanel";
 import { detectRunFamily, findCompatibleConnectivityRun, findVerifiedSibling } from "../../lib/comparisonEligibility";
 import { parseConnectivityMatrixCsv, type ConnectivityMatrixData } from "../../lib/connectivityMatrix";
 import {
@@ -2312,6 +2313,8 @@ export default function RunResults({ runId }: Props) {
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
   const isFmriprep = results.metadata?.pipeline_id === "fmriprep";
+  const isFastSurfer = results.metadata?.pipeline_id === "fastsurfer";
+  const usesArtifactWorkspace = isFmriprep || isFastSurfer;
   const groupTables = results.group_tables ?? [];
   const images = results.images ?? [];
   const connectivityMatrices = results.connectivity_matrices ?? [];
@@ -2536,9 +2539,10 @@ export default function RunResults({ runId }: Props) {
       )}
 
       {isFmriprep && <FmriprepResultsPanel runId={runId} results={results} />}
+      {isFastSurfer && <FastSurferResultsPanel runId={runId} results={results} />}
 
       {/* IQM summary card */}
-      {!isFmriprep && iqmData && <IqmCard data={iqmData} />}
+      {!usesArtifactWorkspace && iqmData && <IqmCard data={iqmData} />}
 
       {/* MRIQC group TSV summary */}
       {groupTables.length > 0 && (
@@ -2593,7 +2597,7 @@ export default function RunResults({ runId }: Props) {
       )}
 
       {/* Report tabs (multiple subjects / group report) */}
-      {!isFmriprep && results.reports.length > 0 && (
+      {!usesArtifactWorkspace && results.reports.length > 0 && (
         <div className="rounded-lg border border-gray-200 overflow-hidden">
           {results.reports.length > 1 && (
             <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
@@ -2643,7 +2647,7 @@ export default function RunResults({ runId }: Props) {
       )}
 
       {/* Metrics file list (secondary) */}
-      {!isFmriprep && results.metrics.length > 0 && (
+      {!usesArtifactWorkspace && results.metrics.length > 0 && (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-200 select-none">
             Raw IQM files ({results.metrics.length})
@@ -2728,7 +2732,7 @@ export default function RunResults({ runId }: Props) {
       {/* Volumetric file viewer — .nii/.nii.gz/.mgz output from pipelines.
           Known pairs (FastSurfer, BrainChop) open as multi-layer overlays;
           all other files open as single-volume. */}
-      {!isFmriprep && niftis.length > 0 && (() => {
+      {!usesArtifactWorkspace && niftis.length > 0 && (() => {
         const pair = detectLayerPairs(niftis, runId);
         return (
           <div className="mt-4">

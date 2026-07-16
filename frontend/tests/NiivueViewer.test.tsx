@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@niivue/niivue", () => ({
+  NVImage: {
+    createNiftiArray: vi.fn(() => new Uint8Array(352)),
+  },
   Niivue: vi.fn().mockImplementation(() => {
     const instance = {
       opts: { backColor: [0.07, 0.07, 0.07, 1], crosshairWidth: 0.5 },
