@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { MAX_MGH_BYTES, fetchRunScopedMgh, parseMgh } from "../src/lib/mgh";
+import { describe, expect, it, vi } from "vitest";
+import { createNiftiFromMgh, MAX_MGH_BYTES, fetchRunScopedMgh, parseMgh } from "../src/lib/mgh";
 
 function syntheticMgh(options: { dimensions?: [number, number, number, number]; type?: number } = {}) {
   const dimensions = options.dimensions ?? [2, 2, 1, 1];
@@ -28,6 +28,22 @@ describe("bounded MGH/MGZ volume parsing", () => {
     expect(parsed.affine).toHaveLength(16);
     expect(parsed.affine.every(Number.isFinite)).toBe(true);
     expect(parsed.affine).toEqual([1, 0, 0, 9, 0, 2, 0, 18, 0, 0, 3, 28.5, 0, 0, 0, 1]);
+  });
+
+  it("passes MGH dimensions directly to the NIfTI writer without a header-rank prefix", () => {
+    const parsed = parseMgh(syntheticMgh());
+    const createNiftiArray = vi.fn(() => new Uint8Array([1, 2, 3]));
+
+    const nifti = createNiftiFromMgh(parsed, { createNiftiArray });
+
+    expect(nifti).toEqual(new Uint8Array([1, 2, 3]));
+    expect(createNiftiArray).toHaveBeenCalledWith(
+      [2, 2, 1, 1],
+      [1, 2, 3, 1],
+      parsed.affine,
+      4,
+      expect.objectContaining({ 0: -2, 1: 0, 2: 7, 3: 1258 }),
+    );
   });
 
   it.each([

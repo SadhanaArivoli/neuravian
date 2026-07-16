@@ -15,7 +15,7 @@ import {
 } from "../../lib/scientificDisplayProfiles";
 import { checkVolumeCompatibility, volumeGeometry } from "../../lib/volumeCompatibility";
 import { WorkbenchIcons } from "../../lib/iconRegistry";
-import { decompressMgz, fetchRunScopedMgh, isMghPath, parseMgh } from "../../lib/mgh";
+import { createNiftiFromMgh, decompressMgz, fetchRunScopedMgh, isMghPath, parseMgh } from "../../lib/mgh";
 
 export interface NiivueLayer {
   url: string;
@@ -132,13 +132,7 @@ async function prepareVolumeOption(
   const compressed = await fetchRunScopedMgh(layer.url, signal);
   if (signal.aborted) throw new DOMException("Viewer request was cancelled.", "AbortError");
   const parsed = parseMgh(await decompressMgz(compressed));
-  const nifti = NVImage.createNiftiArray(
-    [4, ...parsed.dimensions],
-    [1, ...parsed.voxelSize, 1],
-    parsed.affine,
-    parsed.datatypeCode,
-    parsed.data,
-  );
+  const nifti = createNiftiFromMgh(parsed, NVImage);
   // NiiVue accepts ArrayBuffer at runtime (and in NVImage.loadFromUrl), while
   // its loadVolumes option type still narrows url to string in this release.
   return { ...option, url: nifti.buffer, name: `${layer.name}.nii` } as unknown as VolumeOption;

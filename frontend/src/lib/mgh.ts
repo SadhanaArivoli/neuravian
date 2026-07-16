@@ -10,6 +10,31 @@ export interface ParsedMgh {
   data: Uint8Array | Int16Array | Int32Array | Float32Array | Uint32Array;
 }
 
+interface NiftiArrayWriter {
+  createNiftiArray(
+    dimensions: number[],
+    voxelSize: number[],
+    affine: number[],
+    datatypeCode: ParsedMgh["datatypeCode"],
+    data: ParsedMgh["data"],
+  ): Uint8Array;
+}
+
+/**
+ * Wrap native-endian parsed MGH voxels in an in-memory NIfTI container.
+ * NiiVue's writer accepts spatial/frame dimensions directly; unlike a NIfTI
+ * header, the first element must not be the dimension count.
+ */
+export function createNiftiFromMgh(parsed: ParsedMgh, writer: NiftiArrayWriter) {
+  return writer.createNiftiArray(
+    parsed.dimensions,
+    [...parsed.voxelSize, 1],
+    parsed.affine,
+    parsed.datatypeCode,
+    parsed.data,
+  );
+}
+
 function checkedProduct(values: number[]) {
   let total = 1;
   for (const value of values) {
