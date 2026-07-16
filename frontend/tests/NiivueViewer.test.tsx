@@ -33,6 +33,9 @@ vi.mock("@niivue/niivue", () => ({
       attachToCanvas: vi.fn(),
       loadVolumes: vi.fn().mockImplementation(async (options: Array<Record<string, unknown>>) => {
         instance.volumes = options.map((option, index) => {
+          // Match NiiVue 0.56's NVImage.loadFromUrl behavior: colormapLabel is
+          // accepted in imageOptions but not forwarded to the loaded NVImage.
+          const { colormapLabel: _droppedLabelLut, ...loadedOption } = option;
           const configured = mocks.volumeData.get(String(option.url));
           const img = configured?.img ?? new Float32Array([-4, -2, 0, 1, 2, 4, 8, 12]);
           const slope = configured?.slope ?? 1;
@@ -49,7 +52,7 @@ vi.mock("@niivue/niivue", () => ({
             pixDims: [1, 3, 3, 3],
             matRAS: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             permRAS: [1, 2, 3],
-            ...option,
+            ...loadedOption,
           };
         });
       }),

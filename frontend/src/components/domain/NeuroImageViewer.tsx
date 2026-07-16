@@ -668,6 +668,15 @@ export default function NeuroImageViewer({
       volumeOptionsRef.current = options;
       await nv.loadVolumes(options);
       if (cancelled) return;
+      // NiiVue 0.56 accepts colormapLabel in the public load options but its
+      // NVImage.loadFromUrl path does not forward that field to the constructed
+      // volume. Reattach the bounded, bundled LUT after loading so categorical
+      // volumes render with stable FreeSurfer colors instead of scalar gray.
+      if (lut) {
+        nv.volumes.forEach((volume, index) => {
+          if (isLabelProfile(profiles[index])) volume.colormapLabel = lut;
+        });
+      }
       if (multiplanar) nv.setSliceType(SLICE_TYPE_MULTIPLANAR);
       const useNearest = hasLabelLayer;
       nv.setInterpolation(useNearest);
