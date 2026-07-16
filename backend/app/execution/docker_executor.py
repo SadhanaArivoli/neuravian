@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Callable
 
 from app.execution.executor import Executor, ResourceWarning, RunContext
+from app.execution.output_permissions import prepare_output_directory
+from app.core.config import settings
 from app.services.dataset_paths import (
     DatasetPathConfigurationError,
     dataset_translation_configured,
@@ -331,7 +333,10 @@ class DockerExecutor(Executor):
         # HOST_UID/HOST_GID, which docker-compose.yml injects from the calling
         # shell at compose-up time (${HOST_UID} / ${HOST_GID}).
         user: str | None = None
-        if manifest.get("run_as_host_user"):
+        explicit_user = manifest.get("run_as_user")
+        if explicit_user:
+            user = f"{explicit_user['uid']}:{explicit_user['gid']}"
+        elif manifest.get("run_as_host_user"):
             import os
             host_uid = os.environ.get("HOST_UID", "").strip()
             host_gid = os.environ.get("HOST_GID", "").strip()
@@ -377,6 +382,17 @@ class DockerExecutor(Executor):
 
         sdk = self._build_sdk_params(ctx)
         client = docker.from_env()
+
+        # Root/image-default pipelines keep their established ownership model.
+        # A numeric runtime identity requires the bind source to be owned by that
+        # identity before Docker starts the child container.
+        if sdk.user is not None:
+            preparation = prepare_output_directory(
+                ctx.output_dir,
+                allowed_root=Path(settings.data_dir).resolve() / "derivatives",
+                runtime_user=sdk.user,
+            )
+            log_callback(preparation.log_line())
 
         loop = asyncio.get_event_loop()
         exit_code = 1
