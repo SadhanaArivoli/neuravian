@@ -171,12 +171,18 @@ function applyVolumeDisplay(
   refreshVolume(nv, volume);
 }
 
-function finiteSamples(image: NumericArray | null | undefined) {
+export function finiteScaledSamples(
+  image: NumericArray | null | undefined,
+  intensityRawToScaled: (raw: number) => number = (raw) => raw,
+) {
   if (!image?.length) return [];
   const step = Math.max(1, Math.ceil(image.length / MAX_HISTOGRAM_SAMPLES));
   const values: number[] = [];
   for (let index = 0; index < image.length; index += step) {
-    const value = Number(image[index]);
+    // NVImage.img contains the stored voxel representation. NiiVue applies
+    // scl_slope/scl_inter while rendering, so viewer statistics and windowing
+    // must use the same scaled intensity domain.
+    const value = intensityRawToScaled(Number(image[index]));
     if (Number.isFinite(value)) values.push(value);
   }
   return values;
@@ -503,6 +509,9 @@ export default function NeuroImageViewer({
     let mountedNv: Niivue | null = null;
     setLoading(true);
     setError(null);
+    setLayerStates([]);
+    setActiveLayer(0);
+    samplesRef.current = [];
 
     loadNiivue().then(async ({ Niivue, cmapper }) => {
       if (cancelled) return;
@@ -541,7 +550,10 @@ export default function NeuroImageViewer({
       nv.onLocationChange = (next: unknown) => {
         if (!cancelled) setLocation(next as ViewerLocation);
       };
-      const samples = nv.volumes.map((volume) => finiteSamples(volume.img as NumericArray));
+      const samples = nv.volumes.map((volume) => finiteScaledSamples(
+        volume.img as NumericArray,
+        (raw) => volume.intensityRaw2Scaled(raw),
+      ));
       samplesRef.current = samples;
       const structuralIndex = profiles.findIndex((profile) => profile.id === "structural");
       const requestedOverlayIndices = profiles

@@ -237,7 +237,9 @@ export function computeDisplayStatistics(
 
   const sorted = [...finite].sort((a, b) => a - b);
   const nonZero = sorted.filter((value) => value !== 0);
-  const meaningful = profile.rangeAlgorithm === "positive-robust-zero" || profile.signed
+  const meaningful = profile.rangeAlgorithm === "structural-robust"
+    || profile.rangeAlgorithm === "positive-robust-zero"
+    || profile.signed
     ? nonZero
     : sorted;
   const rangeValues = meaningful.length ? meaningful : sorted;

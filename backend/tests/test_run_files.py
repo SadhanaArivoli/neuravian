@@ -265,14 +265,21 @@ def test_results_includes_connectivity_outputs(api_client, db_session, tmp_path)
 
 
 def test_serve_nifti_derivative(api_client, run_with_output):
-    """Serving a NIfTI derivative returns 200 with binary content."""
-    run, _ = run_with_output
+    """Serving a gzip NIfTI preserves every byte and supports byte ranges."""
+    run, output_dir = run_with_output
+    expected = (output_dir / "sub-01" / "anat" / "sub-01_desc-preproc_T1w.nii.gz").read_bytes()
+    url = f"/api/runs/{run.id}/files/sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
     resp = api_client.get(
-        f"/api/runs/{run.id}/files/sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+        url
     )
     assert resp.status_code == 200
-    # gzip magic bytes
+    assert resp.content == expected
     assert resp.content[:2] == b"\x1f\x8b"
+
+    partial = api_client.get(url, headers={"Range": "bytes=0-3"})
+    assert partial.status_code == 206
+    assert partial.content == expected[:4]
+    assert partial.headers["content-range"] == f"bytes 0-3/{len(expected)}"
 
 
 def test_path_traversal_via_nifti_path_rejected(api_client, run_with_output):
