@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -38,6 +38,13 @@ export interface RunCacheInspection {
   cachedPaths: string[];
   total: number;
   state: "cloud-only" | "partially-cached" | "fully-cached";
+}
+
+export async function detectLegacyRunCaches(cacheRoot: string): Promise<string[]> {
+  const entries = await readdir(cacheRoot, { withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isDirectory() && /^run-\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
 function safeRelativePath(value: string) {

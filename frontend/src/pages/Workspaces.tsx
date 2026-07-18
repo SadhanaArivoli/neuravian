@@ -610,6 +610,7 @@ export default function Workspaces() {
         <Metric label="Runs" value={snapshot.runs.length} /><Metric label="Artifacts" value={snapshot.runs.reduce((sum, run) => sum + run.artifacts.length, 0)} />
         <Metric label="Cache entries" value={inspection?.cacheEntries ?? 0} /><Metric label="Cache size" value={formatBytes(inspection?.cacheSizeBytes ?? 0)} />
         <Metric label="Cached runs" value={inspection?.cachedRuns ?? 0} /><Metric label="Download queue" value="0" />
+        <Metric label="Legacy cache" value={inspection?.legacyCacheEntries.length ?? 0} detail="Detected only; not migrated" />
       </div>
       <dl className="mt-5 grid gap-4 text-xs sm:grid-cols-2"><div><dt className="text-slate-500">Workspace UUID / Server ID</dt><dd className="mt-1 break-all font-mono text-slate-300">{snapshot.workspaceId}</dd></div>
         <div><dt className="text-slate-500">Synchronization timestamp</dt><dd className="mt-1 text-slate-300">{snapshot.synchronizedAt}</dd></div></dl>

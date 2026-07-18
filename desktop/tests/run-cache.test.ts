@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { syncRun, type SyncManifest } from "../src/main/run-cache.js";
+import { detectLegacyRunCaches, syncRun, type SyncManifest } from "../src/main/run-cache.js";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const manifest = (content: string): SyncManifest => ({
@@ -21,6 +21,12 @@ const manifest = (content: string): SyncManifest => ({
 });
 
 describe("run cache synchronization", () => {
+  it("detects but does not migrate legacy bare run directories", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "nf-cache-"));
+    await mkdir(path.join(root, "run-7"), { recursive: true });
+    await mkdir(path.join(root, "96525865-a884-50c2-9cf2-8dfcd77a111d", "run-7"), { recursive: true });
+    expect(await detectLegacyRunCaches(root)).toEqual(["run-7"]);
+  });
   it("downloads, verifies, records metadata, and reuses unchanged artifacts", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "nf-cache-"));
     const fetcher = vi.fn(async () => new Response("volume"));

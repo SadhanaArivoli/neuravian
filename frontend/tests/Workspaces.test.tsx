@@ -47,7 +47,7 @@ describe("unified desktop workspaces", () => {
       removeWorkspace: vi.fn(),
       testWorkspace: vi.fn(async () => ({ workspaceId: "workspace-a", product: "NeuroForge", apiVersion: "1", serverVersion: "0.1.0" })),
       inspectWorkspace: vi.fn(async (): Promise<WorkspaceInspection> => ({
-        cacheSizeBytes: 2, cachedRuns: 0, cacheEntries: 0,
+        cacheSizeBytes: 2, cachedRuns: 0, cacheEntries: 0, legacyCacheEntries: ["run-7"],
         viewers: [
           { viewerId: "freeview", displayName: "FreeView", installed: true, executable: "/Applications/Freeview.app", reason: null },
           { viewerId: "mricrogl", displayName: "MRIcroGL", installed: false, executable: null, reason: "Not installed" },

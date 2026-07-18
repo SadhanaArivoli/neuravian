@@ -122,6 +122,7 @@ interface WorkspaceInspection {
   cacheSizeBytes: number;
   cachedRuns: number;
   cacheEntries: number;
+  legacyCacheEntries: string[];
   viewers: Array<{
     viewerId: "freeview" | "mricrogl";
     displayName: string;

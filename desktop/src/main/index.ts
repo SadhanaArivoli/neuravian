@@ -14,7 +14,7 @@ import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 import { DesktopLogger, type StartupTrace } from "./logger.js";
 import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
-import type { SyncManifest } from "./run-cache.js";
+import { detectLegacyRunCaches, type SyncManifest } from "./run-cache.js";
 import {
   commandForLocalPreset, commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
   type DesktopPlatform, type ExternalViewerId, type LocalViewerLaunchRequest, type ViewerLaunchRequest,
@@ -436,7 +436,8 @@ ipcMain.handle("workspaces:inspect", async (
       (viewerId) => detectViewer(viewerId, process.platform as DesktopPlatform),
     )),
   ]);
-  return { ...cache, viewers };
+  const legacyCacheEntries = await detectLegacyRunCaches(path.join(app.getPath("userData"), "run-cache"));
+  return { ...cache, viewers, legacyCacheEntries };
 });
 ipcMain.handle("workspaces:open-run", async (
   _event,
