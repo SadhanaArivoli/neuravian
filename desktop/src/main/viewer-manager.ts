@@ -135,3 +135,20 @@ export function commandForPreset(
     })],
   };
 }
+
+export function validateVolumeGeometry(
+  relativePaths: string[],
+  metadataArtifacts: Array<{ relativePath: string; geometry?: unknown }>,
+): void {
+  const volumes = relativePaths.filter((relativePath) => /\.(nii(?:\.gz)?|mgz|mgh)$/i.test(relativePath));
+  if (volumes.length < 2) return;
+  const geometries = volumes.map((relativePath) =>
+    metadataArtifacts.find((artifact) => artifact.relativePath === relativePath)?.geometry);
+  if (geometries.some((geometry) => !geometry)) {
+    throw new Error("Multi-volume launch requires recorded affine, shape, orientation, and voxel-size metadata.");
+  }
+  const expected = JSON.stringify(geometries[0]);
+  if (geometries.slice(1).some((geometry) => JSON.stringify(geometry) !== expected)) {
+    throw new Error("Viewer launch blocked because the selected volumes do not share identical geometry.");
+  }
+}

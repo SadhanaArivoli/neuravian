@@ -11,6 +11,12 @@ export interface SyncArtifact {
   url: string;
   sha256: string;
   sizeBytes: number;
+  geometry?: {
+    shape: number[];
+    voxelSize: number[];
+    orientation: string[];
+    affine: number[][];
+  } | null;
 }
 
 export interface SyncManifest {
@@ -89,8 +95,8 @@ export async function syncRun(
     provenance: manifest.provenance,
     methods: manifest.methods,
     reports: manifest.reports,
-    artifacts: manifest.artifacts.map(({ artifactId, relativePath, sha256: checksum, sizeBytes }) => ({
-      artifactId, relativePath, sha256: checksum, sizeBytes,
+    artifacts: manifest.artifacts.map(({ artifactId, relativePath, sha256: checksum, sizeBytes, geometry }) => ({
+      artifactId, relativePath, sha256: checksum, sizeBytes, geometry,
     })),
   }, null, 2);
   const metadataPath = path.join(runRoot, "run-metadata.json");

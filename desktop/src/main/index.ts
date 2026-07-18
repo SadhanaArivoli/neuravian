@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { queryActiveRuns } from "./activity.js";
 import { DesktopCompose } from "./compose.js";
@@ -16,7 +16,7 @@ import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
 import { syncRun, type SyncManifest } from "./run-cache.js";
 import {
-  commandForPreset, detectViewer, launchViewer,
+  commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
   type DesktopPlatform, type ExternalViewerId, type ViewerLaunchRequest,
 } from "./viewer-manager.js";
 
@@ -342,6 +342,10 @@ ipcMain.handle("viewers:launch", async (_event, request: ViewerLaunchRequest) =>
   const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
   if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
   const cacheRoot = path.join(app.getPath("userData"), "run-cache");
+  const metadata = JSON.parse(await readFile(
+    path.join(cacheRoot, `run-${request.runId}`, "run-metadata.json"), "utf8",
+  )) as { artifacts: Array<{ relativePath: string; geometry?: unknown }> };
+  validateVolumeGeometry(request.files.map((file) => file.relativePath), metadata.artifacts);
   const command = commandForPreset(request, detection.executable, cacheRoot);
   await launchViewer(command, cacheRoot);
   return true;

@@ -497,6 +497,22 @@ def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    def volume_geometry(file_path: Path) -> dict | None:
+        if not file_path.name.lower().endswith((".nii", ".nii.gz", ".mgz", ".mgh")):
+            return None
+        try:
+            import nibabel as nib
+            image = nib.load(str(file_path))
+            return {
+                "shape": list(image.shape[:3]),
+                "voxelSize": [round(float(value), 6) for value in image.header.get_zooms()[:3]],
+                "orientation": list(nib.aff2axcodes(image.affine)),
+                "affine": [[round(float(value), 6) for value in row] for row in image.affine.tolist()],
+            }
+        except Exception:
+            log.exception("Could not inspect synchronized volume geometry for run %d: %s", run_id, file_path.name)
+            return None
+
     def safe_metadata(value, key: str = ""):
         if any(term in key.lower() for term in ("password", "secret", "token", "credential", "license")):
             return "<redacted>"
@@ -517,6 +533,7 @@ def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "url": f"/api/runs/{run_id}/files/{relative}",
             "sha256": checksum(file_path),
             "sizeBytes": file_path.stat().st_size,
+            "geometry": volume_geometry(file_path),
         })
     results = get_run_results(run_id, svc)
     provenance = _build_run_metadata(run, svc)

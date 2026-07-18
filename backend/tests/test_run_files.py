@@ -344,6 +344,10 @@ def test_cross_run_access_rejected(api_client, run_with_output, db_session, tmp_
 
 def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_output):
     run, output_dir = run_with_output
+    import nibabel as nib
+    import numpy as np
+    volume_path = output_dir / "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+    nib.save(nib.Nifti1Image(np.zeros((2, 3, 4), dtype=np.float32), np.eye(4)), volume_path)
     response = api_client.get(f"/api/runs/{run.id}/sync-manifest")
 
     assert response.status_code == 200
@@ -357,6 +361,8 @@ def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_outp
     assert artifact["sha256"] == hashlib.sha256(expected).hexdigest()
     assert artifact["sizeBytes"] == len(expected)
     assert artifact["url"].startswith(f"/api/runs/{run.id}/files/")
+    assert artifact["geometry"] is not None
+    assert set(artifact["geometry"]) == {"shape", "voxelSize", "orientation", "affine"}
     rendered = json.dumps(payload)
     assert str(output_dir) not in rendered
     assert "/host-data" not in rendered
