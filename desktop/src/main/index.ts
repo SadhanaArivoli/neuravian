@@ -140,8 +140,32 @@ async function loadMainApplication(): Promise<void> {
   if (rendererReadyTimer) clearTimeout(rendererReadyTimer);
   const attemptId = startupState.get().attemptId;
   const startedAt = Date.now();
+  const mainApplicationUrl = new URL("/", FRONTEND_URL);
+  mainApplicationUrl.searchParams.set("desktop-launch", attemptId ?? "startup");
+  let restoredEntryLoad: Promise<void> | null = null;
+  const enforceDesktopHome = (
+    _event: Electron.Event,
+    url: string,
+    isMainFrame: boolean,
+  ) => {
+    if (!mainWindow || !isMainFrame || restoredEntryLoad) return;
+    const navigated = new URL(url);
+    if (navigated.origin !== mainApplicationUrl.origin || navigated.pathname === "/") return;
+    restoredEntryLoad = withTimeout(
+      mainWindow.loadURL(mainApplicationUrl.toString()),
+      "Renderer home restoration",
+      STARTUP_TIMEOUTS.rendererLoadMs,
+    ).then(() => { mainWindow?.webContents.navigationHistory.clear(); });
+  };
+  mainWindow.webContents.on("did-navigate-in-page", enforceDesktopHome);
   try {
-    await withTimeout(mainWindow.loadURL(FRONTEND_URL), "Renderer load", STARTUP_TIMEOUTS.rendererLoadMs);
+    await withTimeout(mainWindow.loadURL(mainApplicationUrl.toString()), "Renderer load", STARTUP_TIMEOUTS.rendererLoadMs);
+    mainWindow.webContents.navigationHistory.clear();
+    // Chromium can restore an in-page history entry several seconds after the
+    // root document finishes loading. Observe only the startup window, restore
+    // Home once if needed, then remove the listener before normal navigation.
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    if (restoredEntryLoad) await restoredEntryLoad;
     applicationLoaded = true;
     trace({ attemptId, stage: 19, name: "app URL loaded into main window", detail: FRONTEND_URL, elapsedMs: Date.now() - startedAt });
     trace({ attemptId, stage: 20, name: "startup shell removed", elapsedMs: Date.now() - startedAt });
@@ -158,6 +182,8 @@ async function loadMainApplication(): Promise<void> {
       stage: "main application load", elapsedMs: Date.now() - startedAt,
       recoverable: true, browserAvailable: true,
     });
+  } finally {
+    mainWindow?.webContents.off("did-navigate-in-page", enforceDesktopHome);
   }
 }
 

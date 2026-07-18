@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AboutDialog } from "../onboarding/AboutDialog";
 import { useOnboarding } from "../../context/OnboardingContext";
 import { useHealth } from "../../hooks/useHealth";
@@ -24,17 +24,8 @@ const WIZARD_ITEMS = [
 const SETTINGS_ITEMS = [
   { to: "/plugins", label: "Plugins", end: false, icon: WorkbenchIcons.plugin },
   { to: "/settings/remote-hosts", label: "Remote Hosts", end: false, icon: WorkbenchIcons.network },
+  { to: "/workspaces", label: "Workspace", end: false, icon: WorkbenchIcons.home },
   { to: "/settings", label: "Settings", end: true, icon: WorkbenchIcons.settings },
-] as const;
-
-const DESKTOP_NAV = [
-  { view: "home", label: "Workspace", icon: WorkbenchIcons.home },
-  { view: "projects", label: "Projects", icon: WorkbenchIcons.project },
-  { view: "datasets", label: "Datasets", icon: WorkbenchIcons.dataset },
-  { view: "workflows", label: "Workflows", icon: WorkbenchIcons.workflow },
-  { view: "runs", label: "Runs", icon: WorkbenchIcons.activity },
-  { view: "reports", label: "Reports", icon: WorkbenchIcons.library },
-  { view: "settings", label: "Settings", icon: WorkbenchIcons.settings },
 ] as const;
 
 function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; end: boolean; icon: typeof WorkbenchIcons.home }) {
@@ -56,33 +47,9 @@ function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; en
   );
 }
 
-function DesktopNav() {
-  const location = useLocation();
-  const { selected } = useWorkspace();
-  const activeView = new URLSearchParams(location.search).get("view") ?? "home";
-  const localRoutes: Record<string, string> = {
-    home: "/workspaces?scope=local", projects: "/projects", datasets: "/datasets",
-    workflows: "/workflows/library", runs: "/runs",
-    reports: "/workspaces?scope=local&view=reports", settings: "/settings",
-  };
-  const cloudScope = selected.startsWith("cloud:") ? `cloud:${selected.slice(6)}` : selected;
-  return DESKTOP_NAV.map(({ view, label, icon: Icon }) => {
-    const to = selected === "local"
-      ? localRoutes[view]
-      : `/workspaces?scope=${encodeURIComponent(cloudScope)}${view === "home" ? "" : `&view=${view}`}`;
-    const active = location.pathname === new URL(to, "https://desktop.local").pathname &&
-      (location.pathname !== "/workspaces" || activeView === view);
-    return <Link key={to} to={to} className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
-      active ? "bg-accent/20 font-medium text-accent" : "text-gray-400 hover:bg-surface-overlay hover:text-gray-100"
-    }`}>
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {label}
-    </Link>;
-  });
-}
-
 function WorkspaceSwitcher() {
   const desktop = window.neuroforgeDesktop!;
+  const location = useLocation();
   const navigate = useNavigate();
   const { selected, select, local, cloudProfiles } = useWorkspace();
   const [localCounts, setLocalCounts] = useState({ datasets: 0, runs: 0, workflows: 0 });
@@ -112,7 +79,11 @@ function WorkspaceSwitcher() {
 
   function change(value: WorkspaceSelection) {
     select(value);
-    navigate(`/workspaces?scope=${encodeURIComponent(value)}`);
+    if (location.pathname === "/workspaces") {
+      const params = new URLSearchParams(location.search);
+      params.set("scope", value);
+      navigate(`/workspaces?${params.toString()}`);
+    }
   }
 
   const activeCloud = selected.startsWith("cloud:") ? cloudProfiles.find((profile) => profile.id === selected.slice(6)) : null;
@@ -272,35 +243,34 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-        {window.neuroforgeDesktop ? <><WorkspaceSwitcher /><DesktopNav /></> : <>
-          {NAV_ITEMS.map(({ to, label, end, icon }) => (
-            <NavItem key={to} to={to} label={label} end={end} icon={icon} />
-          ))}
+        {window.neuroforgeDesktop && <WorkspaceSwitcher />}
+        {NAV_ITEMS.map(({ to, label, end, icon }) => (
+          <NavItem key={to} to={to} label={label} end={end} icon={icon} />
+        ))}
 
-          <SectionLabel>Wizards</SectionLabel>
-          {WIZARD_ITEMS.map(({ to, label, end, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `rounded-md px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
-                  isActive
-                    ? "bg-accent/20 text-accent font-medium"
-                    : "text-gray-400 hover:bg-surface-overlay hover:text-gray-100"
-                }`
-              }
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {label}
-            </NavLink>
-          ))}
+        <SectionLabel>Wizards</SectionLabel>
+        {WIZARD_ITEMS.map(({ to, label, end, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) =>
+              `rounded-md px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
+                isActive
+                  ? "bg-accent/20 text-accent font-medium"
+                  : "text-gray-400 hover:bg-surface-overlay hover:text-gray-100"
+              }`
+            }
+          >
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {label}
+          </NavLink>
+        ))}
 
-          <SectionLabel>Settings</SectionLabel>
-          {SETTINGS_ITEMS.map(({ to, label, end, icon }) => (
-            <NavItem key={to} to={to} label={label} end={end} icon={icon} />
-          ))}
-        </>}
+        <SectionLabel>Administration</SectionLabel>
+        {SETTINGS_ITEMS.map(({ to, label, end, icon }) => (
+          <NavItem key={to} to={to} label={label} end={end} icon={icon} />
+        ))}
       </nav>
 
       <div className="hidden border-t border-white/5 px-2 pt-3 md:block space-y-2">

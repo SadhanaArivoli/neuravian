@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePipelines } from "../hooks/usePipelines";
+import { useWorkspace } from "../context/WorkspaceContext";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 // Inline SVG — no icon library dependency.
@@ -258,10 +260,104 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+interface HomeWorkspaceCounts {
+  projects: number;
+  datasets: number;
+  workflows: number;
+  runs: number;
+  reports: number;
+}
+
+const emptyCounts = (): HomeWorkspaceCounts => ({
+  projects: 0, datasets: 0, workflows: 0, runs: 0, reports: 0,
+});
+
+async function localJson<T>(path: string): Promise<T> {
+  const response = await fetch(`/api${path}`);
+  if (!response.ok) throw new Error(`Local API returned HTTP ${response.status}.`);
+  return response.json() as Promise<T>;
+}
+
+async function loadLocalHomeCounts(): Promise<HomeWorkspaceCounts> {
+  const [projects, datasets, workflows, runs] = await Promise.all([
+    localJson<unknown[]>("/projects"),
+    localJson<Array<{ id: number }>>("/datasets"),
+    localJson<unknown[]>("/workflows"),
+    localJson<unknown[]>("/runs"),
+  ]);
+  const reports = await Promise.all(datasets.map((dataset) =>
+    localJson<unknown[]>(`/datasets/${dataset.id}/reports`).catch(() => [])));
+  return {
+    projects: projects.length,
+    datasets: datasets.length,
+    workflows: workflows.length,
+    runs: runs.length,
+    reports: reports.reduce((sum, values) => sum + values.length, 0),
+  };
+}
+
+function snapshotCounts(snapshot: WorkspaceSnapshot): HomeWorkspaceCounts {
+  return {
+    projects: snapshot.projects.length,
+    datasets: snapshot.datasets.length,
+    workflows: snapshot.workflows.length,
+    runs: snapshot.runs.length,
+    reports: snapshot.reports.length,
+  };
+}
+
+function addCounts(left: HomeWorkspaceCounts, right: HomeWorkspaceCounts): HomeWorkspaceCounts {
+  return {
+    projects: left.projects + right.projects,
+    datasets: left.datasets + right.datasets,
+    workflows: left.workflows + right.workflows,
+    runs: left.runs + right.runs,
+    reports: left.reports + right.reports,
+  };
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Welcome() {
   const { data: pipelines, isLoading: pipelinesLoading, isError: pipelinesError } = usePipelines();
+  const workspace = useWorkspace();
+  const desktop = window.neuroforgeDesktop;
+  const [workspaceCounts, setWorkspaceCounts] = useState<HomeWorkspaceCounts | null>(null);
+  const [workspaceCountsError, setWorkspaceCountsError] = useState<string | null>(null);
+
+  const workspaceLabel = useMemo(() => workspace.selected === "local"
+    ? "Local NeuroForge"
+    : workspace.selected === "all"
+      ? "All Workspaces"
+      : workspace.cloudProfiles.find((profile) => `cloud:${profile.id}` === workspace.selected)?.name ?? "Cloud workspace",
+  [workspace.cloudProfiles, workspace.selected]);
+
+  useEffect(() => {
+    if (!desktop) return;
+    let cancelled = false;
+    setWorkspaceCounts(null);
+    setWorkspaceCountsError(null);
+    void (async () => {
+      try {
+        const local = workspace.selected === "local" || workspace.selected === "all"
+          ? await loadLocalHomeCounts()
+          : emptyCounts();
+        let cloud = emptyCounts();
+        if (workspace.selected !== "local") {
+          const profiles = workspace.selected === "all"
+            ? workspace.cloudProfiles
+            : workspace.cloudProfiles.filter((profile) => `cloud:${profile.id}` === workspace.selected);
+          const snapshots = await Promise.all(profiles.map((profile) =>
+            desktop.syncWorkspace(profile.id).then((result) => result.snapshot)));
+          cloud = snapshots.map(snapshotCounts).reduce(addCounts, emptyCounts());
+        }
+        if (!cancelled) setWorkspaceCounts(addCounts(local, cloud));
+      } catch (error) {
+        if (!cancelled) setWorkspaceCountsError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [desktop, workspace.cloudProfiles, workspace.selected]);
 
   const pipelineCountLabel = pipelinesLoading
     ? "Loading…"
@@ -277,6 +373,9 @@ export default function Welcome() {
           <div className="flex items-center gap-2 mb-4 sm:mb-5">
             <span className="inline-block w-1.5 h-5 rounded-full bg-accent" />
             <span className="text-xs font-mono text-gray-500 tracking-wider">v0.1.0-alpha</span>
+            {desktop && <span data-testid="home-workspace-context" className="rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent">
+              Current workspace: {workspaceLabel}
+            </span>}
           </div>
           <h1 className="text-xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white mb-3 sm:mb-4 leading-snug overflow-hidden">
             Neuroimaging pipelines
@@ -311,6 +410,18 @@ export default function Welcome() {
             <span className="text-gray-700">·</span>
             <span>Apache 2.0</span>
           </div>
+          {desktop && <div data-testid="home-workspace-counts" className="mt-4 flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-white/8 bg-surface-raised/60 px-3 py-2 text-[11px] text-gray-500">
+            {!workspaceCounts && !workspaceCountsError && <span>Loading workspace counts…</span>}
+            {workspaceCountsError && <span>Workspace counts unavailable</span>}
+            {workspaceCounts && <>
+              <span>{workspaceCounts.projects} {workspaceCounts.projects === 1 ? "project" : "projects"}</span>
+              <span>{workspaceCounts.datasets} datasets</span>
+              <span>{workspaceCounts.workflows} workflows</span>
+              <span>{workspaceCounts.runs} runs</span>
+              <span>{workspaceCounts.reports} reports</span>
+              {workspace.selected === "all" && <span className="text-gray-600">Aggregated metadata only</span>}
+            </>}
+          </div>}
         </div>
       </section>
 
