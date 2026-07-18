@@ -258,6 +258,69 @@ function ArtifactTable({ run }: { run: WorkspaceRun }) {
   </div>;
 }
 
+function DatasetDetails({
+  dataset, runs, workflows, profile, onClose,
+}: {
+  dataset: Record<string, unknown> & { id: number; remoteKey: string };
+  runs: WorkspaceRun[];
+  workflows: Array<Record<string, unknown> & { id: number; remoteKey: string }>;
+  profile: WorkspaceProfile;
+  onClose: () => void;
+}) {
+  return <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm" role="dialog" aria-label={`Dataset ${dataset.id} details`}>
+    <div className="h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#0a0f1a] p-6 shadow-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-bold text-white">{stringValue(dataset.name, `Dataset ${dataset.id}`)}</h2>
+            <Badge tone="cloud">Cloud</Badge>
+          </div>
+          <p className="mt-1 text-sm text-slate-400">{profile.name} · Dataset #{dataset.id}</p>
+        </div>
+        <button onClick={onClose} aria-label="Close dataset details" className="rounded-md border border-white/10 px-3 py-1 text-sm text-slate-300">Close</button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <Metric label="Runs" value={runs.length} />
+        <Metric label="Workflows" value={workflows.length} />
+        <Metric label="Validation" value={stringValue(dataset.validation_status, "Unknown")} />
+      </div>
+
+      {runs.length > 0 && <section className="mt-6">
+        <h3 className="text-sm font-semibold text-white mb-3">Runs on this dataset</h3>
+        <div className="space-y-2">
+          {runs.map((run) => <div key={run.remoteKey} className="rounded-lg border border-white/8 bg-slate-900/55 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-mono text-xs text-cyan-300">Run #{run.id}</span>
+                <span className="ml-2 text-sm text-slate-200">{run.pipeline_manifest_id}</span>
+              </div>
+              <Badge tone={run.status === "success" ? "success" : run.status === "failed" ? "danger" : "warning"}>
+                {run.status}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">{run.artifacts.length} artifacts · {run.cachedArtifacts.length} cached · {cacheLabel(run.cacheState)}</p>
+          </div>)}
+        </div>
+      </section>}
+
+      {typeof dataset.description === "string" && dataset.description && <section className="mt-6">
+        <h3 className="text-sm font-semibold text-white mb-2">Description</h3>
+        <p className="text-sm text-slate-400">{dataset.description}</p>
+      </section>}
+
+      <dl className="mt-6 grid gap-3 text-xs sm:grid-cols-2">
+        {Object.entries(dataset)
+          .filter(([key]) => !["id", "remoteKey", "name", "description", "validation_status"].includes(key))
+          .map(([key, value]) => <div key={key}>
+            <dt className="text-slate-500 uppercase tracking-wide text-[10px]">{key.replace(/_/g, " ")}</dt>
+            <dd className="mt-1 text-slate-300 break-all">{typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")}</dd>
+          </div>)}
+      </dl>
+    </div>
+  </div>;
+}
+
 function RunDetails({
   profile, workspaceId, run, online, inspection, onClose, onCacheChanged,
 }: {
@@ -341,8 +404,11 @@ function RunDetails({
                   {!freeview?.installed ? freeview?.reason ?? "Not installed" : required.length !== 2 ? "No compatible artifacts" : cached ? "Ready from cache" : "Downloads 2 required artifacts"}
                 </span>
               </button>
-              <button disabled className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-slate-400 opacity-60">
-                Open in MRIcroGL<span className="mt-1 block text-[10px] text-slate-500">{mricrogl?.installed ? "No compatible preset" : mricrogl?.reason ?? "Not installed"}</span>
+              <button disabled={true}
+                className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-slate-400 disabled:cursor-not-allowed disabled:opacity-40">
+                Open in MRIcroGL<span className="mt-1 block text-[10px] text-slate-500">
+                  {mricrogl?.installed ? "No compatible preset for this pipeline" : mricrogl?.reason ?? "Not installed"}
+                </span>
               </button>
             </div>
             {downloading.length > 0 && <div data-testid="artifact-download-progress" className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
@@ -376,6 +442,7 @@ export default function Workspaces() {
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<WorkspaceRun | null>(null);
+  const [selectedDataset, setSelectedDataset] = useState<(Record<string, unknown> & { id: number; remoteKey: string }) | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [serverUrl, setServerUrl] = useState("");
@@ -553,11 +620,12 @@ export default function Workspaces() {
       <h2 className="text-lg font-semibold text-white">Datasets</h2>
       <div className="mt-4 grid gap-4 md:grid-cols-2">{snapshot.datasets.map((dataset) => {
         const runs = runsByDataset.get(dataset.id) ?? [];
-        return <article key={dataset.remoteKey} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+        return <button key={dataset.remoteKey} onClick={() => setSelectedDataset(dataset)}
+          className="rounded-xl border border-white/8 bg-slate-900/55 p-4 text-left transition hover:border-cyan-400/30 w-full">
           <div className="flex justify-between"><h3 className="font-semibold text-white">{stringValue(dataset.name, `Dataset ${dataset.id}`)}</h3><Badge tone="cloud">Cloud</Badge></div>
           <p className="mt-2 text-xs text-slate-500">Dataset #{dataset.id} · {stringValue(dataset.validation_status, "Validation unknown")}</p>
           <div className="mt-4 flex gap-4 text-xs text-slate-400"><span>{runs.length} runs</span><span>{snapshot.workflows.filter((w) => Number(w.dataset_id) === dataset.id).length} workflows</span></div>
-        </article>;
+        </button>;
       })}</div>
     </div>}
 
@@ -652,5 +720,12 @@ export default function Workspaces() {
     {selectedRun && activeProfile && snapshot && <RunDetails profile={activeProfile} workspaceId={snapshot.workspaceId}
       run={selectedRun} online={online} inspection={inspection} onClose={() => setSelectedRun(null)}
       onCacheChanged={() => activeId && void synchronize(activeId, true)} />}
+    {selectedDataset && activeProfile && snapshot && <DatasetDetails
+      dataset={selectedDataset}
+      runs={runsByDataset.get(selectedDataset.id) ?? []}
+      workflows={snapshot.workflows.filter((w) => Number(w.dataset_id) === selectedDataset.id)}
+      profile={activeProfile}
+      onClose={() => setSelectedDataset(null)}
+    />}
   </div>;
 }

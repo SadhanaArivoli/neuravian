@@ -6,6 +6,7 @@ import { cancelRun, deleteRun, fetchQueue, retryRun, rerunRun } from "../api/cli
 import type { RunSummary, RunStatus } from "../api/client";
 import { useRuns } from "../hooks/useRuns";
 import { EmptyState } from "../components/primitives/EmptyState";
+import { useWorkspace } from "../context/WorkspaceContext";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -212,9 +213,41 @@ function RunActions({
 const STATUS_OPTIONS: RunStatus[] = ["success", "failed", "running", "queued", "cancelled", "interrupted"];
 
 export default function Runs() {
+  const { selected, cloudProfiles } = useWorkspace();
   const { data: runs, isLoading, error } = useRuns();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  if (window.neuroforgeDesktop && selected.startsWith("cloud:")) {
+    const profileId = selected.slice(6);
+    const profile = cloudProfiles.find((p) => p.id === profileId);
+    return (
+      <div className="p-6 sm:p-8 max-w-screen-xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-gray-100">Runs</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Cloud workspace selected</p>
+        </div>
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-6">
+          <p className="text-sm font-medium text-cyan-200">
+            Viewing cloud workspace: <span className="font-semibold">{profile?.name ?? profileId}</span>
+          </p>
+          <p className="mt-2 text-xs text-slate-400">
+            Cloud runs are managed in the Workspace view, where you can browse artifacts,
+            download files, and launch external viewers.
+          </p>
+          <Link
+            to={`/workspaces?scope=${selected}&view=runs`}
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-cyan-500/20 border border-cyan-400/30 px-4 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-500/30 transition-colors"
+          >
+            Open Cloud Runs in Workspace
+          </Link>
+        </div>
+        <div className="mt-8">
+          <h2 className="text-base font-semibold text-gray-400 mb-3">Local Runs</h2>
+        </div>
+      </div>
+    );
+  }
 
   const { data: queue } = useQuery({
     queryKey: ["run-queue"],
