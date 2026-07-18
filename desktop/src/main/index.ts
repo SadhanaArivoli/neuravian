@@ -493,6 +493,67 @@ ipcMain.handle("workspaces:sync-artifacts", async (
     input.relativePaths,
   );
 });
+ipcMain.handle("workspaces:push-project", async (
+  _event,
+  input: {
+    profileId: string;
+    project: {
+      title: string;
+      description?: string | null;
+      institution?: string | null;
+      lab?: string | null;
+      pi_name?: string | null;
+      collaborators?: string[];
+      tags?: string[];
+      status?: string;
+    };
+  },
+) => {
+  const { profiles } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers["Authorization"] = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const url = new URL("/api/projects", profile.serverUrl).toString();
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(input.project) });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Cloud project create failed (${response.status}): ${text}`);
+  }
+  return response.json();
+});
+ipcMain.handle("workspaces:push-workflow", async (
+  _event,
+  input: {
+    profileId: string;
+    workflow: {
+      name: string;
+      description?: string | null;
+      dataset_id?: number | null;
+      tags?: string[];
+      state: Record<string, unknown>;
+      schema_version?: string;
+      is_template?: boolean;
+      is_favorite?: boolean;
+      is_archived?: boolean;
+    };
+  },
+) => {
+  const { profiles } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers["Authorization"] = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const url = new URL("/api/workflows", profile.serverUrl).toString();
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(input.workflow) });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Cloud workflow create failed (${response.status}): ${text}`);
+  }
+  return response.json();
+});
 ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunchRequest) => {
   const identity = await localWorkspace().get();
   if (request.workspaceId !== identity.workspaceId) throw new Error("Local workspace identity mismatch.");

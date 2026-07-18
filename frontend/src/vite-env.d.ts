@@ -53,6 +53,33 @@ interface NeuroForgeDesktopBridge {
     opacity?: number;
     freesurferLut?: boolean;
   }): Promise<boolean>;
+  pushCloudProject(input: {
+    profileId: string;
+    project: {
+      title: string;
+      description?: string | null;
+      institution?: string | null;
+      lab?: string | null;
+      pi_name?: string | null;
+      collaborators?: string[];
+      tags?: string[];
+      status?: string;
+    };
+  }): Promise<Record<string, unknown>>;
+  pushCloudWorkflow(input: {
+    profileId: string;
+    workflow: {
+      name: string;
+      description?: string | null;
+      dataset_id?: number | null;
+      tags?: string[];
+      state: Record<string, unknown>;
+      schema_version?: string;
+      is_template?: boolean;
+      is_favorite?: boolean;
+      is_archived?: boolean;
+    };
+  }): Promise<Record<string, unknown>>;
 }
 
 interface WorkspaceProfile {

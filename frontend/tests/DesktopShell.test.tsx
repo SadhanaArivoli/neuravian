@@ -69,6 +69,8 @@ describe("restored desktop shell", () => {
       syncWorkspaceArtifacts: vi.fn(),
       launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
+      pushCloudProject: vi.fn(async () => ({})),
+      pushCloudWorkflow: vi.fn(async () => ({})),
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);

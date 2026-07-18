@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   syncWorkspaceArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-artifacts", input),
   launchLocalViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch-local", request),
   launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
+  pushCloudProject: (input: unknown) => ipcRenderer.invoke("workspaces:push-project", input),
+  pushCloudWorkflow: (input: unknown) => ipcRenderer.invoke("workspaces:push-workflow", input),
 });
 
 ipcRenderer.send("startup:trace", { stage: 3, name: "preload loaded" });
