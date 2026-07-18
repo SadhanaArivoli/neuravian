@@ -348,6 +348,12 @@ def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_outp
     import numpy as np
     volume_path = output_dir / "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
     nib.save(nib.Nifti1Image(np.zeros((2, 3, 4), dtype=np.float32), np.eye(4)), volume_path)
+    mgz_path = output_dir / "sub-01/mri/orig_nu.mgz"
+    mgz_path.parent.mkdir(parents=True)
+    nib.save(nib.MGHImage(np.zeros((2, 3, 4), dtype=np.float32), np.eye(4)), mgz_path)
+    stats_mgz_path = output_dir / "sub-01/stats/aseg.auto.mgz"
+    stats_mgz_path.parent.mkdir(parents=True)
+    stats_mgz_path.write_text("# statistics, not an MGH volume\n")
     response = api_client.get(f"/api/runs/{run.id}/sync-manifest")
 
     assert response.status_code == 200
@@ -363,6 +369,17 @@ def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_outp
     assert artifact["url"].startswith(f"/api/runs/{run.id}/files/")
     assert artifact["geometry"] is not None
     assert set(artifact["geometry"]) == {"shape", "voxelSize", "orientation", "affine"}
+    mgz_artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/mri/orig_nu.mgz"
+    )
+    assert all(type(value) is int for value in mgz_artifact["geometry"]["shape"])
+    assert all(type(value) is str for value in mgz_artifact["geometry"]["orientation"])
+    stats_artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/stats/aseg.auto.mgz"
+    )
+    assert stats_artifact["geometry"] is None
     rendered = json.dumps(payload)
     assert str(output_dir) not in rendered
     assert "/host-data" not in rendered

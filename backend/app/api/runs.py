@@ -504,9 +504,9 @@ def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             import nibabel as nib
             image = nib.load(str(file_path))
             return {
-                "shape": list(image.shape[:3]),
+                "shape": [int(value) for value in image.shape[:3]],
                 "voxelSize": [round(float(value), 6) for value in image.header.get_zooms()[:3]],
-                "orientation": list(nib.aff2axcodes(image.affine)),
+                "orientation": [str(value) for value in nib.aff2axcodes(image.affine)],
                 "affine": [[round(float(value), 6) for value in row] for row in image.affine.tolist()],
             }
         except Exception:
