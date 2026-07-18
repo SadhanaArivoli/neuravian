@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   inspectWorkspace: (input: unknown) => ipcRenderer.invoke("workspaces:inspect", input),
   openWorkspaceRun: (input: unknown) => ipcRenderer.invoke("workspaces:open-run", input),
   syncWorkspaceArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-artifacts", input),
+  syncAllRunArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-all-run-artifacts", input),
   launchLocalViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch-local", request),
   launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
   pushCloudProject: (input: unknown) => ipcRenderer.invoke("workspaces:push-project", input),

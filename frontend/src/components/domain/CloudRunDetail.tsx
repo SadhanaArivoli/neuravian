@@ -113,6 +113,9 @@ export function CloudRunDetail({
   const [tab, setTab] = useState<"overview" | "artifacts" | "logs" | "provenance" | "reports">("overview");
   const [downloading, setDownloading] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllResult, setSyncAllResult] = useState<{ downloaded: number; reused: number } | null>(null);
+  const [syncAllError, setSyncAllError] = useState<string | null>(null);
 
   const anatomy = run.artifacts.find((a) => a.relativePath.endsWith("/mri/orig_nu.mgz"));
   const segmentation = run.artifacts.find((a) => a.relativePath.endsWith("/mri/aseg.auto.mgz"));
@@ -149,6 +152,22 @@ export function CloudRunDetail({
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setDownloading([]);
+    }
+  }
+
+  async function downloadAll() {
+    if (!online || run.artifacts.length === 0 || syncingAll) return;
+    setSyncingAll(true);
+    setSyncAllResult(null);
+    setSyncAllError(null);
+    try {
+      const result = await desktop.syncAllRunArtifacts({ profileId: profile.id, workspaceId, runId: run.id });
+      setSyncAllResult({ downloaded: result.downloaded.length, reused: result.reused.length });
+      onCacheChanged?.();
+    } catch (e) {
+      setSyncAllError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncingAll(false);
     }
   }
 
@@ -216,6 +235,52 @@ export function CloudRunDetail({
         <div className="mt-5">
           {tab === "overview" && (
             <div className="space-y-6">
+              {/* Artifact persistence banner */}
+              {run.status === "success" && run.artifacts.length > 0 && run.cacheState !== "fully-cached" && run.cacheState !== "offline-cached" && (
+                <section className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <h3 className="text-sm font-semibold text-cyan-200">Sync artifacts before terminating EC2</h3>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {run.cachedArtifacts.length} of {run.artifacts.length} artifact{run.artifacts.length !== 1 ? "s" : ""} cached locally.
+                        Downloading all outputs makes this run permanently available offline.
+                        {!online && " Reconnect to the cloud workspace to download."}
+                      </p>
+                    </div>
+                    {online && (
+                      <button
+                        onClick={() => void downloadAll()}
+                        disabled={syncingAll}
+                        className="shrink-0 rounded-lg border border-cyan-400/30 bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/25 disabled:opacity-50 transition-colors"
+                      >
+                        {syncingAll ? "Downloading…" : `Download all ${run.artifacts.length} artifacts`}
+                      </button>
+                    )}
+                  </div>
+                  {syncingAll && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-300" />
+                      Downloading artifacts in background — you can close this panel.
+                    </div>
+                  )}
+                  {syncAllResult && (
+                    <p className="mt-2 text-xs text-emerald-300">
+                      ✓ Sync complete — {syncAllResult.downloaded} downloaded, {syncAllResult.reused} already cached.
+                    </p>
+                  )}
+                  {syncAllError && (
+                    <p className="mt-2 text-xs text-red-400">Sync failed: {syncAllError}</p>
+                  )}
+                </section>
+              )}
+
+              {/* Fully cached confirmation */}
+              {run.status === "success" && (run.cacheState === "fully-cached" || run.cacheState === "offline-cached") && (
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-xs text-emerald-300">
+                  ✓ All {run.artifacts.length} artifacts are stored locally — this run is fully available offline.
+                </div>
+              )}
+
               {/* Viewer actions */}
               <section>
                 <h3 className="text-sm font-semibold text-white mb-3">Viewer actions</h3>
@@ -284,7 +349,31 @@ export function CloudRunDetail({
             </div>
           )}
 
-          {tab === "artifacts" && <ArtifactTable run={run} />}
+          {tab === "artifacts" && (
+            <div className="space-y-3">
+              {online && run.status === "success" && run.cacheState !== "fully-cached" && run.cacheState !== "offline-cached" && (
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <p className="text-xs text-slate-400">
+                    {run.cachedArtifacts.length} of {run.artifacts.length} cached locally
+                  </p>
+                  <button
+                    onClick={() => void downloadAll()}
+                    disabled={syncingAll}
+                    className="rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-400/20 disabled:opacity-50 transition-colors"
+                  >
+                    {syncingAll ? "Downloading…" : "Download all"}
+                  </button>
+                </div>
+              )}
+              {syncAllResult && (
+                <p className="text-xs text-emerald-300">
+                  ✓ {syncAllResult.downloaded} downloaded, {syncAllResult.reused} already cached.
+                </p>
+              )}
+              {syncAllError && <p className="text-xs text-red-400">Sync failed: {syncAllError}</p>}
+              <ArtifactTable run={run} />
+            </div>
+          )}
 
           {tab === "logs" && (
             <pre className="max-h-[65vh] overflow-auto rounded-lg bg-slate-950/70 p-4 text-[11px] text-slate-400 whitespace-pre-wrap">

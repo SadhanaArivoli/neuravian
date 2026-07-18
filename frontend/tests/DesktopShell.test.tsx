@@ -67,6 +67,7 @@ describe("restored desktop shell", () => {
       openWorkspaceRun: vi.fn(async () => true),
       syncWorkspace: vi.fn(async () => ({ online: true, profile, snapshot })),
       syncWorkspaceArtifacts: vi.fn(),
+      syncAllRunArtifacts: vi.fn().mockResolvedValue({ runId: 0, downloaded: [], reused: [] }),
       launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
       pushCloudProject: vi.fn(async () => ({})),

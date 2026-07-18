@@ -493,6 +493,20 @@ ipcMain.handle("workspaces:sync-artifacts", async (
     input.relativePaths,
   );
 });
+ipcMain.handle("workspaces:sync-all-run-artifacts", async (
+  _event,
+  input: { profileId: string; workspaceId: string; runId: number },
+) => {
+  const { profiles, client } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  const credential = await profiles.credential(input.profileId);
+  return await client.syncAllRunArtifacts(profile, credential, input.workspaceId, input.runId);
+});
+
 ipcMain.handle("workspaces:push-project", async (
   _event,
   input: {
