@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   openDockerDesktop: () => ipcRenderer.invoke("docker:open-desktop"),
   openDockerInstall: () => ipcRenderer.invoke("docker:install"),
   detectViewers: (configured?: Record<string, string>) => ipcRenderer.invoke("viewers:detect", configured),
+  listWorkspaces: () => ipcRenderer.invoke("workspaces:list"),
+  saveWorkspace: (input: unknown) => ipcRenderer.invoke("workspaces:save", input),
+  removeWorkspace: (profileId: string) => ipcRenderer.invoke("workspaces:remove", profileId),
+  syncWorkspace: (profileId: string) => ipcRenderer.invoke("workspaces:sync", profileId),
+  syncWorkspaceArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-artifacts", input),
   syncRun: (runId: number) => ipcRenderer.invoke("runs:sync", runId),
   launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
 });

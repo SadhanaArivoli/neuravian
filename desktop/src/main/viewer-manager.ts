@@ -22,6 +22,7 @@ export interface LaunchCommand {
 export interface ViewerLaunchRequest {
   viewerId: ExternalViewerId;
   runId: number;
+  workspaceId?: string;
   files: Array<{ relativePath: string; overlay?: boolean }>;
   opacity?: number;
   freesurferLut?: boolean;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { queryActiveRuns } from "./activity.js";
@@ -19,6 +19,10 @@ import {
   commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
   type DesktopPlatform, type ExternalViewerId, type ViewerLaunchRequest,
 } from "./viewer-manager.js";
+import { ConnectionProfileStore } from "./connection-profiles.js";
+import { WorkspaceMetadataCache } from "./workspace-cache.js";
+import { WorkspaceClient } from "./workspace-client.js";
+import type { WorkspaceProfile } from "./workspace-types.js";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -30,6 +34,8 @@ let applicationLoaded = false;
 let applicationLoadStarted = false;
 let logger: DesktopLogger | null = null;
 let rendererReadyTimer: NodeJS.Timeout | undefined;
+let profileStore: ConnectionProfileStore | null = null;
+let workspaceClient: WorkspaceClient | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
 const captureState = process.env.NEUROFORGE_CAPTURE_STATE;
@@ -46,6 +52,25 @@ function assetPath(fileName: string): string {
 
 function diagnosticsText(): string {
   return formatDiagnostics({ update: startupState.get(), facts: startup?.facts, error: startup?.lastError });
+}
+
+function workspaceServices(): {
+  profiles: ConnectionProfileStore;
+  client: WorkspaceClient;
+} {
+  if (!profileStore || !workspaceClient) {
+    const userData = app.getPath("userData");
+    profileStore = new ConnectionProfileStore(path.join(userData, "workspaces"), {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (value) => safeStorage.encryptString(value),
+      decrypt: (value) => safeStorage.decryptString(value),
+    });
+    workspaceClient = new WorkspaceClient(
+      new WorkspaceMetadataCache(path.join(userData, "workspace-metadata")),
+      path.join(userData, "run-cache"),
+    );
+  }
+  return { profiles: profileStore, client: workspaceClient };
 }
 
 function publish(update: StartupUpdate): void {
@@ -326,6 +351,51 @@ ipcMain.handle("viewers:detect", async (_event, configured: Partial<Record<Exter
     (viewerId) => detectViewer(viewerId, platform, configured[viewerId]),
   ));
 });
+ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
+ipcMain.handle("workspaces:save", async (
+  _event,
+  input: { id?: string; name: string; serverUrl: string; username?: string; password?: string },
+) => await workspaceServices().profiles.save(input));
+ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
+  await workspaceServices().profiles.remove(profileId);
+  return true;
+});
+ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
+  const { profiles, client } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(profileId);
+  const result = await client.synchronize(
+    { ...profile, connectionState: "syncing" },
+    credential,
+  );
+  const updated: WorkspaceProfile = {
+    ...profile,
+    serverIdentity: result.snapshot.workspaceId,
+    lastSync: result.snapshot.synchronizedAt,
+    connectionState: result.online ? "connected" : "offline",
+  };
+  await profiles.update(updated);
+  return { ...result, profile: updated };
+});
+ipcMain.handle("workspaces:sync-artifacts", async (
+  _event,
+  input: { profileId: string; workspaceId: string; runId: number; relativePaths: string[] },
+) => {
+  const { profiles, client } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  return await client.syncArtifacts(
+    profile,
+    await profiles.credential(profile.id),
+    input.workspaceId,
+    input.runId,
+    input.relativePaths,
+  );
+});
 ipcMain.handle("runs:sync", async (_event, runId: number) => {
   if (!Number.isInteger(runId) || runId < 1) throw new Error("A valid run ID is required.");
   const response = await fetch(`http://127.0.0.1:8000/api/runs/${runId}/sync-manifest`);
@@ -341,7 +411,9 @@ ipcMain.handle("viewers:launch", async (_event, request: ViewerLaunchRequest) =>
   if (!["darwin", "win32", "linux"].includes(process.platform)) throw new Error("External viewers are unavailable on this platform.");
   const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
   if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
-  const cacheRoot = path.join(app.getPath("userData"), "run-cache");
+  const cacheRoot = request.workspaceId
+    ? path.join(app.getPath("userData"), "run-cache", request.workspaceId)
+    : path.join(app.getPath("userData"), "run-cache");
   const metadata = JSON.parse(await readFile(
     path.join(cacheRoot, `run-${request.runId}`, "run-metadata.json"), "utf8",
   )) as { artifacts: Array<{ relativePath: string; geometry?: unknown }> };
