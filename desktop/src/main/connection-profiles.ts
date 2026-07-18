@@ -1,0 +1,122 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { WorkspaceCredential, WorkspaceProfile } from "./workspace-types.js";
+
+export interface CredentialCipher {
+  available(): boolean;
+  encrypt(value: string): Buffer;
+  decrypt(value: Buffer): string;
+}
+
+interface StoredCredential {
+  profileId: string;
+  ciphertext: string;
+}
+
+function normalizeServerUrl(value: string): string {
+  const url = new URL(value);
+  const loopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
+    throw new Error("Workspace connections require HTTPS; HTTP is allowed only for loopback.");
+  }
+  url.username = "";
+  url.password = "";
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+async function atomicJson(file: string, value: unknown, mode = 0o600): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode });
+  await rename(temporary, file);
+}
+
+export class ConnectionProfileStore {
+  readonly profilesPath: string;
+  readonly credentialsPath: string;
+
+  constructor(
+    root: string,
+    private readonly cipher: CredentialCipher,
+  ) {
+    this.profilesPath = path.join(root, "workspace-profiles.json");
+    this.credentialsPath = path.join(root, "workspace-credentials.json");
+  }
+
+  async list(): Promise<WorkspaceProfile[]> {
+    const parsed = JSON.parse(await readFile(this.profilesPath, "utf8").catch(() => "[]")) as unknown;
+    return Array.isArray(parsed) ? parsed as WorkspaceProfile[] : [];
+  }
+
+  async save(
+    input: { id?: string; name: string; serverUrl: string; username?: string; password?: string },
+  ): Promise<WorkspaceProfile> {
+    const profiles = await this.list();
+    const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined;
+    const id = existing?.id ?? randomUUID();
+    const hasCredential = input.username !== undefined || input.password !== undefined;
+    if (hasCredential && (!input.username || !input.password)) {
+      throw new Error("Both username and password are required.");
+    }
+    if (hasCredential && !this.cipher.available()) {
+      throw new Error("The operating-system credential store is unavailable.");
+    }
+    const profile: WorkspaceProfile = {
+      id,
+      name: input.name.trim() || "NeuroForge Workspace",
+      serverUrl: normalizeServerUrl(input.serverUrl),
+      authenticationRef: hasCredential ? `os-credential:${id}` : existing?.authenticationRef ?? null,
+      serverIdentity: existing?.serverIdentity ?? null,
+      lastSync: existing?.lastSync ?? null,
+      connectionState: existing?.connectionState ?? "offline",
+    };
+    const nextProfiles = [...profiles.filter((item) => item.id !== id), profile];
+    await atomicJson(this.profilesPath, nextProfiles);
+    if (hasCredential) await this.writeCredential(id, {
+      username: input.username!,
+      password: input.password!,
+    });
+    return profile;
+  }
+
+  async update(profile: WorkspaceProfile): Promise<void> {
+    const profiles = await this.list();
+    if (!profiles.some((item) => item.id === profile.id)) throw new Error("Workspace profile not found.");
+    await atomicJson(this.profilesPath, [
+      ...profiles.filter((item) => item.id !== profile.id),
+      profile,
+    ]);
+  }
+
+  async credential(profileId: string): Promise<WorkspaceCredential | null> {
+    if (!this.cipher.available()) return null;
+    const stored = await this.readCredentials();
+    const match = stored.find((item) => item.profileId === profileId);
+    if (!match) return null;
+    return JSON.parse(this.cipher.decrypt(Buffer.from(match.ciphertext, "base64"))) as WorkspaceCredential;
+  }
+
+  async remove(profileId: string): Promise<void> {
+    await atomicJson(this.profilesPath, (await this.list()).filter((item) => item.id !== profileId));
+    await atomicJson(this.credentialsPath, (await this.readCredentials()).filter(
+      (item) => item.profileId !== profileId,
+    ));
+  }
+
+  private async readCredentials(): Promise<StoredCredential[]> {
+    const parsed = JSON.parse(await readFile(this.credentialsPath, "utf8").catch(() => "[]")) as unknown;
+    return Array.isArray(parsed) ? parsed as StoredCredential[] : [];
+  }
+
+  private async writeCredential(profileId: string, credential: WorkspaceCredential): Promise<void> {
+    const credentials = await this.readCredentials();
+    const ciphertext = this.cipher.encrypt(JSON.stringify(credential)).toString("base64");
+    await atomicJson(this.credentialsPath, [
+      ...credentials.filter((item) => item.profileId !== profileId),
+      { profileId, ciphertext },
+    ]);
+  }
+}
