@@ -10,6 +10,24 @@ outputs.
 The built-in NeuroForge Viewer remains the first registered plugin and the
 default in every environment.
 
+## Canonical verification
+
+Run the backend suite from a clean checkout on the host:
+
+```bash
+./scripts/test-backend.sh
+```
+
+Prerequisites are `uv`, `git`, and `jq`. The script uses the locked backend
+environment, enters the backend working directory, adds the repository and
+backend to `PYTHONPATH`, and removes dataset, database, and data-directory
+overrides that would couple tests to a developer or production deployment. A
+successful run currently reports `617 passed, 1 skipped`; the skip is an
+environment-specific frontend stale-mount guard in the group functional
+connectivity tests, while the frontend is verified directly by its unit,
+TypeScript, and production-build gates. Tests for tools such as Docker or native
+scientific applications must declare and report those dependencies separately.
+
 ## Plugin contract
 
 `frontend/src/lib/viewerPlugins.ts` defines the viewer registry and contract:
@@ -46,6 +64,11 @@ FreeView and MRIcroGL detection supports reviewed default paths on macOS,
 Windows, and Linux. The detection service also accepts a manually configured
 absolute executable path. Missing installations produce an unavailable state
 and remediation text rather than a failed launch.
+
+The July 2026 macOS verification workstation detected FreeView 8.0.0 through a
+manually configured absolute application path under a versioned FreeSurfer
+installation. MRIcroGL was not detected in the standard application, user
+application, FreeSurfer, Homebrew, `/usr/local`, or `PATH` locations checked.
 
 ## Synchronization and cache
 
@@ -89,6 +112,22 @@ MRIcroGL presets pass the anatomical base followed by compatible overlays.
 Interpolation and opacity remain explicit preset metadata; support can be
 expanded only against empirically verified MRIcroGL command-line behavior.
 
+## Empirical verification status
+
+FreeView 8.0.0 was empirically verified on macOS in July 2026 with the completed
+FastSurfer Run 7 preset:
+
+- bias-corrected conformed anatomy (`orig_nu.mgz`);
+- subcortical segmentation (`aseg.auto.mgz`);
+- FreeSurfer LUT and `0.7` overlay opacity.
+
+The two artifacts were synchronized into the private desktop cache, matched
+their manifest byte counts and SHA-256 checksums, passed full geometry
+comparison, and were launched with an argument array and `shell: false`.
+FreeView remained running, created an on-screen window, and its own screenshot
+command rendered the expected anatomical image and categorical segmentation
+layers before exiting successfully. Source artifacts were not modified.
+
 ## Security controls
 
 - Run sync accepts only a positive integer run ID.
@@ -103,8 +142,12 @@ expanded only against empirically verified MRIcroGL command-line behavior.
 
 ## Current limitations
 
-- Live FreeView and MRIcroGL execution has not been claimed; it requires those
-  applications to be installed on the verification workstation.
+- Versioned FreeSurfer installations may require a configured absolute FreeView
+  executable plus the installation's existing `FREESURFER_HOME` and
+  `FS_LICENSE` process environment. NeuroForge does not create, copy, or modify
+  a FreeSurfer license.
+- MRIcroGL execution remains pending because MRIcroGL was not installed on the
+  verification workstation.
 - MRIcroGL MGZ support depends on the installed MRIcroGL build.
 - Synchronization currently operates at whole-run scope before launch.
 - The browser deployment explains desktop synchronization but cannot launch a
