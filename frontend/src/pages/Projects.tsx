@@ -8,6 +8,8 @@ import {
 import type { ProjectCreate } from "../api/client";
 import { EmptyState } from "../components/primitives/EmptyState";
 import { WorkbenchIcons } from "../lib/iconRegistry";
+import { useWorkspace } from "../context/WorkspaceContext";
+import { useCloudWorkspace } from "../hooks/useCloudWorkspace";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -198,15 +200,91 @@ function ProjectCard({ project, onDelete }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Projects() {
+  const { selected } = useWorkspace();
   const { data: projects, isLoading, error } = useProjects();
   const deleteProject = useDeleteProject();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const isCloud = Boolean(window.neuroforgeDesktop) && selected.startsWith("cloud:");
+  const cloud = useCloudWorkspace();
 
   const filtered = (projects ?? []).filter(p => statusFilter === "all" || p.status === statusFilter);
 
   async function handleDelete(id: number) {
     await deleteProject.mutateAsync(id);
+  }
+
+  if (isCloud) {
+    const cloudProjects = cloud.snapshot?.projects ?? [];
+    return (
+      <div className="p-6 max-w-5xl">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-100">Research Projects</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {cloud.profile?.name ?? "Cloud workspace"} ·{" "}
+              {cloud.loading ? "Syncing…" : cloud.online ? "Online" : "Offline (cached)"} ·{" "}
+              {cloudProjects.length} project{cloudProjects.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            onClick={() => void cloud.sync()}
+            disabled={cloud.loading}
+            className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 hover:text-white disabled:opacity-40 transition-colors"
+          >
+            {cloud.loading ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
+
+        {cloud.error && (
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+            {cloud.error} — showing cached data.
+          </div>
+        )}
+
+        {cloud.loading && !cloud.snapshot && (
+          <p className="text-sm text-gray-500">Syncing cloud projects…</p>
+        )}
+
+        {!cloud.loading && cloudProjects.length === 0 && (
+          <div className="rounded-lg border border-white/10 bg-surface-raised px-6 py-8 text-center">
+            <p className="text-sm text-gray-400">No projects found in this cloud workspace.</p>
+          </div>
+        )}
+
+        {cloudProjects.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {cloudProjects.map((p) => {
+              const proj = p as Record<string, unknown>;
+              return (
+                <div key={p.id} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-gray-100 text-sm">
+                      {(proj.name as string | undefined) ?? `Project #${p.id}`}
+                    </h3>
+                    <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud</span>
+                  </div>
+                  {!!proj.description && (
+                    <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">{String(proj.description)}</p>
+                  )}
+                  <p className="mt-2 text-[10px] font-mono text-slate-600 break-all">{p.remoteKey}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    {!!proj.status && (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-gray-400 capitalize">
+                        {String(proj.status)}
+                      </span>
+                    )}
+                    {!!proj.pi_name && (
+                      <span className="text-[10px] text-gray-500">{String(proj.pi_name)}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

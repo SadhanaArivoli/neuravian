@@ -5,14 +5,98 @@ import { DatasetImportForm } from "../components/domain/DatasetImportForm";
 import { ValidationStatusBanner } from "../components/domain/ValidationResults";
 import { EmptyState } from "../components/primitives/EmptyState";
 import { useDatasets } from "../hooks/useDatasets";
+import { useWorkspace } from "../context/WorkspaceContext";
+import { useCloudWorkspace } from "../hooks/useCloudWorkspace";
 
 export default function Datasets() {
+  const { selected } = useWorkspace();
   const { data: datasets, isLoading } = useDatasets();
   const [showImport, setShowImport] = useState(false);
+  const isCloud = Boolean(window.neuroforgeDesktop) && selected.startsWith("cloud:");
+  const cloud = useCloudWorkspace();
 
   function handleImported(dataset: Dataset) {
-    // Keep the form open so the user can see validation results; they can dismiss
     void dataset;
+  }
+
+  if (isCloud) {
+    const cloudDatasets = cloud.snapshot?.datasets ?? [];
+    return (
+      <div className="p-8 max-w-4xl">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold">Datasets</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {cloud.profile?.name ?? "Cloud workspace"} ·{" "}
+              {cloud.loading ? "Syncing…" : cloud.online ? "Online" : "Offline (cached)"} ·{" "}
+              {cloudDatasets.length} dataset{cloudDatasets.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            onClick={() => void cloud.sync()}
+            disabled={cloud.loading}
+            className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 hover:text-white disabled:opacity-40 transition-colors"
+          >
+            {cloud.loading ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
+
+        {cloud.error && (
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+            {cloud.error} — showing cached data.
+          </div>
+        )}
+
+        {cloud.loading && !cloud.snapshot && (
+          <p className="text-sm text-gray-400 animate-pulse">Syncing cloud datasets…</p>
+        )}
+
+        {!cloud.loading && cloudDatasets.length === 0 && (
+          <div className="rounded-lg border border-white/10 bg-surface-raised px-6 py-8 text-center">
+            <p className="text-sm text-gray-400">No datasets found in this cloud workspace.</p>
+          </div>
+        )}
+
+        {cloudDatasets.length > 0 && (
+          <div className="space-y-2">
+            {cloudDatasets.map((d) => {
+              const ds = d as Record<string, unknown>;
+              return (
+                <div
+                  key={d.id}
+                  className="block rounded-md border border-white/10 bg-surface-raised p-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-100 truncate">
+                          {(ds.name as string | undefined) ?? `Dataset #${d.id}`}
+                        </p>
+                        <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud</span>
+                      </div>
+                      {!!ds.path && <p className="text-xs text-gray-500 truncate mt-0.5">{String(ds.path)}</p>}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        {ds.subject_count !== undefined && (
+                          <span>{ds.subject_count as number} subject{(ds.subject_count as number) !== 1 ? "s" : ""}</span>
+                        )}
+                        {!!ds.bids_version && <span>BIDS {String(ds.bids_version)}</span>}
+                        {!!ds.modalities && (
+                          <span>{(ds.modalities as string[]).join(", ")}</span>
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-[10px] font-mono text-slate-600 break-all">{d.remoteKey}</p>
+                    </div>
+                    {!!ds.validation_status && (
+                      <ValidationStatusBanner status={ds.validation_status as Dataset["validation_status"]} />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
