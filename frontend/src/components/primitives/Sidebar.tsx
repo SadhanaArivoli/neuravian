@@ -185,6 +185,9 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+        {window.neuroforgeDesktop && (
+          <NavItem to="/workspaces" label="Workspaces" end={false} icon={WorkbenchIcons.network} />
+        )}
         {NAV_ITEMS.map(({ to, label, end, icon }) => (
           <NavItem key={to} to={to} label={label} end={end} icon={icon} />
         ))}

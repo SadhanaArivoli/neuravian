@@ -25,6 +25,7 @@ import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
 import WorkflowLibrary from "./pages/WorkflowLibrary";
 import WizardDcm2bids from "./pages/WizardDcm2bids";
+import Workspaces from "./pages/Workspaces";
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Welcome />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/:id" element={<DatasetDetail />} />
