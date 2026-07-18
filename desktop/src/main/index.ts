@@ -23,6 +23,7 @@ import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
 import { WorkspaceClient } from "./workspace-client.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
+import { LocalWorkspaceStore } from "./local-workspace.js";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -36,6 +37,7 @@ let logger: DesktopLogger | null = null;
 let rendererReadyTimer: NodeJS.Timeout | undefined;
 let profileStore: ConnectionProfileStore | null = null;
 let workspaceClient: WorkspaceClient | null = null;
+let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
 const captureState = process.env.NEUROFORGE_CAPTURE_STATE;
@@ -71,6 +73,13 @@ function workspaceServices(): {
     );
   }
   return { profiles: profileStore, client: workspaceClient };
+}
+
+function localWorkspace(): LocalWorkspaceStore {
+  if (!localWorkspaceStore) {
+    localWorkspaceStore = new LocalWorkspaceStore(path.join(app.getPath("userData"), "workspaces"));
+  }
+  return localWorkspaceStore;
 }
 
 async function inspectWorkspaceCache(workspaceId: string): Promise<{
@@ -378,6 +387,7 @@ ipcMain.handle("viewers:detect", async (_event, configured: Partial<Record<Exter
   ));
 });
 ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
+ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
 ipcMain.handle("workspaces:save", async (
   _event,
   input: { id?: string; name: string; serverUrl: string; username?: string; password?: string },

@@ -9,6 +9,7 @@ interface NeuroForgeDesktopBridge {
     reason: string | null;
   }>>;
   listWorkspaces(): Promise<WorkspaceProfile[]>;
+  getLocalWorkspaceIdentity(): Promise<{ schemaVersion: 1; workspaceId: string; createdAt: string }>;
   saveWorkspace(input: {
     id?: string;
     name: string;
