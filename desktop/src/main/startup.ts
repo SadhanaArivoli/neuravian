@@ -1,4 +1,4 @@
-import { BACKEND_HEALTH_URL, FRONTEND_URL, probeService, waitForService, type HealthProbe } from "./health.js";
+import { BACKEND_HEALTH_URL, FRONTEND_URL, probeService, waitForService, verifyFrontendCommit, type HealthProbe } from "./health.js";
 import { SystemCheckError, runSystemChecks } from "./system-checks.js";
 import type { DesktopCompose } from "./compose.js";
 import type { StartupUpdate, SystemFacts } from "./types.js";
@@ -93,7 +93,9 @@ export class StartupController {
         this.trace(15, "frontend health polling started", FRONTEND_URL, attemptId, this.dependencies.now() - startedAt);
         this.trace(16, "frontend health succeeded", `status=${frontendExisting.status}`, attemptId, this.dependencies.now() - startedAt);
         this.trace(17, "ready event emitted from main process", "ownership=external", attemptId, this.dependencies.now() - startedAt);
-        this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: "Connected to the existing local NeuroForge services.", stage: "ready" });
+        const externalWarn = await verifyFrontendCommit(FRONTEND_URL);
+        if (externalWarn) this.trace("WARN", "frontend commit mismatch", externalWarn, attemptId, this.dependencies.now() - startedAt);
+        this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: externalWarn ?? "Connected to the existing local NeuroForge services.", stage: "ready" });
         return true;
       }
 
@@ -121,7 +123,9 @@ export class StartupController {
       await this.dependencies.wait("frontend", FRONTEND_URL, { timeoutMs: STARTUP_TIMEOUTS.frontendHealthMs, signal });
       this.trace(16, "frontend health succeeded", FRONTEND_URL, attemptId, this.dependencies.now() - startedAt);
       this.trace(17, "ready event emitted from main process", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
-      this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: "NeuroForge is running locally.", stage: "ready" });
+      const commitWarn = await verifyFrontendCommit(FRONTEND_URL);
+      if (commitWarn) this.trace("WARN", "frontend commit mismatch", commitWarn, attemptId, this.dependencies.now() - startedAt);
+      this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: commitWarn ?? "NeuroForge is running locally.", stage: "ready" });
       return true;
     } catch (error) {
       if (this.currentAttemptId !== attemptId) return false;

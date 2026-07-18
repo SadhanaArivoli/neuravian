@@ -49,6 +49,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "3000:3000"
     depends_on:
