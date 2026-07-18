@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import Workspaces from "../src/pages/Workspaces";
+import Workspaces, { combineWorkspaceRuns, type LocalWorkspaceData } from "../src/pages/Workspaces";
 import { WorkspaceProvider } from "../src/context/WorkspaceContext";
 
 function renderWorkspace(view = "home") {
@@ -122,5 +122,40 @@ describe("unified desktop workspaces", () => {
     fireEvent.click(button);
     await waitFor(() => expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalled());
     expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("keeps duplicate numeric run IDs collision-free in All Workspaces metadata", () => {
+    const local: LocalWorkspaceData = {
+      projects: [], datasets: [], workflows: [], reports: [],
+      runs: [{ id: 7, pipeline_manifest_id: "local-pipeline", status: "success" }],
+    };
+    const combined = combineWorkspaceRuns(local, "local-installation", snapshot);
+    expect(combined.filter((run) => run.id === 7)).toEqual([
+      expect.objectContaining({ key: "local-installation:run:7", workspace: "Local NeuroForge" }),
+      expect.objectContaining({ key: "workspace-a:run:7", workspace: "AWS NeuroForge" }),
+    ]);
+    expect(new Set(combined.map((run) => run.key)).size).toBe(combined.length);
+  });
+
+  it("keeps cloud metadata visible when the local API fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 503 })));
+    renderWorkspace("runs");
+    expect(await screen.findByText("Run #7")).toBeInTheDocument();
+    expect(window.neuroforgeDesktop!.syncWorkspace).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows cached cloud metadata when synchronization reports the server offline", async () => {
+    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+      online: false,
+      profile: { ...profile, connectionState: "offline" },
+      snapshot: {
+        ...snapshot,
+        runs: snapshot.runs.map((run) => ({ ...run, cacheState: "offline-cached" })),
+      },
+    });
+    renderWorkspace("runs");
+    expect(await screen.findByText("Offline Cached")).toBeInTheDocument();
+    expect(screen.getByText("Offline")).toBeInTheDocument();
   });
 });

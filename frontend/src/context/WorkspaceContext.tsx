@@ -33,10 +33,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!desktop) return;
-    void Promise.all([desktop.getLocalWorkspaceIdentity(), desktop.listWorkspaces()]).then(([identity, profiles]) => {
+    void desktop.getLocalWorkspaceIdentity().then((identity) => {
       setLocal({ id: identity.workspaceId, name: "Local NeuroForge" });
+    });
+    void desktop.listWorkspaces().then((profiles) => {
       setCloudProfiles(profiles);
       setSelected(normalizeWorkspaceSelection(localStorage.getItem(STORAGE_KEY), profiles));
+    }).catch(() => {
+      setCloudProfiles([]);
+      setSelected("local");
     });
   }, [desktop]);
 

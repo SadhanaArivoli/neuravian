@@ -119,12 +119,46 @@ function ViewerStatus({ inspection }: { inspection: WorkspaceInspection | null }
   </div>;
 }
 
-interface LocalWorkspaceData {
+export interface LocalWorkspaceData {
   projects: Array<Record<string, unknown> & { id: number }>;
   datasets: Array<Record<string, unknown> & { id: number }>;
   workflows: Array<Record<string, unknown> & { id: number }>;
   runs: Array<Record<string, unknown> & { id: number }>;
   reports: Array<Record<string, unknown> & { id: number; dataset_id: number }>;
+}
+
+export interface CombinedWorkspaceRun {
+  key: string;
+  id: number;
+  pipeline: string;
+  status: string;
+  workspace: "Local NeuroForge" | "AWS NeuroForge";
+  local: boolean;
+}
+
+export function combineWorkspaceRuns(
+  data: LocalWorkspaceData,
+  localWorkspaceId: string,
+  cloud: WorkspaceSnapshot,
+): CombinedWorkspaceRun[] {
+  return [
+    ...data.runs.map((run) => ({
+      key: `${localWorkspaceId}:run:${run.id}`,
+      id: run.id,
+      pipeline: stringValue(run.pipeline_manifest_id),
+      status: stringValue(run.status),
+      workspace: "Local NeuroForge" as const,
+      local: true,
+    })),
+    ...cloud.runs.map((run) => ({
+      key: run.remoteKey,
+      id: run.id,
+      pipeline: run.pipeline_manifest_id,
+      status: run.status,
+      workspace: "AWS NeuroForge" as const,
+      local: false,
+    })),
+  ];
 }
 
 async function localJson<T>(path: string): Promise<T> {
@@ -152,10 +186,7 @@ function LocalWorkspaceView({
   cloud?: WorkspaceSnapshot | null;
 }) {
   if (cloud && view === "runs") {
-    const combined = [
-      ...data.runs.map((run) => ({ key: `${workspaceId}:run:${run.id}`, id: run.id, pipeline: stringValue(run.pipeline_manifest_id), status: stringValue(run.status), workspace: "Local NeuroForge", local: true })),
-      ...cloud.runs.map((run) => ({ key: run.remoteKey, id: run.id, pipeline: run.pipeline_manifest_id, status: run.status, workspace: "AWS NeuroForge", local: false })),
-    ];
+    const combined = combineWorkspaceRuns(data, workspaceId, cloud);
     return <section className="mt-6"><h2 className="text-lg font-semibold text-white">All Workspaces · Runs</h2>
       <p className="mt-1 text-xs text-slate-500">Metadata is combined only in this view. Local and cloud IDs remain separate.</p>
       <div className="mt-4 grid gap-3 lg:grid-cols-2">{combined.map((run) =>
@@ -182,7 +213,7 @@ function LocalWorkspaceView({
   </div>;
   if (view === "projects") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Projects</h2>
     <div className="mt-4 grid gap-3">{data.projects.map((item) => <Link key={`${workspaceId}:project:${item.id}`} to={`/projects/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
-      <div className="flex justify-between"><span className="text-white">{stringValue(item.name, `Project ${item.id}`)}</span><Badge tone="success">Local NeuroForge</Badge></div></Link>)}</div></section>;
+      <div className="flex justify-between"><span className="text-white">{stringValue(item.title ?? item.name, `Project ${item.id}`)}</span><Badge tone="success">Local NeuroForge</Badge></div></Link>)}</div></section>;
   if (view === "datasets") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Datasets</h2>
     <div className="mt-4 grid gap-3 md:grid-cols-2">{data.datasets.map((item) => <Link key={`${workspaceId}:dataset:${item.id}`} to={`/datasets/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
       <div className="flex justify-between"><span className="text-white">{stringValue(item.name, `Dataset ${item.id}`)}</span><Badge tone="success">Local</Badge></div></Link>)}</div></section>;
