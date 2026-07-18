@@ -5,6 +5,7 @@ Functional focus: results discovery returns correct file lists; missing
 output dirs are handled gracefully for both success and failed runs.
 """
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -339,3 +340,23 @@ def test_cross_run_access_rejected(api_client, run_with_output, db_session, tmp_
     assert resp.status_code in (403, 404), (
         f"Cross-run access should be rejected, got {resp.status_code}"
     )
+
+
+def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_output):
+    run, output_dir = run_with_output
+    response = api_client.get(f"/api/runs/{run.id}/sync-manifest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runId"] == run.id
+    artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+    )
+    expected = (output_dir / artifact["relativePath"]).read_bytes()
+    assert artifact["sha256"] == hashlib.sha256(expected).hexdigest()
+    assert artifact["sizeBytes"] == len(expected)
+    assert artifact["url"].startswith(f"/api/runs/{run.id}/files/")
+    rendered = json.dumps(payload)
+    assert str(output_dir) not in rendered
+    assert "/host-data" not in rendered

@@ -14,6 +14,8 @@ import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 import { DesktopLogger, type StartupTrace } from "./logger.js";
 import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
+import { syncRun, type SyncManifest } from "./run-cache.js";
+import { detectViewer, type DesktopPlatform, type ExternalViewerId } from "./viewer-manager.js";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -314,6 +316,24 @@ ipcMain.handle("logs:open", async () => { await openDesktopLogs(); return true; 
 ipcMain.handle("frontend:open-browser", async () => { await shell.openExternal(FRONTEND_URL); return true; });
 ipcMain.handle("docker:open-desktop", async () => await shell.openPath("/Applications/Docker.app"));
 ipcMain.handle("docker:install", async () => { await shell.openExternal(DOCKER_INSTALL_URL); return true; });
+ipcMain.handle("viewers:detect", async (_event, configured: Partial<Record<ExternalViewerId, string>> = {}) => {
+  if (!["darwin", "win32", "linux"].includes(process.platform)) return [];
+  const platform = process.platform as DesktopPlatform;
+  return await Promise.all((["freeview", "mricrogl"] as const).map(
+    (viewerId) => detectViewer(viewerId, platform, configured[viewerId]),
+  ));
+});
+ipcMain.handle("runs:sync", async (_event, runId: number) => {
+  if (!Number.isInteger(runId) || runId < 1) throw new Error("A valid run ID is required.");
+  const response = await fetch(`http://127.0.0.1:8000/api/runs/${runId}/sync-manifest`);
+  if (!response.ok) throw new Error(`Run synchronization manifest failed with HTTP ${response.status}.`);
+  const manifest = await response.json() as SyncManifest;
+  manifest.artifacts = manifest.artifacts.map((artifact) => ({
+    ...artifact,
+    url: new URL(artifact.url, "http://127.0.0.1:8000").toString(),
+  }));
+  return await syncRun(path.join(app.getPath("userData"), "run-cache"), manifest);
+});
 
 app.whenReady().then(async () => {
   app.setAppLogsPath();

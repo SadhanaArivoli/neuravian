@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -474,6 +475,65 @@ def download_run_results(run_id: int, svc: RunService = Depends(_svc)) -> Respon
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/runs/{run_id}/sync-manifest")
+def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
+    """Return a host-path-free, checksum-addressed manifest for NeuroForge Desktop."""
+    try:
+        run = svc.get_by_id(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.status != "success" or not run.output_dir:
+        raise HTTPException(status_code=409, detail="Only successful runs with outputs can be synchronized")
+    output_root = Path(run.output_dir).resolve()
+    if not output_root.is_dir():
+        raise HTTPException(status_code=404, detail="Output directory not found on disk")
+
+    def checksum(file_path: Path) -> str:
+        digest = hashlib.sha256()
+        with file_path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def safe_metadata(value, key: str = ""):
+        if any(term in key.lower() for term in ("password", "secret", "token", "credential", "license")):
+            return "<redacted>"
+        if isinstance(value, dict):
+            return {name: safe_metadata(item, name) for name, item in value.items()}
+        if isinstance(value, list):
+            return [safe_metadata(item, key) for item in value]
+        if isinstance(value, str) and (value.startswith("/") or value.startswith("\\\\") or ":\\" in value):
+            return "<redacted-path>"
+        return value
+
+    artifacts = []
+    for index, file_path in enumerate(sorted(path for path in output_root.rglob("*") if path.is_file())):
+        relative = file_path.relative_to(output_root).as_posix()
+        artifacts.append({
+            "artifactId": f"run-{run_id}-file-{index}",
+            "relativePath": relative,
+            "url": f"/api/runs/{run_id}/files/{relative}",
+            "sha256": checksum(file_path),
+            "sizeBytes": file_path.stat().st_size,
+        })
+    results = get_run_results(run_id, svc)
+    provenance = _build_run_metadata(run, svc)
+    provenance.pop("dataset_path", None)
+    provenance.pop("output_dir", None)
+    provenance.pop("command_preview", None)
+    return {
+        "runId": run_id,
+        "provenance": safe_metadata(provenance),
+        "methods": {
+            "pipelineId": run.pipeline_manifest_id,
+            "pipelineVersion": run.pipeline_version,
+            "params": safe_metadata(run.params),
+        },
+        "reports": results.get("reports", []),
+        "artifacts": artifacts,
+    }
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")
