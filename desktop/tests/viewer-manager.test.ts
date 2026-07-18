@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
-import { commandForPreset, validateLaunchCommand, validateVolumeGeometry } from "../src/main/viewer-manager.js";
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  commandForPreset, validateLaunchCommand, validateVolumeGeometry, versionedFreeViewCandidates,
+} from "../src/main/viewer-manager.js";
 
 describe("desktop viewer launch security", () => {
   it("accepts cached artifact paths and preserves argument arrays", () => {
@@ -41,6 +46,23 @@ describe("desktop viewer launch security", () => {
       "/cache/run-7/artifacts/mri/orig_nu.mgz",
       "/cache/run-7/artifacts/mri/aseg.auto.mgz:opacity=0.7:colormap=lut",
     ]);
+  });
+
+  it("discovers versioned macOS FreeView installations", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "nf-freesurfer-"));
+    await mkdir(path.join(root, "8.0.0", "Freeview.app", "Contents", "MacOS"), { recursive: true });
+    expect(await versionedFreeViewCandidates(root)).toEqual([
+      path.join(root, "8.0.0", "Freeview.app", "Contents", "MacOS", "freeview"),
+    ]);
+  });
+
+  it("sets only the matching FreeSurfer installation environment for app bundles", () => {
+    const executable = "/Applications/freesurfer/8.0.0/Freeview.app/Contents/MacOS/freeview";
+    const command = commandForPreset({
+      viewerId: "freeview", runId: 7, files: [{ relativePath: "mri/orig_nu.mgz" }],
+    }, executable, "/cache");
+    expect(command.environment).toEqual({ FREESURFER_HOME: "/Applications/freesurfer/8.0.0" });
+    expect(() => validateLaunchCommand(command, "/cache")).not.toThrow();
   });
 
   it("rejects traversal before command generation", () => {

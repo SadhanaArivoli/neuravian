@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
@@ -17,6 +17,7 @@ export interface LaunchCommand {
   viewerId: ExternalViewerId;
   executable: string;
   args: string[];
+  environment?: Record<string, string>;
 }
 
 export interface ViewerLaunchRequest {
@@ -50,12 +51,27 @@ async function exists(candidate: string) {
   try { await access(candidate); return true; } catch { return false; }
 }
 
+export async function versionedFreeViewCandidates(root = "/Applications/freesurfer"): Promise<string[]> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(root, entry.name, "Freeview.app", "Contents", "MacOS", "freeview"))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  } catch {
+    return [];
+  }
+}
+
 export async function detectViewer(
   viewerId: ExternalViewerId,
   platform: DesktopPlatform,
   configuredPath?: string | null,
 ): Promise<ViewerDetection> {
-  const candidates = configuredPath ? [configuredPath] : INSTALL_PATHS[viewerId][platform];
+  const versioned = viewerId === "freeview" && platform === "darwin"
+    ? await versionedFreeViewCandidates()
+    : [];
+  const candidates = configuredPath ? [configuredPath] : [...INSTALL_PATHS[viewerId][platform], ...versioned];
   for (const candidate of candidates) {
     if (path.isAbsolute(candidate) && await exists(candidate)) {
       return { viewerId, displayName: DISPLAY_NAMES[viewerId], installed: true, executable: candidate, reason: null };
@@ -86,6 +102,16 @@ export function validateLaunchCommand(command: LaunchCommand, cacheRoot: string)
     }
     return argument;
   });
+  if (command.environment) {
+    const keys = Object.keys(command.environment);
+    if (keys.some((key) => key !== "FREESURFER_HOME")) {
+      throw new Error("Viewer launch rejected an unsupported environment override.");
+    }
+    const home = command.environment.FREESURFER_HOME;
+    if (!home || !path.isAbsolute(home) || !command.executable.startsWith(`${path.resolve(home)}${path.sep}`)) {
+      throw new Error("FreeSurfer environment must contain the selected executable.");
+    }
+  }
   return { ...command, args };
 }
 
@@ -100,6 +126,7 @@ export async function launchViewer(
       detached: true,
       stdio: "ignore",
       shell: false,
+      env: safe.environment ? { ...process.env, ...safe.environment } : undefined,
     });
     child.once("error", reject);
     child.once("spawn", () => { child.unref(); resolve(); });
@@ -134,6 +161,9 @@ export function commandForPreset(
       if (request.freesurferLut) options.push("colormap=lut");
       return options.join(":");
     })],
+    environment: executable.includes(`${path.sep}Freeview.app${path.sep}`)
+      ? { FREESURFER_HOME: executable.slice(0, executable.indexOf(`${path.sep}Freeview.app${path.sep}`)) }
+      : undefined,
   };
 }
 
