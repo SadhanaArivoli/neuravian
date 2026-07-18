@@ -33,6 +33,12 @@ export interface SyncResult {
   reused: string[];
 }
 
+export interface RunCacheInspection {
+  cached: number;
+  total: number;
+  state: "cloud-only" | "partially-cached" | "fully-cached";
+}
+
 function safeRelativePath(value: string) {
   const normalized = value.replace(/\\/g, "/");
   if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..") || normalized.includes("\0")) {
@@ -52,6 +58,24 @@ async function matches(file: string, artifact: SyncArtifact) {
     const details = await stat(file);
     return details.size === artifact.sizeBytes && await sha256(file) === artifact.sha256;
   } catch { return false; }
+}
+
+export async function inspectRunCache(
+  cacheRoot: string,
+  manifest: Pick<SyncManifest, "runId" | "artifacts">,
+): Promise<RunCacheInspection> {
+  const runRoot = path.join(path.resolve(cacheRoot), `run-${manifest.runId}`, "artifacts");
+  let cached = 0;
+  for (const artifact of manifest.artifacts) {
+    const relative = safeRelativePath(artifact.relativePath);
+    if (await matches(path.join(runRoot, relative), artifact)) cached += 1;
+  }
+  const total = manifest.artifacts.length;
+  return {
+    cached,
+    total,
+    state: cached === 0 ? "cloud-only" : cached === total ? "fully-cached" : "partially-cached",
+  };
 }
 
 export async function syncRun(
