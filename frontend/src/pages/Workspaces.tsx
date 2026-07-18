@@ -190,6 +190,19 @@ export default function Workspaces() {
     }
     return result;
   }, [snapshot]);
+  const projectGroups = useMemo(() => {
+    if (!snapshot) return [];
+    const unassigned = snapshot.datasets.filter((dataset) => !datasetProject.has(dataset.id));
+    return [
+      ...snapshot.projects,
+      ...(unassigned.length ? [{
+        id: -1,
+        remoteKey: `${snapshot.workspaceId}:view:workspace-datasets`,
+        title: "Workspace datasets",
+        datasetIds: unassigned.map((dataset) => dataset.id),
+      }] : []),
+    ];
+  }, [datasetProject, snapshot]);
 
   if (!desktop) {
     return <div className="p-8"><h1 className="text-xl font-semibold">Cloud Workspaces</h1>
@@ -260,8 +273,9 @@ export default function Workspaces() {
 
       {snapshot && (
         <div className="mt-6 space-y-4">
-          {snapshot.projects.map((project) => {
-            const projectDatasets = snapshot.datasets.filter((dataset) => datasetProject.get(dataset.id) === project.id);
+          {projectGroups.map((project) => {
+            const projectDatasets = snapshot.datasets.filter((dataset) =>
+              project.id === -1 ? !datasetProject.has(dataset.id) : datasetProject.get(dataset.id) === project.id);
             return (
               <section key={project.remoteKey} className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
                 <h2 className="text-lg font-semibold text-white">{text(project.title, `Project ${project.id}`)}</h2>

@@ -49,6 +49,18 @@ describe("unified desktop workspaces", () => {
     expect(screen.getAllByText("Cloud Only").length).toBeGreaterThan(0);
   });
 
+  it("shows server datasets and runs even when the server has no project records", async () => {
+    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+      online: true,
+      profile,
+      snapshot: { ...snapshot, projects: [], workflows: [] },
+    });
+    render(<Workspaces />);
+    expect(await screen.findByText("Workspace datasets")).toBeInTheDocument();
+    expect(screen.getByText("Dataset 1")).toBeInTheDocument();
+    expect(screen.getByText("Run #7")).toBeInTheDocument();
+  });
+
   it("downloads only the FreeView preset artifacts and launches from cache", async () => {
     render(<Workspaces />);
     const buttons = await screen.findAllByRole("button", { name: "Open in FreeView" });
