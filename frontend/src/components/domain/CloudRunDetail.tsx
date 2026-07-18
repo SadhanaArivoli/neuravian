@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,13 +101,13 @@ export interface CloudRunDetailProps {
   profile: WorkspaceProfile;
   workspaceId: string;
   online: boolean;
-  inspection: WorkspaceInspection | null;
+  inspection?: WorkspaceInspection | null;
   onClose: () => void;
   onCacheChanged?: () => void;
 }
 
 export function CloudRunDetail({
-  run, profile, workspaceId, online, inspection, onClose, onCacheChanged,
+  run, profile, workspaceId, online, inspection: inspectionProp, onClose, onCacheChanged,
 }: CloudRunDetailProps) {
   const desktop = window.neuroforgeDesktop!;
   const [tab, setTab] = useState<"overview" | "artifacts" | "logs" | "provenance" | "reports">("overview");
@@ -116,6 +116,16 @@ export function CloudRunDetail({
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<{ downloaded: number; reused: number } | null>(null);
   const [syncAllError, setSyncAllError] = useState<string | null>(null);
+  const [localInspection, setLocalInspection] = useState<WorkspaceInspection | null>(null);
+  const hasAutoLaunched = useRef(false);
+
+  useEffect(() => {
+    void desktop.inspectWorkspace({ profileId: profile.id, workspaceId })
+      .then(setLocalInspection)
+      .catch(() => { /* offline or unavailable */ });
+  }, [profile.id, workspaceId]);
+
+  const inspection = inspectionProp ?? localInspection;
 
   const anatomy = run.artifacts.find((a) => a.relativePath.endsWith("/mri/orig_nu.mgz"));
   const segmentation = run.artifacts.find((a) => a.relativePath.endsWith("/mri/aseg.auto.mgz"));
@@ -154,6 +164,19 @@ export function CloudRunDetail({
       setDownloading([]);
     }
   }
+
+  // Auto-launch the local viewer as soon as viewer detection resolves and conditions are met.
+  // This fires once per panel open — user clicking a cached run goes straight to FreeView.
+  useEffect(() => {
+    if (hasAutoLaunched.current || !inspection) return;
+    const fv = inspection.viewers.find((v) => v.viewerId === "freeview");
+    if (!fv?.installed || fastsurferRequired.length !== 2) return;
+    const cached = fastsurferRequired.every((p) => run.cachedArtifacts.includes(p));
+    if (!cached && !online) return;
+    hasAutoLaunched.current = true;
+    void openFreeView();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspection]);
 
   async function downloadAll() {
     if (!online || run.artifacts.length === 0 || syncingAll) return;
