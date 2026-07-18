@@ -35,6 +35,7 @@ export interface SyncResult {
 
 export interface RunCacheInspection {
   cached: number;
+  cachedPaths: string[];
   total: number;
   state: "cloud-only" | "partially-cached" | "fully-cached";
 }
@@ -66,13 +67,18 @@ export async function inspectRunCache(
 ): Promise<RunCacheInspection> {
   const runRoot = path.join(path.resolve(cacheRoot), `run-${manifest.runId}`, "artifacts");
   let cached = 0;
+  const cachedPaths: string[] = [];
   for (const artifact of manifest.artifacts) {
     const relative = safeRelativePath(artifact.relativePath);
-    if (await matches(path.join(runRoot, relative), artifact)) cached += 1;
+    if (await matches(path.join(runRoot, relative), artifact)) {
+      cached += 1;
+      cachedPaths.push(relative);
+    }
   }
   const total = manifest.artifacts.length;
   return {
     cached,
+    cachedPaths,
     total,
     state: cached === 0 ? "cloud-only" : cached === total ? "fully-cached" : "partially-cached",
   };

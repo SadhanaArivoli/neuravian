@@ -124,7 +124,7 @@ export class WorkspaceClient {
         const artifacts = manifest?.artifacts ?? [];
         const inspection = manifest
           ? await inspectRunCache(path.join(this.artifactCacheRoot, workspaceId), manifest)
-          : { state: "cloud-only" as const };
+          : { state: "cloud-only" as const, cachedPaths: [] };
         return {
           ...summary,
           ...details,
@@ -143,6 +143,7 @@ export class WorkspaceClient {
           logs,
           reports: reports.filter((report) => Number(report.run_id) === summary.id),
           artifacts,
+          cachedArtifacts: inspection.cachedPaths,
           cacheState: inspection.state,
         };
       }));

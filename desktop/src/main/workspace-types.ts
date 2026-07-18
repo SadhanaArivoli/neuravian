@@ -66,6 +66,7 @@ export interface WorkspaceRun {
   reports?: unknown[];
   logs?: unknown;
   artifacts: WorkspaceArtifact[];
+  cachedArtifacts: string[];
   cacheState: WorkspaceCacheState;
 }
 

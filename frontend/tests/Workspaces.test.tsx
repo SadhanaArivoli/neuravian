@@ -20,7 +20,7 @@ const snapshot: WorkspaceSnapshot = {
   runs: [{
     id: 7, remoteKey: "workspace-a:run:7", dataset_id: 1, pipeline_manifest_id: "fastsurfer",
     pipeline_version: "1", status: "success", created_at: "2026-07-15T00:00:00Z",
-    cacheState: "cloud-only", artifacts: [
+    cacheState: "cloud-only", cachedArtifacts: [], artifacts: [
       { artifactId: 1, relativePath: "sub-01/mri/orig_nu.mgz", url: "/one", sha256: "a", sizeBytes: 1 },
       { artifactId: 2, relativePath: "sub-01/mri/aseg.auto.mgz", url: "/two", sha256: "b", sizeBytes: 1 },
     ],
@@ -64,5 +64,31 @@ describe("unified desktop workspaces", () => {
       runId: 7,
       viewerId: "freeview",
     }));
+  });
+
+  it("launches verified required artifacts offline without a network download", async () => {
+    const offlineSnapshot: WorkspaceSnapshot = {
+      ...snapshot,
+      runs: snapshot.runs.map((run) => ({
+        ...run,
+        cacheState: "offline-cached",
+        cachedArtifacts: [
+          "sub-01/mri/orig_nu.mgz",
+          "sub-01/mri/aseg.auto.mgz",
+        ],
+      })),
+    };
+    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+      online: false,
+      profile: { ...profile, connectionState: "offline" },
+      snapshot: offlineSnapshot,
+    });
+
+    render(<Workspaces />);
+    const button = await screen.findByRole("button", { name: "Open in FreeView" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalled());
+    expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).not.toHaveBeenCalled();
   });
 });

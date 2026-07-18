@@ -49,18 +49,24 @@ function WorkspaceRunRow({
   const anatomy = run.artifacts.find((artifact) => artifact.relativePath.endsWith("/mri/orig_nu.mgz"));
   const segmentation = run.artifacts.find((artifact) => artifact.relativePath.endsWith("/mri/aseg.auto.mgz"));
   const canFreeView = run.pipeline_manifest_id === "fastsurfer" && anatomy && segmentation;
+  const requiredCached = Boolean(anatomy && segmentation
+    && run.cachedArtifacts.includes(anatomy.relativePath)
+    && run.cachedArtifacts.includes(segmentation.relativePath));
+  const canLaunch = Boolean(canFreeView && (online || requiredCached));
 
   async function openFreeView() {
-    if (!canFreeView || !online) return;
+    if (!canFreeView || !canLaunch) return;
     setBusy(true);
     setMessage(null);
     try {
-      const synced = await desktop.syncWorkspaceArtifacts({
-        profileId: profile.id,
-        workspaceId,
-        runId: run.id,
-        relativePaths: [anatomy.relativePath, segmentation.relativePath],
-      });
+      const synced = online
+        ? await desktop.syncWorkspaceArtifacts({
+          profileId: profile.id,
+          workspaceId,
+          runId: run.id,
+          relativePaths: [anatomy.relativePath, segmentation.relativePath],
+        })
+        : { runId: run.id, downloaded: [], reused: [anatomy.relativePath, segmentation.relativePath] };
       await desktop.launchViewer({
         viewerId: "freeview",
         workspaceId,
@@ -100,11 +106,11 @@ function WorkspaceRunRow({
       {canFreeView && (
         <button
           type="button"
-          disabled={!online || busy}
+          disabled={!canLaunch || busy}
           onClick={() => { void openFreeView(); }}
           className="mt-2 rounded-md bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-cyan-200 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {busy ? "Downloading required files…" : "Open in FreeView"}
+          {busy ? "Preparing viewer…" : "Open in FreeView"}
         </button>
       )}
       {message && <p role="status" className="mt-2 text-[11px] text-slate-400">{message}</p>}
@@ -263,6 +269,12 @@ export default function Workspaces() {
                   {projectDatasets.map((dataset) => {
                     const workflows = snapshot.workflows.filter((workflow) => Number(workflow.dataset_id) === dataset.id);
                     const datasetRuns = snapshot.runs.filter((run) => run.dataset_id === dataset.id);
+                    const assignedPipelines = new Set(workflows.flatMap(
+                      (workflow) => [...workflowPipelineIds(workflow)],
+                    ));
+                    const unmatchedRuns = datasetRuns.filter(
+                      (run) => !assignedPipelines.has(run.pipeline_manifest_id),
+                    );
                     return (
                       <details key={dataset.remoteKey} open className="rounded-lg border border-white/8 bg-slate-950/30 p-3">
                         <summary className="cursor-pointer text-sm font-medium text-slate-200">
@@ -285,14 +297,16 @@ export default function Workspaces() {
                               </div>
                             );
                           })}
-                          <div className="border-l border-slate-700 pl-3">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Run history</h3>
-                            <ul className="mt-2 space-y-2">
-                              {datasetRuns.map((run) => <WorkspaceRunRow key={run.remoteKey} profile={activeProfile!}
-                                workspaceId={snapshot.workspaceId} run={run} online={online}
-                                onCacheChanged={() => activeId && void synchronize(activeId, true)} />)}
-                            </ul>
-                          </div>
+                          {unmatchedRuns.length > 0 && (
+                            <div className="border-l border-slate-700 pl-3">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Run history</h3>
+                              <ul className="mt-2 space-y-2">
+                                {unmatchedRuns.map((run) => <WorkspaceRunRow key={run.remoteKey} profile={activeProfile!}
+                                  workspaceId={snapshot.workspaceId} run={run} online={online}
+                                  onCacheChanged={() => activeId && void synchronize(activeId, true)} />)}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </details>
                     );

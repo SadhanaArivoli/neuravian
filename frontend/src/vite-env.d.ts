@@ -79,6 +79,7 @@ interface WorkspaceRun {
   progress?: unknown;
   parameters?: unknown;
   artifacts: WorkspaceArtifact[];
+  cachedArtifacts: string[];
   cacheState: WorkspaceCacheState;
 }
 

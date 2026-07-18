@@ -64,6 +64,7 @@ describe("workspace metadata synchronization", () => {
     expect(result.snapshot.runs[0]).toMatchObject({
       remoteKey: "workspace-a:run:7",
       cacheState: "cloud-only",
+      cachedArtifacts: [],
     });
   });
 
