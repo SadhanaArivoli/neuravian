@@ -37,7 +37,14 @@ interface NeuroForgeDesktopBridge {
     runId: number;
     relativePaths: string[];
   }): Promise<{ runId: number; downloaded: string[]; reused: string[] }>;
-  syncRun(runId: number): Promise<{ runId: number; downloaded: string[]; reused: string[] }>;
+  launchLocalViewer(request: {
+    viewerId: "freeview" | "mricrogl";
+    workspaceId: string;
+    runId: number;
+    files: Array<{ relativePath: string; overlay?: boolean }>;
+    opacity?: number;
+    freesurferLut?: boolean;
+  }): Promise<boolean>;
   launchViewer(request: {
     viewerId: "freeview" | "mricrogl";
     runId: number;

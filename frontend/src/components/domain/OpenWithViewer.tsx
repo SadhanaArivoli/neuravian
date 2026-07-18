@@ -25,13 +25,15 @@ export default function OpenWithViewer({
     (localStorage.getItem(PREFERENCE_KEY) as ViewerId | null) ?? "neuroforge");
   const [detections, setDetections] = useState<Record<string, { installed: boolean; reason: string | null }>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [localWorkspaceId, setLocalWorkspaceId] = useState<string | null>(null);
   const desktop = window.neuroforgeDesktop;
 
   useEffect(() => {
     if (!desktop) return;
-    void desktop.detectViewers().then((values) => setDetections(Object.fromEntries(
-      values.map((value) => [value.viewerId, value]),
-    )));
+    void Promise.all([desktop.detectViewers(), desktop.getLocalWorkspaceIdentity()]).then(([values, identity]) => {
+      setDetections(Object.fromEntries(values.map((value) => [value.viewerId, value])));
+      setLocalWorkspaceId(identity.workspaceId);
+    });
   }, [desktop]);
 
   async function choose(viewerId: ViewerId) {
@@ -47,16 +49,20 @@ export default function OpenWithViewer({
       setMessage(detections[viewerId]?.reason ?? `${viewerId} is not installed.`);
       return;
     }
-    const synced = await desktop.syncRun(runId);
+    if (!localWorkspaceId) {
+      setMessage("Local workspace identity is not ready.");
+      return;
+    }
     const preset = createLaunchPreset(artifact, candidates);
-    await desktop.launchViewer({
+    await desktop.launchLocalViewer({
       viewerId,
+      workspaceId: localWorkspaceId,
       runId,
       files: preset.files.map((file, index) => ({ relativePath: file.path, overlay: index > 0 })),
       opacity: preset.opacity,
       freesurferLut: preset.lut === "freesurfer",
     });
-    setMessage(`Run #${runId} synchronized (${synced.downloaded.length} downloaded, ${synced.reused.length} reused) and opened.`);
+    setMessage(`Run #${runId} opened directly from its existing local artifact.`);
   }
 
   return (

@@ -14,10 +14,10 @@ import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 import { DesktopLogger, type StartupTrace } from "./logger.js";
 import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
-import { syncRun, type SyncManifest } from "./run-cache.js";
+import type { SyncManifest } from "./run-cache.js";
 import {
-  commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
-  type DesktopPlatform, type ExternalViewerId, type ViewerLaunchRequest,
+  commandForLocalPreset, commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
+  type DesktopPlatform, type ExternalViewerId, type LocalViewerLaunchRequest, type ViewerLaunchRequest,
 } from "./viewer-manager.js";
 import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
@@ -466,16 +466,32 @@ ipcMain.handle("workspaces:sync-artifacts", async (
     input.relativePaths,
   );
 });
-ipcMain.handle("runs:sync", async (_event, runId: number) => {
-  if (!Number.isInteger(runId) || runId < 1) throw new Error("A valid run ID is required.");
-  const response = await fetch(`http://127.0.0.1:8000/api/runs/${runId}/sync-manifest`);
-  if (!response.ok) throw new Error(`Run synchronization manifest failed with HTTP ${response.status}.`);
-  const manifest = await response.json() as SyncManifest;
-  manifest.artifacts = manifest.artifacts.map((artifact) => ({
-    ...artifact,
-    url: new URL(artifact.url, "http://127.0.0.1:8000").toString(),
-  }));
-  return await syncRun(path.join(app.getPath("userData"), "run-cache"), manifest);
+ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunchRequest) => {
+  const identity = await localWorkspace().get();
+  if (request.workspaceId !== identity.workspaceId) throw new Error("Local workspace identity mismatch.");
+  const [runResponse, manifestResponse] = await Promise.all([
+    fetch(`http://127.0.0.1:8000/api/runs/${request.runId}`),
+    fetch(`http://127.0.0.1:8000/api/runs/${request.runId}/sync-manifest`),
+  ]);
+  if (!runResponse.ok || !manifestResponse.ok) throw new Error("Local run metadata is unavailable.");
+  const run = await runResponse.json() as { output_dir?: string | null };
+  const manifest = await manifestResponse.json() as SyncManifest;
+  const requested = new Set(request.files.map((file) => file.relativePath));
+  if ([...requested].some((relative) => !manifest.artifacts.some((artifact) => artifact.relativePath === relative))) {
+    throw new Error("Local viewer launch requested an unregistered artifact.");
+  }
+  validateVolumeGeometry([...requested], manifest.artifacts);
+  const containerPrefix = "/app/data/";
+  const outputRoot = run.output_dir?.startsWith(containerPrefix)
+    ? path.join(repositoryRoot, "data", run.output_dir.slice(containerPrefix.length))
+    : path.resolve(run.output_dir ?? "");
+  const derivativesRoot = path.join(repositoryRoot, "data", "derivatives");
+  if (!outputRoot.startsWith(`${derivativesRoot}${path.sep}`)) throw new Error("Local run output is outside NeuroForge derivatives.");
+  const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
+  if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
+  const command = commandForLocalPreset(request, detection.executable, outputRoot);
+  await launchViewer(command, outputRoot);
+  return true;
 });
 ipcMain.handle("viewers:launch", async (_event, request: ViewerLaunchRequest) => {
   if (!["darwin", "win32", "linux"].includes(process.platform)) throw new Error("External viewers are unavailable on this platform.");

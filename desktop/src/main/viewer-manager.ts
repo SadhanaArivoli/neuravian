@@ -29,6 +29,10 @@ export interface ViewerLaunchRequest {
   freesurferLut?: boolean;
 }
 
+export interface LocalViewerLaunchRequest extends ViewerLaunchRequest {
+  workspaceId: string;
+}
+
 const INSTALL_PATHS: Record<ExternalViewerId, Record<DesktopPlatform, string[]>> = {
   freeview: {
     darwin: ["/Applications/Freeview.app/Contents/MacOS/freeview", "/Applications/freesurfer/bin/freeview"],
@@ -148,6 +152,43 @@ export function commandForPreset(
       throw new Error("Viewer launch rejected an unsafe artifact path.");
     }
     return { path: path.join(runRoot, normalized), overlay };
+  });
+  if (request.viewerId === "mricrogl") {
+    return { viewerId: request.viewerId, executable, args: resolved.map((file) => file.path) };
+  }
+  return {
+    viewerId: request.viewerId,
+    executable,
+    args: ["-v", ...resolved.map((file) => {
+      if (!file.overlay) return file.path;
+      const options = [file.path, `opacity=${request.opacity ?? 0.7}`];
+      if (request.freesurferLut) options.push("colormap=lut");
+      return options.join(":");
+    })],
+    environment: executable.includes(`${path.sep}Freeview.app${path.sep}`)
+      ? { FREESURFER_HOME: executable.slice(0, executable.indexOf(`${path.sep}Freeview.app${path.sep}`)) }
+      : undefined,
+  };
+}
+
+export function commandForLocalPreset(
+  request: LocalViewerLaunchRequest,
+  executable: string,
+  outputRoot: string,
+): LaunchCommand {
+  if (!request.workspaceId.startsWith("local-") || !Number.isInteger(request.runId) ||
+      request.runId < 1 || !request.files.length) {
+    throw new Error("Local viewer launch requires a local workspace, run, and artifact.");
+  }
+  const root = path.resolve(outputRoot);
+  const resolved = request.files.map(({ relativePath, overlay }) => {
+    const normalized = relativePath.replace(/\\/g, "/");
+    if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..") || normalized.includes("\0")) {
+      throw new Error("Viewer launch rejected an unsafe local artifact path.");
+    }
+    const file = path.resolve(root, normalized);
+    if (!file.startsWith(`${root}${path.sep}`)) throw new Error("Local artifact escaped the run output directory.");
+    return { path: file, overlay };
   });
   if (request.viewerId === "mricrogl") {
     return { viewerId: request.viewerId, executable, args: resolved.map((file) => file.path) };

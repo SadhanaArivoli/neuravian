@@ -56,7 +56,7 @@ describe("unified desktop workspaces", () => {
       openWorkspaceRun: vi.fn(async () => true),
       syncWorkspace: vi.fn(async () => ({ online: true, profile, snapshot })),
       syncWorkspaceArtifacts: vi.fn(async () => ({ runId: 7, downloaded: ["one", "two"], reused: [] })),
-      syncRun: vi.fn(),
+      launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
     };
   });

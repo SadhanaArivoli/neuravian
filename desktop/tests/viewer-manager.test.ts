@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  commandForPreset, validateLaunchCommand, validateVolumeGeometry, versionedFreeViewCandidates,
+  commandForLocalPreset, commandForPreset, validateLaunchCommand, validateVolumeGeometry, versionedFreeViewCandidates,
 } from "../src/main/viewer-manager.js";
 
 describe("desktop viewer launch security", () => {
@@ -46,6 +46,29 @@ describe("desktop viewer launch security", () => {
       "/cache/run-7/artifacts/mri/orig_nu.mgz",
       "/cache/run-7/artifacts/mri/aseg.auto.mgz:opacity=0.7:colormap=lut",
     ]);
+  });
+
+  it("launches local artifacts directly without a cache copy", () => {
+    const command = commandForLocalPreset({
+      viewerId: "freeview",
+      workspaceId: "local-5df1dc24-a857-4adf-8908-1f8a7f36d058",
+      runId: 109,
+      files: [{ relativePath: "reho_map.nii.gz" }],
+    }, "/opt/freesurfer/bin/freeview", "/repo/data/derivatives/regional-homogeneity/109");
+    expect(command.args).toEqual([
+      "-v", "/repo/data/derivatives/regional-homogeneity/109/reho_map.nii.gz",
+    ]);
+    expect(() => validateLaunchCommand(command, "/repo/data/derivatives/regional-homogeneity/109")).not.toThrow();
+  });
+
+  it("rejects traversal from a local run output directory", () => {
+    expect(() => commandForLocalPreset({
+      viewerId: "mricrogl",
+      workspaceId: "local-5df1dc24-a857-4adf-8908-1f8a7f36d058",
+      runId: 109,
+      files: [{ relativePath: "../run-108/other.nii.gz" }],
+    }, "/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL", "/repo/data/derivatives/run-109"))
+      .toThrow("unsafe local artifact path");
   });
 
   it("discovers versioned macOS FreeView installations", async () => {
