@@ -4,6 +4,7 @@ import {
   createWorkflow,
   deleteWorkflow,
   duplicateWorkflow,
+  fetchWorkflow,
   fetchWorkflows,
   promoteWorkflowToTemplate,
   updateWorkflow,
@@ -11,6 +12,8 @@ import {
   WORKFLOW_SCHEMA_VERSION,
 } from "../api/client";
 import { parseWorkflowImport } from "../lib/workflowPersistence";
+import { useWorkspace } from "../context/WorkspaceContext";
+import { useAllCloudSnapshots } from "../hooks/useAllCloudSnapshots";
 
 type Tab = "recent" | "favorites" | "templates" | "archived" | "drafts";
 
@@ -191,6 +194,11 @@ function EmptyState({ tab }: { tab: Tab }) {
 
 export default function WorkflowLibrary() {
   const navigate = useNavigate();
+  const { selected, cloudProfiles } = useWorkspace();
+  const isAll = Boolean(window.neuroforgeDesktop) && selected === "all";
+  const allCloud = useAllCloudSnapshots();
+  const [pushing, setPushing] = useState<Record<string, boolean>>({});
+  const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +209,29 @@ export default function WorkflowLibrary() {
   const [renaming, setRenaming] = useState<{ id: number; value: string } | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  async function handlePushWorkflow(wf: WorkflowSummary, profileId: string) {
+    const key = `${wf.id}-${profileId}`;
+    setPushing((p) => ({ ...p, [key]: true }));
+    setPushErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+    try {
+      const detail = await fetchWorkflow(wf.id);
+      await window.neuroforgeDesktop!.pushCloudWorkflow({
+        profileId,
+        workflow: {
+          name: detail.name,
+          description: detail.description ?? "",
+          tags: detail.tags,
+          state: detail.state as Record<string, unknown>,
+          schema_version: detail.schema_version ?? WORKFLOW_SCHEMA_VERSION,
+        },
+      });
+    } catch (e) {
+      setPushErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : "Push failed" }));
+    } finally {
+      setPushing((p) => { const n = { ...p }; delete n[key]; return n; });
+    }
+  }
 
   function load() {
     setLoading(true);
@@ -251,9 +282,7 @@ export default function WorkflowLibrary() {
       .then((all) => {
         const full = all.find((w) => w.id === wf.id);
         if (!full) return;
-        // We need the full state; fetch individually
-        import("../api/client").then(({ fetchWorkflow }) => {
-          fetchWorkflow(wf.id).then((detail) => {
+        fetchWorkflow(wf.id).then((detail) => {
             const envelope = {
               export_format: "neuroforge-workflow-export-v1",
               exported_at: new Date().toISOString(),
@@ -270,7 +299,6 @@ export default function WorkflowLibrary() {
             a.click();
             URL.revokeObjectURL(url);
           });
-        });
       });
   }
 
@@ -460,22 +488,72 @@ export default function WorkflowLibrary() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filtered.map((wf) => (
-              <WorkflowCard
-                key={wf.id}
-                wf={wf}
-                onOpen={() => handleOpen(wf)}
-                onRename={() => handleRenameStart(wf)}
-                onDuplicate={withReload(() => duplicateWorkflow(wf.id).then(() => {}))}
-                onDelete={withReload(() => {
-                  if (!window.confirm(`Delete "${wf.name}"? This cannot be undone.`)) return Promise.resolve();
-                  return deleteWorkflow(wf.id);
-                })}
-                onExport={() => handleExport(wf)}
-                onToggleFavorite={withReload(() => updateWorkflow(wf.id, { is_favorite: !wf.is_favorite }).then(() => {}))}
-                onArchive={withReload(() => updateWorkflow(wf.id, { is_archived: !wf.is_archived }).then(() => {}))}
-                onPromote={withReload(() => promoteWorkflowToTemplate(wf.id).then(() => {}))}
-              />
+              <div key={wf.id} className="flex flex-col gap-2">
+                <WorkflowCard
+                  wf={wf}
+                  onOpen={() => handleOpen(wf)}
+                  onRename={() => handleRenameStart(wf)}
+                  onDuplicate={withReload(() => duplicateWorkflow(wf.id).then(() => {}))}
+                  onDelete={withReload(() => {
+                    if (!window.confirm(`Delete "${wf.name}"? This cannot be undone.`)) return Promise.resolve();
+                    return deleteWorkflow(wf.id);
+                  })}
+                  onExport={() => handleExport(wf)}
+                  onToggleFavorite={withReload(() => updateWorkflow(wf.id, { is_favorite: !wf.is_favorite }).then(() => {}))}
+                  onArchive={withReload(() => updateWorkflow(wf.id, { is_archived: !wf.is_archived }).then(() => {}))}
+                  onPromote={withReload(() => promoteWorkflowToTemplate(wf.id).then(() => {}))}
+                />
+                {/* Push-to-cloud buttons when cloud profiles exist */}
+                {cloudProfiles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {cloudProfiles.map((cp) => {
+                      const key = `${wf.id}-${cp.id}`;
+                      return (
+                        <div key={cp.id} className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            disabled={pushing[key]}
+                            onClick={() => void handlePushWorkflow(wf, cp.id)}
+                            className="rounded-md border border-sky-500/25 bg-sky-500/5 px-2 py-1 text-[11px] text-sky-300 hover:border-sky-400/40 hover:bg-sky-500/10 disabled:opacity-40 transition-colors"
+                          >
+                            {pushing[key] ? "Pushing…" : `↑ ${cp.name}`}
+                          </button>
+                          {pushErrors[key] && (
+                            <p className="text-[10px] text-red-400 truncate max-w-[140px]">{pushErrors[key]}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             ))}
+          </div>
+        )}
+
+        {/* Cloud workflows section (All Workspaces mode) */}
+        {isAll && allCloud.some((c) => (c.snapshot?.workflows?.length ?? 0) > 0) && (
+          <div className="mt-10">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-gray-500">Cloud Workflows</h2>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {allCloud.flatMap(({ profile, snapshot }) =>
+                (snapshot?.workflows ?? []).map((wf) => {
+                  const w = wf as Record<string, unknown>;
+                  return (
+                    <div
+                      key={`cloud-${profile.id}-${w.id as number}`}
+                      className="flex flex-col rounded-xl border border-sky-500/20 bg-surface-raised p-5"
+                    >
+                      <div className="flex items-start gap-2 mb-1">
+                        <h3 className="flex-1 truncate text-base font-semibold text-white">{w.name as string}</h3>
+                        <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud · {profile.name}</span>
+                      </div>
+                      {!!w.description && <p className="text-xs text-gray-400 line-clamp-2">{String(w.description)}</p>}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -165,7 +165,7 @@ function ParameterField({
   onChange: (val: string | boolean | string[]) => void;
 }) {
   const baseInput =
-    "w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 placeholder:text-gray-500 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25";
+    "w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 placeholder:text-gray-500 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25";
 
   // Special case: multi-run selector for group FC input
   if (param.name === "input-run-ids") {
@@ -226,7 +226,7 @@ function ParameterField({
                 className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm cursor-pointer transition-colors select-none ${
                   checked
                     ? "border-accent/60 bg-accent/15 font-medium text-violet-200"
-                    : "border-white/12 bg-white/[0.035] text-gray-400 hover:border-white/25 hover:bg-white/[0.06]"
+                    : "border-white/15 bg-white/[0.035] text-gray-400 hover:border-white/25 hover:bg-white/[0.06]"
                 }`}
               >
                 <input
@@ -568,7 +568,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           onChange={(e) =>
             setSelectedDatasetId(e.target.value ? Number(e.target.value) : "")
           }
-          className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
+          className="w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           required
         >
           <option value="">— choose a dataset —</option>
@@ -608,7 +608,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           <select
             value={remoteHostId ?? ""}
             onChange={(e) => setRemoteHostId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           >
             <option value="">Local (this machine)</option>
             {enabledHosts.map((h) => (

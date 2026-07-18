@@ -512,7 +512,7 @@ function MatrixCanvas({ labels, matrix }: { labels: string[]; matrix: number[][]
           <button
             type="button"
             onClick={exportPng}
-            className="rounded border border-white/12 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
+            className="rounded border border-white/15 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
           >
             ↓ PNG
           </button>

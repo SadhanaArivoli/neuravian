@@ -353,7 +353,7 @@ export default function StatisticalMapExplorer() {
           </Link>
           <Link
             to={`/workflows/new?dataset=${datasetId}`}
-            className="rounded-md border border-white/12 hover:bg-white/6 px-3 py-1.5 text-xs text-gray-300"
+            className="rounded-md border border-white/10 hover:bg-white/8 px-3 py-1.5 text-xs text-gray-300"
           >
             Open Workflow Builder
           </Link>
