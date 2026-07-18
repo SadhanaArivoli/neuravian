@@ -30,7 +30,9 @@ describe("FastSurfer artifact workspace", () => {
     expect(screen.getAllByText("Conformed Anatomy")).not.toHaveLength(0);
     expect(screen.getAllByText("Cortical Parcellations")).not.toHaveLength(0);
     expect(screen.getAllByText("Surfaces")).not.toHaveLength(0);
-    expect(screen.getAllByRole("button", { name: "View" })).toHaveLength(6);
+    expect(screen.getByLabelText("Open orig_nu.mgz with viewer")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Open aseg.auto.mgz with viewer")).toHaveLength(2);
+    expect(screen.queryByLabelText("Open orient_volume.lta with viewer")).not.toBeInTheDocument();
     expect(screen.getByText(/Transform artifacts are metadata-only/)).toBeInTheDocument();
   });
 
