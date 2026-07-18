@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,7 +117,6 @@ export function CloudRunDetail({
   const [syncAllResult, setSyncAllResult] = useState<{ downloaded: number; reused: number } | null>(null);
   const [syncAllError, setSyncAllError] = useState<string | null>(null);
   const [localInspection, setLocalInspection] = useState<WorkspaceInspection | null>(null);
-  const hasAutoLaunched = useRef(false);
 
   useEffect(() => {
     void desktop.inspectWorkspace({ profileId: profile.id, workspaceId })
@@ -136,6 +135,33 @@ export function CloudRunDetail({
     : [];
   const fastsurferCached = fastsurferRequired.length > 0
     && fastsurferRequired.every((p) => run.cachedArtifacts.includes(p));
+
+  // Determine the best available primary action.
+  // Priority: FreeView (if installed + artifacts available) > MRIcroGL > NeuroForge Viewer > Cloud Browser.
+  // MRIcroGL and NeuroForge Viewer have no launch implementation yet, so Cloud Browser is current fallback.
+  const isFullyCached = run.cacheState === "fully-cached" || run.cacheState === "offline-cached";
+  const freeviewCanOpen = !!(freeview?.installed && fastsurferRequired.length === 2 && (online || fastsurferCached));
+  const primaryAction: "freeview" | "cloud-browser" = freeviewCanOpen ? "freeview" : "cloud-browser";
+
+  // Human-readable explanation of why this primary action was chosen.
+  const reasoningLines = ((): string[] => {
+    const cacheLine = isFullyCached
+      ? `✓ All ${run.artifacts.length} artifacts are stored locally.`
+      : run.cachedArtifacts.length > 0
+      ? `${run.cachedArtifacts.length} of ${run.artifacts.length} artifacts cached locally.`
+      : "Artifacts are not cached locally.";
+
+    if (freeviewCanOpen) {
+      return [cacheLine, "FreeView detected.", "Primary action: Open in FreeView."];
+    }
+    if (freeview?.installed && fastsurferRequired.length !== 2) {
+      return [cacheLine, "FreeView detected — no compatible artifacts for this pipeline.", "Primary action: Open in Cloud Browser."];
+    }
+    if (freeview?.installed && !online && !fastsurferCached) {
+      return [cacheLine, "FreeView detected — required artifacts not cached.", "Primary action: Open in Cloud Browser."];
+    }
+    return [cacheLine, "Primary action: Open in Cloud Browser."];
+  })();
 
   async function openFreeView() {
     if (!freeview?.installed || fastsurferRequired.length !== 2 || (!online && !fastsurferCached)) return;
@@ -164,19 +190,6 @@ export function CloudRunDetail({
       setDownloading([]);
     }
   }
-
-  // Auto-launch the local viewer as soon as viewer detection resolves and conditions are met.
-  // This fires once per panel open — user clicking a cached run goes straight to FreeView.
-  useEffect(() => {
-    if (hasAutoLaunched.current || !inspection) return;
-    const fv = inspection.viewers.find((v) => v.viewerId === "freeview");
-    if (!fv?.installed || fastsurferRequired.length !== 2) return;
-    const cached = fastsurferRequired.every((p) => run.cachedArtifacts.includes(p));
-    if (!cached && !online) return;
-    hasAutoLaunched.current = true;
-    void openFreeView();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspection]);
 
   async function downloadAll() {
     if (!online || run.artifacts.length === 0 || syncingAll) return;
@@ -297,59 +310,113 @@ export function CloudRunDetail({
                 </section>
               )}
 
-              {/* Fully cached confirmation */}
-              {run.status === "success" && (run.cacheState === "fully-cached" || run.cacheState === "offline-cached") && (
-                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-xs text-emerald-300">
-                  ✓ All {run.artifacts.length} artifacts are stored locally — this run is fully available offline.
-                </div>
-              )}
-
               {/* Viewer actions */}
               <section>
-                <h3 className="text-sm font-semibold text-white mb-3">Viewer actions</h3>
-                <div className="grid gap-3 md:grid-cols-3">
+                <h3 className="text-sm font-semibold text-white mb-3">Open results</h3>
+
+                {/* Reasoning — explains why the primary action was chosen */}
+                <div className={`mb-4 rounded-lg border px-4 py-3 text-xs space-y-1 ${
+                  primaryAction === "freeview"
+                    ? "border-emerald-400/20 bg-emerald-400/5"
+                    : "border-white/8 bg-white/3"
+                }`}>
+                  {reasoningLines.map((line, i) => (
+                    <p
+                      key={i}
+                      className={
+                        i === reasoningLines.length - 1
+                          ? `font-medium ${primaryAction === "freeview" ? "text-emerald-200" : "text-slate-300"}`
+                          : i === 0 && isFullyCached
+                          ? "text-emerald-300"
+                          : "text-slate-400"
+                      }
+                    >
+                      {line}
+                    </p>
+                  ))}
+                </div>
+
+                {/* Primary action button — full width, visually dominant */}
+                {primaryAction === "freeview" ? (
+                  <button
+                    onClick={() => void openFreeView()}
+                    className="w-full rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-5 py-4 text-left transition-colors hover:bg-emerald-400/15"
+                  >
+                    <span className="text-sm font-semibold text-emerald-200">Open in FreeView</span>
+                    <span className="mt-1 block text-[10px] text-slate-400">
+                      {fastsurferCached ? "Ready from local cache" : "Will download 2 required artifacts"}
+                    </span>
+                  </button>
+                ) : (
                   <button
                     onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
-                    className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-left text-sm text-cyan-200 hover:bg-cyan-400/15 transition-colors"
+                    className="w-full rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-5 py-4 text-left transition-colors hover:bg-cyan-400/15"
                   >
-                    Open in Cloud Browser
-                    <span className="mt-1 block text-[10px] text-slate-500">
-                      Opens run detail in authenticated browser tab
-                    </span>
+                    <span className="text-sm font-semibold text-cyan-200">Open in Cloud Browser</span>
+                    <span className="mt-1 block text-[10px] text-slate-400">Opens run detail in authenticated browser tab</span>
                   </button>
+                )}
 
-                  <button
-                    disabled={!freeview?.installed || fastsurferRequired.length !== 2 || (!online && !fastsurferCached)}
-                    onClick={() => void openFreeView()}
-                    className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-left text-sm text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-cyan-400/15 transition-colors"
-                  >
-                    Open in FreeView
-                    <span className="mt-1 block text-[10px] text-slate-500">
-                      {!freeview?.installed
-                        ? (freeview?.reason ?? "Not installed")
-                        : fastsurferRequired.length !== 2
-                        ? "No FastSurfer artifacts (orig_nu + aseg)"
-                        : fastsurferCached
-                        ? "Ready from local cache"
-                        : "Will download 2 required artifacts"}
-                    </span>
-                  </button>
-
+                {/* Secondary local viewers */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <button
                     disabled
-                    className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg border border-white/8 bg-white/4 p-3 text-left disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    Open in MRIcroGL
-                    <span className="mt-1 block text-[10px] text-slate-500">
-                      {mricrogl?.installed
-                        ? "No compatible preset for this pipeline"
-                        : (mricrogl?.reason ?? "Not installed")}
+                    <span className="text-xs font-medium text-slate-400">Open in NeuroForge Viewer</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-600">Coming soon</span>
+                  </button>
+                  <button
+                    disabled
+                    className="rounded-lg border border-white/8 bg-white/4 p-3 text-left disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <span className="text-xs font-medium text-slate-400">Open in MRIcroGL</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-600">
+                      {mricrogl?.installed ? "No compatible preset for this pipeline" : (mricrogl?.reason ?? "Not installed")}
                     </span>
                   </button>
                 </div>
 
+                {/* Cloud section — shown as a secondary option when a local viewer is primary */}
+                {primaryAction === "freeview" && (
+                  <div className="mt-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-px flex-1 bg-white/8" />
+                      <span className="text-[10px] uppercase tracking-widest text-slate-600">Cloud</span>
+                      <div className="h-px flex-1 bg-white/8" />
+                    </div>
+                    <button
+                      onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
+                      className="w-full rounded-lg border border-white/8 bg-white/3 p-3 text-left transition-colors hover:bg-white/6"
+                    >
+                      <span className="text-xs font-medium text-slate-500">Open in Cloud Browser</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-600">Opens run detail in authenticated browser tab</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* FreeView shown as secondary when cloud browser is primary */}
+                {primaryAction === "cloud-browser" && (freeview !== undefined || fastsurferRequired.length > 0) && (
+                  <div className="mt-3">
+                    <button
+                      disabled={!freeview?.installed || fastsurferRequired.length !== 2 || (!online && !fastsurferCached)}
+                      onClick={() => void openFreeView()}
+                      className="w-full rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      <span className="text-xs font-medium text-slate-400">Open in FreeView</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-600">
+                        {!freeview?.installed
+                          ? (freeview?.reason ?? "Not installed")
+                          : fastsurferRequired.length !== 2
+                          ? "No compatible artifacts for this pipeline"
+                          : "Required artifacts not cached — reconnect to download"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
                 {downloading.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
+                  <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
                     <p className="text-xs font-semibold text-amber-300">Downloading artifacts</p>
                     {downloading.map((file) => (
                       <div key={file} className="mt-2 flex items-center gap-2 text-xs text-slate-300">
