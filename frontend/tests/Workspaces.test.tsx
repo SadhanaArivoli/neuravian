@@ -1,6 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import Workspaces from "../src/pages/Workspaces";
+
+function renderWorkspace(view = "home") {
+  return render(<MemoryRouter initialEntries={[view === "home" ? "/workspaces" : `/workspaces?view=${view}`]}>
+    <Workspaces />
+  </MemoryRouter>);
+}
 
 const profile: WorkspaceProfile = {
   id: "profile-1", name: "AWS EC2", serverUrl: "https://cloud.example",
@@ -34,6 +41,15 @@ describe("unified desktop workspaces", () => {
       listWorkspaces: vi.fn(async () => [profile]),
       saveWorkspace: vi.fn(),
       removeWorkspace: vi.fn(),
+      testWorkspace: vi.fn(async () => ({ workspaceId: "workspace-a", product: "NeuroForge", apiVersion: "1", serverVersion: "0.1.0" })),
+      inspectWorkspace: vi.fn(async (): Promise<WorkspaceInspection> => ({
+        cacheSizeBytes: 2, cachedRuns: 0, cacheEntries: 0,
+        viewers: [
+          { viewerId: "freeview", displayName: "FreeView", installed: true, executable: "/Applications/Freeview.app", reason: null },
+          { viewerId: "mricrogl", displayName: "MRIcroGL", installed: false, executable: null, reason: "Not installed" },
+        ],
+      })),
+      openWorkspaceRun: vi.fn(async () => true),
       syncWorkspace: vi.fn(async () => ({ online: true, profile, snapshot })),
       syncWorkspaceArtifacts: vi.fn(async () => ({ runId: 7, downloaded: ["one", "two"], reused: [] })),
       syncRun: vi.fn(),
@@ -42,10 +58,10 @@ describe("unified desktop workspaces", () => {
   });
 
   it("shows cloud projects, workflow hierarchy, runs, and cache state automatically", async () => {
-    render(<Workspaces />);
-    expect(await screen.findByText("ASD Study")).toBeInTheDocument();
-    expect(screen.getByText("Structural")).toBeInTheDocument();
-    expect(screen.getAllByText("Run #7").length).toBeGreaterThan(0);
+    renderWorkspace();
+    expect(await screen.findByText("Workspace Home")).toBeInTheDocument();
+    expect(screen.getByText("Workspace Inspector")).toBeInTheDocument();
+    expect(screen.getByText("workspace-a")).toBeInTheDocument();
     expect(screen.getAllByText("Cloud Only").length).toBeGreaterThan(0);
   });
 
@@ -55,16 +71,15 @@ describe("unified desktop workspaces", () => {
       profile,
       snapshot: { ...snapshot, projects: [], workflows: [] },
     });
-    render(<Workspaces />);
-    expect(await screen.findByText("Workspace datasets")).toBeInTheDocument();
-    expect(screen.getByText("Dataset 1")).toBeInTheDocument();
-    expect(screen.getByText("Run #7")).toBeInTheDocument();
+    renderWorkspace("datasets");
+    expect(await screen.findByText("Dataset 1")).toBeInTheDocument();
+    expect(screen.getByText("1 runs")).toBeInTheDocument();
   });
 
   it("downloads only the FreeView preset artifacts and launches from cache", async () => {
-    render(<Workspaces />);
-    const buttons = await screen.findAllByRole("button", { name: "Open in FreeView" });
-    fireEvent.click(buttons[0]);
+    renderWorkspace("runs");
+    fireEvent.click(await screen.findByText("Run #7"));
+    fireEvent.click(await screen.findByRole("button", { name: /Open in FreeView/ }));
     await waitFor(() => expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).toHaveBeenCalledWith({
       profileId: "profile-1",
       workspaceId: "workspace-a",
@@ -96,8 +111,9 @@ describe("unified desktop workspaces", () => {
       snapshot: offlineSnapshot,
     });
 
-    render(<Workspaces />);
-    const button = await screen.findByRole("button", { name: "Open in FreeView" });
+    renderWorkspace("runs");
+    fireEvent.click(await screen.findByText("Run #7"));
+    const button = await screen.findByRole("button", { name: /Open in FreeView/ });
     expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() => expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalled());

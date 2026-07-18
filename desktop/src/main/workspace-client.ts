@@ -64,6 +64,28 @@ export class WorkspaceClient {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  async testConnection(
+    profile: WorkspaceProfile,
+    credential: WorkspaceCredential | null,
+  ): Promise<{ workspaceId: string; product: string; apiVersion: string; serverVersion: string }> {
+    const fetcher = authenticatedFetcher(credential, this.fetcher);
+    const [identity, about] = await Promise.all([
+      json<{ workspace_id: string; product: string; api_version: string }>(
+        profile, "/api/workspace/identity", fetcher,
+      ),
+      json<{ version?: string; backend_version?: string }>(profile, "/api/about", fetcher),
+    ]);
+    if (profile.serverIdentity && profile.serverIdentity !== identity.workspace_id) {
+      throw new Error("Workspace server identity changed; connection refused.");
+    }
+    return {
+      workspaceId: identity.workspace_id,
+      product: identity.product,
+      apiVersion: identity.api_version,
+      serverVersion: about.version ?? about.backend_version ?? "unknown",
+    };
+  }
+
   async synchronize(
     profile: WorkspaceProfile,
     credential: WorkspaceCredential | null,

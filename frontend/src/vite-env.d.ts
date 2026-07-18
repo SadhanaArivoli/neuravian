@@ -22,6 +22,14 @@ interface NeuroForgeDesktopBridge {
     profile: WorkspaceProfile;
     snapshot: WorkspaceSnapshot;
   }>;
+  testWorkspace(profileId: string): Promise<{
+    workspaceId: string;
+    product: string;
+    apiVersion: string;
+    serverVersion: string;
+  }>;
+  inspectWorkspace(input: { profileId: string; workspaceId: string }): Promise<WorkspaceInspection>;
+  openWorkspaceRun(input: { profileId: string; runId: number }): Promise<boolean>;
   syncWorkspaceArtifacts(input: {
     profileId: string;
     workspaceId: string;
@@ -76,8 +84,14 @@ interface WorkspaceRun {
   status: string;
   source_run_id?: number | null;
   created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
   progress?: unknown;
   parameters?: unknown;
+  provenance?: unknown;
+  results?: unknown;
+  reports?: unknown[];
+  logs?: unknown;
   artifacts: WorkspaceArtifact[];
   cachedArtifacts: string[];
   cacheState: WorkspaceCacheState;
@@ -94,6 +108,19 @@ interface WorkspaceSnapshot {
   workflows: Array<Record<string, unknown> & { id: number; remoteKey: string }>;
   runs: WorkspaceRun[];
   reports: Array<Record<string, unknown> & { id: number | string; remoteKey: string }>;
+}
+
+interface WorkspaceInspection {
+  cacheSizeBytes: number;
+  cachedRuns: number;
+  cacheEntries: number;
+  viewers: Array<{
+    viewerId: "freeview" | "mricrogl";
+    displayName: string;
+    installed: boolean;
+    executable: string | null;
+    reason: string | null;
+  }>;
 }
 
 interface Window {

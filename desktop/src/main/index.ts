@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } from "electron";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { queryActiveRuns } from "./activity.js";
 import { DesktopCompose } from "./compose.js";
@@ -71,6 +71,32 @@ function workspaceServices(): {
     );
   }
   return { profiles: profileStore, client: workspaceClient };
+}
+
+async function inspectWorkspaceCache(workspaceId: string): Promise<{
+  cacheSizeBytes: number;
+  cachedRuns: number;
+  cacheEntries: number;
+}> {
+  if (!/^[a-f0-9-]{36}$/i.test(workspaceId)) throw new Error("Invalid workspace identity.");
+  const root = path.join(app.getPath("userData"), "run-cache", workspaceId);
+  let cacheSizeBytes = 0;
+  let cacheEntries = 0;
+  const runIds = new Set<string>();
+  async function walk(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (/^run-\d+$/.test(entry.name)) runIds.add(entry.name);
+        await walk(target);
+      } else if (entry.isFile()) {
+        cacheEntries += 1;
+        cacheSizeBytes += (await stat(target)).size;
+      }
+    }
+  }
+  await walk(root);
+  return { cacheSizeBytes, cachedRuns: runIds.size, cacheEntries };
 }
 
 function publish(update: StartupUpdate): void {
@@ -377,6 +403,40 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
   };
   await profiles.update(updated);
   return { ...result, profile: updated };
+});
+ipcMain.handle("workspaces:test", async (_event, profileId: string) => {
+  const { profiles, client } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return await client.testConnection(profile, await profiles.credential(profile.id));
+});
+ipcMain.handle("workspaces:inspect", async (
+  _event,
+  input: { profileId: string; workspaceId: string },
+) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  const [cache, viewers] = await Promise.all([
+    inspectWorkspaceCache(input.workspaceId),
+    Promise.all((["freeview", "mricrogl"] as const).map(
+      (viewerId) => detectViewer(viewerId, process.platform as DesktopPlatform),
+    )),
+  ]);
+  return { ...cache, viewers };
+});
+ipcMain.handle("workspaces:open-run", async (
+  _event,
+  input: { profileId: string; runId: number },
+) => {
+  if (!Number.isInteger(input.runId) || input.runId < 1) throw new Error("Invalid run ID.");
+  const profile = (await workspaceServices().profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  await shell.openExternal(new URL(`/runs/${input.runId}`, `${profile.serverUrl}/`).toString());
+  return true;
 });
 ipcMain.handle("workspaces:sync-artifacts", async (
   _event,

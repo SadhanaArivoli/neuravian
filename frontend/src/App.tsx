@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
@@ -34,7 +34,7 @@ export default function App() {
         <Sidebar />
         <main className="min-h-0 flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Welcome />} />
+            <Route path="/" element={window.neuroforgeDesktop ? <Navigate to="/workspaces" replace /> : <Welcome />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
@@ -68,7 +68,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
-      <OnboardingOverlay />
+      {!window.neuroforgeDesktop && <OnboardingOverlay />}
     </OnboardingProvider>
   );
 }

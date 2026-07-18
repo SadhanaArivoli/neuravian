@@ -50,6 +50,25 @@ function metadataFetch(online = true) {
 }
 
 describe("workspace metadata synchronization", () => {
+  it("tests identity and version using existing lightweight endpoints", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "nf-workspace-"));
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/workspace/identity")) {
+        return body({ workspace_id: "workspace-a", product: "NeuroForge", api_version: "1" });
+      }
+      return body({ version: "0.1.0-alpha" });
+    });
+    const client = new WorkspaceClient(
+      new WorkspaceMetadataCache(path.join(root, "metadata")),
+      path.join(root, "artifacts"),
+      fetcher as typeof fetch,
+    );
+    await expect(client.testConnection(profile, null)).resolves.toEqual({
+      workspaceId: "workspace-a", product: "NeuroForge", apiVersion: "1",
+      serverVersion: "0.1.0-alpha",
+    });
+  });
   it("builds stable remote identities and preserves workflow metadata", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "nf-workspace-"));
     const client = new WorkspaceClient(
