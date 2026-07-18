@@ -8,6 +8,7 @@ import {
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
 import NeuroSurfaceViewer, { type SurfaceLayer } from "./NeuroSurfaceViewer";
 import FreeSurferStatsViewer from "./FreeSurferStatsViewer";
+import OpenWithViewer from "./OpenWithViewer";
 
 const SECTIONS: ArtifactSection[] = [
   "Conformed Anatomy",
@@ -94,6 +95,13 @@ export default function FastSurferResultsPanel({ runId, results }: { runId: numb
     setViewerLayers((base ? [base, artifact] : [artifact]).map((item) => layerFor(item, runId)));
   }
 
+  function openBuiltIn(artifact: ArtifactViewModel) {
+    if (artifact.kind === "volume") openVolume(artifact);
+    else if (artifact.kind === "surface") {
+      setSurfaceLayer({ url: `/api/runs/${runId}/files/${artifact.path}`, name: artifact.name, hemisphere: artifact.hemisphere });
+    } else if (artifact.kind === "statistics") setStatsPath(artifact.path);
+  }
+
   return (
     <section className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-slate-950/60" data-testid="fastsurfer-results-workspace">
       <header className="border-b border-white/10 bg-gradient-to-r from-violet-500/10 to-cyan-500/5 px-4 py-4">
@@ -117,7 +125,7 @@ export default function FastSurferResultsPanel({ runId, results }: { runId: numb
           {SECTIONS.map((group) => {
             const groupArtifacts = filtered.filter((artifact) => artifact.section === group);
             if (!groupArtifacts.length) return null;
-            return <details key={group} open={group !== "Raw Inventory"} className="rounded-lg border border-white/8 bg-white/[0.025]"><summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-300">{group} <span className="font-normal text-slate-600">({groupArtifacts.length})</span></summary><div className="grid gap-px border-t border-white/8 bg-white/5 lg:grid-cols-2">{groupArtifacts.map((artifact) => <article key={artifact.path} className="bg-slate-950/95 px-3 py-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="text-xs font-medium text-slate-100">{displayName(artifact)}</h4><p className="mt-0.5 truncate font-mono text-[9px] text-slate-500" title={artifact.path}>{artifact.path}</p><p className="mt-1 text-[10px] text-slate-500">{artifact.format} · {artifact.role.replace(/-/g, " ")} · {bytes(artifact.size)}{artifact.hemisphere ? ` · ${artifact.hemisphere} hemisphere` : ""}</p></div><div className="flex shrink-0 gap-1">{artifact.kind === "volume" && artifact.canView && <button type="button" onClick={() => openVolume(artifact)} className="rounded border border-cyan-400/20 px-2 py-1 text-[10px] text-cyan-200">View</button>}{artifact.kind === "surface" && artifact.canView && <button type="button" onClick={() => setSurfaceLayer({ url: `/api/runs/${runId}/files/${artifact.path}`, name: artifact.name, hemisphere: artifact.hemisphere })} className="rounded border border-violet-400/20 px-2 py-1 text-[10px] text-violet-200">Surface</button>}{artifact.kind === "statistics" && <button type="button" onClick={() => setStatsPath(artifact.path)} className="rounded border border-emerald-400/20 px-2 py-1 text-[10px] text-emerald-200">Stats</button>}<a href={`/api/runs/${runId}/files/${artifact.path}`} download className="rounded border border-white/10 px-2 py-1 text-[10px] text-slate-300">Download</a></div></div>{artifact.unsupportedReason && <p className="mt-2 text-[9px] text-amber-300/80">{artifact.unsupportedReason}</p>}</article>)}</div></details>;
+            return <details key={group} open={group !== "Raw Inventory"} className="rounded-lg border border-white/8 bg-white/[0.025]"><summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-300">{group} <span className="font-normal text-slate-600">({groupArtifacts.length})</span></summary><div className="grid gap-px border-t border-white/8 bg-white/5 lg:grid-cols-2">{groupArtifacts.map((artifact) => <article key={artifact.path} className="bg-slate-950/95 px-3 py-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="text-xs font-medium text-slate-100">{displayName(artifact)}</h4><p className="mt-0.5 truncate font-mono text-[9px] text-slate-500" title={artifact.path}>{artifact.path}</p><p className="mt-1 text-[10px] text-slate-500">{artifact.format} · {artifact.role.replace(/-/g, " ")} · {bytes(artifact.size)}{artifact.hemisphere ? ` · ${artifact.hemisphere} hemisphere` : ""}</p></div><div className="flex shrink-0 items-start gap-1">{artifact.canView && <OpenWithViewer runId={runId} artifact={artifact} candidates={artifacts} onOpenNeuroForge={() => openBuiltIn(artifact)} />}<a href={`/api/runs/${runId}/files/${artifact.path}`} download className="rounded border border-white/10 px-2 py-1 text-[10px] text-slate-300">Download</a></div></div>{artifact.unsupportedReason && <p className="mt-2 text-[9px] text-amber-300/80">{artifact.unsupportedReason}</p>}</article>)}</div></details>;
           })}
           {!filtered.length && <p className="py-8 text-center text-sm text-slate-500">No FastSurfer artifacts match these filters.</p>}
         </div>

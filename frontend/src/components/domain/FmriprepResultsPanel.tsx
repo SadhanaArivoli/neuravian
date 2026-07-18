@@ -8,6 +8,8 @@ import {
   type FmriprepDerivative,
 } from "../../lib/fmriprepArtifacts";
 import NiivueViewer, { type NiivueLayer } from "./NiivueViewer";
+import OpenWithViewer from "./OpenWithViewer";
+import { classifyNeuroArtifact } from "../../lib/neuroArtifactView";
 
 const SECTIONS: FmriprepDerivative["section"][] = [
   "QC Report",
@@ -67,6 +69,10 @@ export default function FmriprepResultsPanel({ runId, results }: { runId: number
       && (space === "all" || (file.space ?? "native") === space)
       && (role === "all" || file.role === role);
   });
+  const viewerArtifacts = useMemo(
+    () => files.map((file) => classifyNeuroArtifact(file, "fmriprep")),
+    [files],
+  );
 
   function openViewer(file: FmriprepDerivative) {
     const base = file.preferredBase ? preferredBaseFor(file, files) : null;
@@ -137,7 +143,10 @@ export default function FmriprepResultsPanel({ runId, results }: { runId: number
           <div className="space-y-4">{SECTIONS.map((section) => {
             const sectionFiles = filtered.filter((file) => file.section === section);
             if (!sectionFiles.length) return null;
-            return <details key={section} open={section !== "Other Files"} className="rounded-lg border border-white/8 bg-white/[0.025]"><summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-300">{section} <span className="font-normal text-slate-600">({sectionFiles.length})</span></summary><div className="border-t border-white/8">{sectionFiles.map((file) => <div key={file.path} className="flex items-center justify-between gap-3 border-b border-white/5 px-3 py-2 last:border-0"><div className="min-w-0"><div className="text-xs text-slate-200">{fmriprepDisplayName(file)}</div><div className="truncate font-mono text-[10px] text-slate-600">{file.path} · {bytes(file.size)}</div></div><div className="flex shrink-0 gap-1">{viewable.includes(file) && <button type="button" onClick={() => openViewer(file)} className="rounded border border-cyan-400/20 px-2 py-1 text-[10px] text-cyan-200">View</button>}<a href={`/api/runs/${runId}/files/${file.path}`} target="_blank" rel="noopener noreferrer" className="rounded border border-white/10 px-2 py-1 text-[10px] text-slate-300">Open</a></div></div>)}</div></details>;
+            return <details key={section} open={section !== "Other Files"} className="rounded-lg border border-white/8 bg-white/[0.025]"><summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-300">{section} <span className="font-normal text-slate-600">({sectionFiles.length})</span></summary><div className="border-t border-white/8">{sectionFiles.map((file) => {
+              const artifact = viewerArtifacts.find((candidate) => candidate.path === file.path);
+              return <div key={file.path} className="flex items-center justify-between gap-3 border-b border-white/5 px-3 py-2 last:border-0"><div className="min-w-0"><div className="text-xs text-slate-200">{fmriprepDisplayName(file)}</div><div className="truncate font-mono text-[10px] text-slate-600">{file.path} · {bytes(file.size)}</div></div><div className="flex shrink-0 items-start gap-1">{viewable.includes(file) && artifact && <OpenWithViewer runId={runId} artifact={artifact} candidates={viewerArtifacts} onOpenNeuroForge={() => openViewer(file)} />}<a href={`/api/runs/${runId}/files/${file.path}`} target="_blank" rel="noopener noreferrer" className="rounded border border-white/10 px-2 py-1 text-[10px] text-slate-300">Open</a></div></div>;
+            })}</div></details>;
           })}</div>
         </div>
       )}

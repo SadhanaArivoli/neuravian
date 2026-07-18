@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   openDockerInstall: () => ipcRenderer.invoke("docker:install"),
   detectViewers: (configured?: Record<string, string>) => ipcRenderer.invoke("viewers:detect", configured),
   syncRun: (runId: number) => ipcRenderer.invoke("runs:sync", runId),
+  launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
 });
 
 ipcRenderer.send("startup:trace", { stage: 3, name: "preload loaded" });

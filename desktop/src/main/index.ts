@@ -15,7 +15,10 @@ import { DesktopLogger, type StartupTrace } from "./logger.js";
 import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
 import { syncRun, type SyncManifest } from "./run-cache.js";
-import { detectViewer, type DesktopPlatform, type ExternalViewerId } from "./viewer-manager.js";
+import {
+  commandForPreset, detectViewer, launchViewer,
+  type DesktopPlatform, type ExternalViewerId, type ViewerLaunchRequest,
+} from "./viewer-manager.js";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -333,6 +336,15 @@ ipcMain.handle("runs:sync", async (_event, runId: number) => {
     url: new URL(artifact.url, "http://127.0.0.1:8000").toString(),
   }));
   return await syncRun(path.join(app.getPath("userData"), "run-cache"), manifest);
+});
+ipcMain.handle("viewers:launch", async (_event, request: ViewerLaunchRequest) => {
+  if (!["darwin", "win32", "linux"].includes(process.platform)) throw new Error("External viewers are unavailable on this platform.");
+  const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
+  if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
+  const cacheRoot = path.join(app.getPath("userData"), "run-cache");
+  const command = commandForPreset(request, detection.executable, cacheRoot);
+  await launchViewer(command, cacheRoot);
+  return true;
 });
 
 app.whenReady().then(async () => {

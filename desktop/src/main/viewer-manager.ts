@@ -19,6 +19,14 @@ export interface LaunchCommand {
   args: string[];
 }
 
+export interface ViewerLaunchRequest {
+  viewerId: ExternalViewerId;
+  runId: number;
+  files: Array<{ relativePath: string; overlay?: boolean }>;
+  opacity?: number;
+  freesurferLut?: boolean;
+}
+
 const INSTALL_PATHS: Record<ExternalViewerId, Record<DesktopPlatform, string[]>> = {
   freeview: {
     darwin: ["/Applications/Freeview.app/Contents/MacOS/freeview", "/Applications/freesurfer/bin/freeview"],
@@ -95,4 +103,35 @@ export async function launchViewer(
     child.once("error", reject);
     child.once("spawn", () => { child.unref(); resolve(); });
   });
+}
+
+export function commandForPreset(
+  request: ViewerLaunchRequest,
+  executable: string,
+  cacheRoot: string,
+): LaunchCommand {
+  if (!Number.isInteger(request.runId) || request.runId < 1 || !request.files.length) {
+    throw new Error("Viewer launch requires a synchronized run and at least one artifact.");
+  }
+  const runRoot = path.join(cacheRoot, `run-${request.runId}`, "artifacts");
+  const resolved = request.files.map(({ relativePath, overlay }) => {
+    const normalized = relativePath.replace(/\\/g, "/");
+    if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..") || normalized.includes("\0")) {
+      throw new Error("Viewer launch rejected an unsafe artifact path.");
+    }
+    return { path: path.join(runRoot, normalized), overlay };
+  });
+  if (request.viewerId === "mricrogl") {
+    return { viewerId: request.viewerId, executable, args: resolved.map((file) => file.path) };
+  }
+  return {
+    viewerId: request.viewerId,
+    executable,
+    args: ["-v", ...resolved.map((file) => {
+      if (!file.overlay) return file.path;
+      const options = [file.path, `opacity=${request.opacity ?? 0.7}`];
+      if (request.freesurferLut) options.push("colormap=lut");
+      return options.join(":");
+    })],
+  };
 }
