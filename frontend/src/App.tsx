@@ -26,13 +26,15 @@ import WorkflowBuilder from "./pages/WorkflowBuilder";
 import WorkflowLibrary from "./pages/WorkflowLibrary";
 import WizardDcm2bids from "./pages/WizardDcm2bids";
 import Workspaces from "./pages/Workspaces";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 
 export default function App() {
   return (
     <OnboardingProvider>
-      <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
-        <Sidebar />
-        <main className="min-h-0 flex-1 overflow-y-auto">
+      <WorkspaceProvider>
+        <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
+          <Sidebar />
+          <main className="min-h-0 flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={window.neuroforgeDesktop ? <Navigate to="/workspaces" replace /> : <Welcome />} />
             <Route path="/projects" element={<Projects />} />
@@ -66,8 +68,9 @@ export default function App() {
               </div>
             } />
           </Routes>
-        </main>
-      </div>
+          </main>
+        </div>
+      </WorkspaceProvider>
       {!window.neuroforgeDesktop && <OnboardingOverlay />}
     </OnboardingProvider>
   );

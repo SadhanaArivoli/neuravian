@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AboutDialog } from "../onboarding/AboutDialog";
 import { useOnboarding } from "../../context/OnboardingContext";
 import { useHealth } from "../../hooks/useHealth";
 import { StatusBadge } from "./StatusBadge";
 import { WorkbenchIcons } from "../../lib/iconRegistry";
+import { useWorkspace, type WorkspaceSelection } from "../../context/WorkspaceContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true, icon: WorkbenchIcons.home },
@@ -26,14 +27,14 @@ const SETTINGS_ITEMS = [
   { to: "/settings", label: "Settings", end: true, icon: WorkbenchIcons.settings },
 ] as const;
 
-const DESKTOP_NAV_ITEMS = [
-  { to: "/workspaces", label: "Workspace", icon: WorkbenchIcons.home },
-  { to: "/workspaces?view=projects", label: "Projects", icon: WorkbenchIcons.project },
-  { to: "/workspaces?view=datasets", label: "Datasets", icon: WorkbenchIcons.dataset },
-  { to: "/workspaces?view=workflows", label: "Workflows", icon: WorkbenchIcons.workflow },
-  { to: "/workspaces?view=runs", label: "Runs", icon: WorkbenchIcons.activity },
-  { to: "/workspaces?view=reports", label: "Reports", icon: WorkbenchIcons.library },
-  { to: "/workspaces?view=settings", label: "Settings", icon: WorkbenchIcons.settings },
+const DESKTOP_NAV = [
+  { view: "home", label: "Workspace", icon: WorkbenchIcons.home },
+  { view: "projects", label: "Projects", icon: WorkbenchIcons.project },
+  { view: "datasets", label: "Datasets", icon: WorkbenchIcons.dataset },
+  { view: "workflows", label: "Workflows", icon: WorkbenchIcons.workflow },
+  { view: "runs", label: "Runs", icon: WorkbenchIcons.activity },
+  { view: "reports", label: "Reports", icon: WorkbenchIcons.library },
+  { view: "settings", label: "Settings", icon: WorkbenchIcons.settings },
 ] as const;
 
 function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; end: boolean; icon: typeof WorkbenchIcons.home }) {
@@ -57,10 +58,20 @@ function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; en
 
 function DesktopNav() {
   const location = useLocation();
+  const { selected } = useWorkspace();
   const activeView = new URLSearchParams(location.search).get("view") ?? "home";
-  return DESKTOP_NAV_ITEMS.map(({ to, label, icon: Icon }) => {
-    const view = new URL(to, "https://desktop.local").searchParams.get("view") ?? "home";
-    const active = location.pathname === "/workspaces" && activeView === view;
+  const localRoutes: Record<string, string> = {
+    home: "/workspaces?scope=local", projects: "/projects", datasets: "/datasets",
+    workflows: "/workflows/library", runs: "/runs",
+    reports: "/workspaces?scope=local&view=reports", settings: "/settings",
+  };
+  const cloudScope = selected.startsWith("cloud:") ? `cloud:${selected.slice(6)}` : selected;
+  return DESKTOP_NAV.map(({ view, label, icon: Icon }) => {
+    const to = selected === "local"
+      ? localRoutes[view]
+      : `/workspaces?scope=${encodeURIComponent(cloudScope)}${view === "home" ? "" : `&view=${view}`}`;
+    const active = location.pathname === new URL(to, "https://desktop.local").pathname &&
+      (location.pathname !== "/workspaces" || activeView === view);
     return <Link key={to} to={to} className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
       active ? "bg-accent/20 font-medium text-accent" : "text-gray-400 hover:bg-surface-overlay hover:text-gray-100"
     }`}>
@@ -68,6 +79,57 @@ function DesktopNav() {
       {label}
     </Link>;
   });
+}
+
+function WorkspaceSwitcher() {
+  const desktop = window.neuroforgeDesktop!;
+  const navigate = useNavigate();
+  const { selected, select, local, cloudProfiles } = useWorkspace();
+  const [localCounts, setLocalCounts] = useState({ datasets: 0, runs: 0, workflows: 0 });
+  const [cloudCounts, setCloudCounts] = useState<Record<string, { datasets: number; runs: number; workflows: number }>>({});
+
+  useEffect(() => {
+    void Promise.all([
+      fetch("/api/datasets").then((response) => response.ok ? response.json() : []),
+      fetch("/api/runs").then((response) => response.ok ? response.json() : []),
+      fetch("/api/workflows").then((response) => response.ok ? response.json() : []),
+    ]).then(([datasets, runs, workflows]) => setLocalCounts({
+      datasets: datasets.length, runs: runs.length, workflows: workflows.length,
+    }));
+    for (const profile of cloudProfiles) {
+      void desktop.syncWorkspace(profile.id).then(({ snapshot }) => setCloudCounts((current) => ({
+        ...current, [profile.id]: {
+          datasets: snapshot.datasets.length, runs: snapshot.runs.length, workflows: snapshot.workflows.length,
+        },
+      }))).catch(() => undefined);
+    }
+  }, [cloudProfiles, desktop]);
+
+  const selectedLabel = useMemo(() => selected === "local" ? "Local NeuroForge"
+    : selected === "all" ? "All Workspaces"
+      : cloudProfiles.find((profile) => `cloud:${profile.id}` === selected)?.name ?? "Cloud workspace",
+  [selected, cloudProfiles]);
+
+  function change(value: WorkspaceSelection) {
+    select(value);
+    navigate(`/workspaces?scope=${encodeURIComponent(value)}`);
+  }
+
+  const activeCloud = selected.startsWith("cloud:") ? cloudProfiles.find((profile) => profile.id === selected.slice(6)) : null;
+  const activeCounts = activeCloud ? cloudCounts[activeCloud.id] : null;
+  return <div className="mb-3 rounded-lg border border-white/8 bg-slate-950/35 p-2">
+    <label className="text-[9px] font-semibold uppercase tracking-widest text-slate-500" htmlFor="workspace-selector">Workspaces</label>
+    <select id="workspace-selector" value={selected} onChange={(event) => change(event.target.value as WorkspaceSelection)}
+      className="mt-1 w-full rounded border border-white/10 bg-slate-950 px-2 py-1.5 text-xs font-semibold text-white">
+      <option value="local">Local NeuroForge</option>
+      {cloudProfiles.map((profile) => <option key={profile.id} value={`cloud:${profile.id}`}>{profile.name}</option>)}
+      <option value="all">All Workspaces</option>
+    </select>
+    <p className="mt-2 truncate text-[10px] font-medium text-slate-300">{selectedLabel}</p>
+    {selected === "local" && <p className="mt-0.5 text-[9px] text-emerald-300">Local · {localCounts.datasets} datasets · {localCounts.workflows} workflows · {localCounts.runs} runs · Available offline</p>}
+    {activeCloud && <p className="mt-0.5 text-[9px] text-cyan-300">{activeCloud.connectionState === "connected" ? "Connected" : activeCloud.connectionState} · {activeCounts?.datasets ?? "—"} datasets · {activeCounts?.runs ?? "—"} runs</p>}
+    {selected === "all" && <p className="mt-0.5 text-[9px] text-slate-400">{local ? "Local + connected cloud metadata" : "Discovering workspaces…"}</p>}
+  </div>;
 }
 
 function SectionLabel({ children }: { children: string }) {
@@ -210,7 +272,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-        {window.neuroforgeDesktop ? <DesktopNav /> : <>
+        {window.neuroforgeDesktop ? <><WorkspaceSwitcher /><DesktopNav /></> : <>
           {NAV_ITEMS.map(({ to, label, end, icon }) => (
             <NavItem key={to} to={to} label={label} end={end} icon={icon} />
           ))}

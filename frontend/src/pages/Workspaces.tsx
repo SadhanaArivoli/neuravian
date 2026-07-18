@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { useWorkspace } from "../context/WorkspaceContext";
 
 const REFRESH_MS = 15_000;
 type WorkspaceView = "home" | "projects" | "datasets" | "workflows" | "runs" | "reports" | "settings" | "diagnostics";
@@ -116,6 +117,88 @@ function ViewerStatus({ inspection }: { inspection: WorkspaceInspection | null }
       </div>;
     })}
   </div>;
+}
+
+interface LocalWorkspaceData {
+  projects: Array<Record<string, unknown> & { id: number }>;
+  datasets: Array<Record<string, unknown> & { id: number }>;
+  workflows: Array<Record<string, unknown> & { id: number }>;
+  runs: Array<Record<string, unknown> & { id: number }>;
+  reports: Array<Record<string, unknown> & { id: number; dataset_id: number }>;
+}
+
+async function localJson<T>(path: string): Promise<T> {
+  const response = await fetch(`/api${path}`);
+  if (!response.ok) throw new Error(`Local NeuroForge API returned HTTP ${response.status}.`);
+  return response.json() as Promise<T>;
+}
+
+async function loadLocalWorkspace(): Promise<LocalWorkspaceData> {
+  const [projects, datasets, workflows, runs] = await Promise.all([
+    localJson<LocalWorkspaceData["projects"]>("/projects"),
+    localJson<LocalWorkspaceData["datasets"]>("/datasets"),
+    localJson<LocalWorkspaceData["workflows"]>("/workflows"),
+    localJson<LocalWorkspaceData["runs"]>("/runs"),
+  ]);
+  const reportGroups = await Promise.all(datasets.map((dataset) =>
+    localJson<LocalWorkspaceData["reports"]>(`/datasets/${dataset.id}/reports`).catch(() => [])));
+  return { projects, datasets, workflows, runs, reports: reportGroups.flat() };
+}
+
+function LocalWorkspaceView({
+  view, data, workspaceId, cloud,
+}: {
+  view: WorkspaceView; data: LocalWorkspaceData; workspaceId: string;
+  cloud?: WorkspaceSnapshot | null;
+}) {
+  if (cloud && view === "runs") {
+    const combined = [
+      ...data.runs.map((run) => ({ key: `${workspaceId}:run:${run.id}`, id: run.id, pipeline: stringValue(run.pipeline_manifest_id), status: stringValue(run.status), workspace: "Local NeuroForge", local: true })),
+      ...cloud.runs.map((run) => ({ key: run.remoteKey, id: run.id, pipeline: run.pipeline_manifest_id, status: run.status, workspace: "AWS NeuroForge", local: false })),
+    ];
+    return <section className="mt-6"><h2 className="text-lg font-semibold text-white">All Workspaces · Runs</h2>
+      <p className="mt-1 text-xs text-slate-500">Metadata is combined only in this view. Local and cloud IDs remain separate.</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">{combined.map((run) =>
+        <Link key={run.key} to={run.local ? `/runs/${run.id}` : `/workspaces?scope=cloud&view=runs`}
+          className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+          <div className="flex justify-between"><span className="font-mono text-sm text-cyan-300">Run #{run.id}</span>
+            <Badge tone={run.local ? "success" : "cloud"}>{run.workspace}</Badge></div>
+          <p className="mt-2 text-sm capitalize text-white">{run.pipeline}</p><p className="mt-1 text-xs text-slate-500">{run.status}</p>
+          <p className="mt-3 font-mono text-[9px] text-slate-600">{run.key}</p>
+        </Link>)}</div></section>;
+  }
+  if (view === "home") return <div className="mt-6 space-y-5">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <Metric label="Projects" value={data.projects.length} /><Metric label="Datasets" value={data.datasets.length} />
+      <Metric label="Workflows" value={data.workflows.length} /><Metric label="Runs" value={data.runs.length} />
+      <Metric label="Reports" value={data.reports.length} />
+    </div>
+    <section className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">Local NeuroForge</h2>
+        <p className="mt-1 text-sm text-emerald-300">Local · Available offline · Existing database</p></div><Badge tone="success">109 historical runs preserved</Badge></div>
+      <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2"><div><dt className="text-slate-500">Workspace identity</dt><dd className="mt-1 break-all font-mono text-slate-300">{workspaceId}</dd></div>
+        <div><dt className="text-slate-500">Storage</dt><dd className="mt-1 text-slate-300">Existing local API and scientific database</dd></div></dl>
+    </section>
+  </div>;
+  if (view === "projects") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Projects</h2>
+    <div className="mt-4 grid gap-3">{data.projects.map((item) => <Link key={`${workspaceId}:project:${item.id}`} to={`/projects/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
+      <div className="flex justify-between"><span className="text-white">{stringValue(item.name, `Project ${item.id}`)}</span><Badge tone="success">Local NeuroForge</Badge></div></Link>)}</div></section>;
+  if (view === "datasets") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Datasets</h2>
+    <div className="mt-4 grid gap-3 md:grid-cols-2">{data.datasets.map((item) => <Link key={`${workspaceId}:dataset:${item.id}`} to={`/datasets/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
+      <div className="flex justify-between"><span className="text-white">{stringValue(item.name, `Dataset ${item.id}`)}</span><Badge tone="success">Local</Badge></div></Link>)}</div></section>;
+  if (view === "workflows") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Saved Workflows</h2>
+    <p className="mt-2 text-sm text-slate-400">{data.workflows.length} saved workflows remain in the local database.</p>
+    <Link to="/workflows/library" className="mt-4 inline-flex rounded border border-white/10 px-3 py-2 text-xs text-cyan-300">Open workflow library</Link></section>;
+  if (view === "runs") return <section className="mt-6"><div className="flex justify-between"><h2 className="text-lg font-semibold text-white">Local Runs</h2><Badge tone="success">Local NeuroForge · {data.runs.length}</Badge></div>
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">{data.runs.map((run) => <Link key={`${workspaceId}:run:${run.id}`} to={`/runs/${run.id}`} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+      <div className="flex justify-between"><span className="font-mono text-cyan-300">Run #{run.id}</span><Badge tone="success">Local NeuroForge</Badge></div>
+      <p className="mt-2 text-sm capitalize text-white">{stringValue(run.pipeline_manifest_id)}</p><p className="mt-1 text-xs text-slate-500">{stringValue(run.status)}</p>
+    </Link>)}</div></section>;
+  if (view === "reports") return <section className="mt-6"><h2 className="text-lg font-semibold text-white">Local Reports</h2>
+    <p className="mt-2 text-sm text-slate-400">{data.reports.length} report records remain attached to local datasets.</p>
+    <div className="mt-4 grid gap-3">{data.reports.map((report) => <Link key={`${workspaceId}:report:${report.id}`} to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4 text-sm text-white">Report #{report.id} · Dataset #{report.dataset_id}</Link>)}</div></section>;
+  return <section className="mt-6 rounded-xl border border-white/8 bg-slate-900/55 p-5"><h2 className="text-lg text-white">Local workspace settings</h2>
+    <p className="mt-2 text-sm text-slate-400">Local records stay in the existing NeuroForge database and are never uploaded automatically.</p><Link to="/settings" className="mt-4 inline-flex text-sm text-cyan-300">Open local settings</Link></section>;
 }
 
 function ArtifactTable({ run }: { run: WorkspaceRun }) {
@@ -250,6 +333,7 @@ function RunDetails({
 
 export default function Workspaces() {
   const desktop = window.neuroforgeDesktop;
+  const workspace = useWorkspace();
   const [params, setParams] = useSearchParams();
   const requestedView = params.get("view") as WorkspaceView | null;
   const view: WorkspaceView = requestedView && VIEWS.includes(requestedView) ? requestedView : "home";
@@ -267,6 +351,12 @@ export default function Workspaces() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [connectionResult, setConnectionResult] = useState<string | null>(null);
+  const [localData, setLocalData] = useState<LocalWorkspaceData | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const scope = params.get("scope") ?? workspace.selected;
+  const showsLocal = scope === "local" || scope === "all";
+  const cloudOnly = scope !== "local" && scope !== "all";
+  const showsCloud = cloudOnly || scope === "all";
 
   const refreshProfiles = useCallback(async () => {
     if (!desktop) return;
@@ -301,6 +391,16 @@ export default function Workspaces() {
   }, [desktop, refreshInspection, refreshProfiles]);
 
   useEffect(() => { void refreshProfiles(); }, [refreshProfiles]);
+  useEffect(() => {
+    void loadLocalWorkspace().then(setLocalData).catch((cause) => setLocalError(
+      cause instanceof Error ? cause.message : String(cause),
+    ));
+  }, []);
+  useEffect(() => {
+    if (!scope.startsWith("cloud:")) return;
+    const profileId = scope.slice(6);
+    if (profiles.some((profile) => profile.id === profileId)) setActiveId(profileId);
+  }, [profiles, scope]);
   useEffect(() => {
     if (!activeId) return;
     void synchronize(activeId);
@@ -340,27 +440,34 @@ export default function Workspaces() {
   if (!desktop) return <div className="p-8"><h1 className="text-xl font-semibold">Workspace</h1>
     <p className="mt-2 text-sm text-slate-400">Unified cloud workspaces are available in NeuroForge Desktop.</p></div>;
 
+  const headerName = showsLocal && !showsCloud ? "Local NeuroForge"
+    : scope === "all" ? "All Workspaces" : activeProfile?.name ?? "Connect a NeuroForge workspace";
   const header = <><div className="flex flex-wrap items-start justify-between gap-4">
     <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Workspace</p>
-      <h1 className="mt-1 text-2xl font-bold text-white">{activeProfile?.name ?? "Connect a NeuroForge workspace"}</h1>
+      <h1 className="mt-1 text-2xl font-bold text-white">{headerName}</h1>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Badge tone={online ? "success" : "warning"}>{online ? "Connected" : snapshot ? "Offline" : "Not Connected"}</Badge>
-        {activeProfile && <span className="text-xs text-slate-500">{activeProfile.serverUrl}</span>}
+        {showsLocal && <Badge tone="success">Local · Available offline</Badge>}
+        {showsCloud && <Badge tone={online ? "success" : "warning"}>{online ? "Connected" : snapshot ? "Offline" : "Not Connected"}</Badge>}
+        {showsCloud && activeProfile && <span className="text-xs text-slate-500">{activeProfile.serverUrl}</span>}
       </div></div>
     <div className="flex gap-2">
-      {activeId && <button onClick={() => void synchronize(activeId)} disabled={syncState === "syncing"}
+      {showsCloud && activeId && <button onClick={() => void synchronize(activeId)} disabled={syncState === "syncing"}
         className="rounded-md border border-white/10 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">Refresh metadata</button>}
       <button onClick={() => { setShowForm(true); setParams({ view: "settings" }); }}
         className="rounded-md bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950">Add Workspace</button>
     </div>
-  </div><SynchronizationProgress state={syncState} /></>;
+  </div>{showsCloud && <SynchronizationProgress state={syncState} />}</>;
 
   return <div className="mx-auto max-w-7xl p-6 lg:p-8">{header}
-    {!profiles.length && !showForm && <div className="mt-8 rounded-xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-500">
+    {showsCloud && !profiles.length && !showForm && <div className="mt-8 rounded-xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-500">
       Add an HTTPS NeuroForge deployment to see its projects, datasets, workflows, and runs.
     </div>}
 
-    {snapshot && view === "home" && <div className="mt-6 space-y-6">
+    {showsLocal && localData && workspace.local && <LocalWorkspaceView view={view} data={localData}
+      workspaceId={workspace.local.id} cloud={scope === "all" ? snapshot : null} />}
+    {showsLocal && localError && <p role="alert" className="mt-4 rounded-lg border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-300">{localError}</p>}
+
+    {cloudOnly && snapshot && view === "home" && <div className="mt-6 space-y-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <Metric label="Projects" value={snapshot.projects.length} />
         <Metric label="Datasets" value={snapshot.datasets.length} />
@@ -391,7 +498,7 @@ export default function Workspaces() {
       </section>
     </div>}
 
-    {snapshot && view === "projects" && <div className="mt-6">
+    {cloudOnly && snapshot && view === "projects" && <div className="mt-6">
       <h2 className="text-lg font-semibold text-white">Projects</h2>
       {snapshot.projects.length === 0 && <p className="mt-2 rounded-lg border border-amber-400/15 bg-amber-400/5 p-3 text-sm text-amber-200">
         This workspace has no project records. Dataset and run metadata remain available under Datasets and Runs.</p>}
@@ -411,7 +518,7 @@ export default function Workspaces() {
       })}</div>
     </div>}
 
-    {snapshot && view === "datasets" && <div className="mt-6">
+    {cloudOnly && snapshot && view === "datasets" && <div className="mt-6">
       <h2 className="text-lg font-semibold text-white">Datasets</h2>
       <div className="mt-4 grid gap-4 md:grid-cols-2">{snapshot.datasets.map((dataset) => {
         const runs = runsByDataset.get(dataset.id) ?? [];
@@ -423,7 +530,7 @@ export default function Workspaces() {
       })}</div>
     </div>}
 
-    {snapshot && view === "workflows" && <div className="mt-6">
+    {cloudOnly && snapshot && view === "workflows" && <div className="mt-6">
       <h2 className="text-lg font-semibold text-white">Workflows</h2>
       <p className="mt-2 text-xs text-slate-500">Runs are associated by dataset and pipeline node because the current run schema does not store a saved-workflow ID.</p>
       {snapshot.workflows.length === 0 && <p className="mt-4 rounded-lg border border-white/8 bg-slate-900/50 p-4 text-sm text-slate-400">No saved workflows exist on this server. Runs remain visible in Run history.</p>}
@@ -442,7 +549,7 @@ export default function Workspaces() {
       })}</div>
     </div>}
 
-    {snapshot && view === "runs" && <div className="mt-6">
+    {cloudOnly && snapshot && view === "runs" && <div className="mt-6">
       <div className="flex items-end justify-between"><div><h2 className="text-lg font-semibold text-white">Runs</h2><p className="mt-1 text-xs text-slate-500">Cloud metadata and local cache availability</p></div><Badge tone="cloud">{snapshot.runs.length} Cloud Runs</Badge></div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">{snapshot.runs.map((run) => {
         const viewerArtifacts = run.artifacts.filter((artifact) => /\/mri\/(orig_nu|aseg\.auto)\.mgz$/.test(artifact.relativePath)).length;
@@ -460,7 +567,7 @@ export default function Workspaces() {
       })}</div>
     </div>}
 
-    {snapshot && view === "reports" && <div className="mt-6">
+    {cloudOnly && snapshot && view === "reports" && <div className="mt-6">
       <h2 className="text-lg font-semibold text-white">Reports</h2>
       {snapshot.reports.length === 0 ? <p className="mt-4 rounded-lg border border-white/8 bg-slate-900/50 p-4 text-sm text-slate-400">No report records are registered in this workspace. Run-level report metadata remains visible in Run Details.</p>
         : <div className="mt-4 grid gap-3">{snapshot.reports.map((report) => <article key={report.remoteKey} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
@@ -468,7 +575,7 @@ export default function Workspaces() {
         </article>)}</div>}
     </div>}
 
-    {view === "settings" && <div className="mt-6 grid gap-5 lg:grid-cols-[1.3fr_1fr]">
+    {cloudOnly && view === "settings" && <div className="mt-6 grid gap-5 lg:grid-cols-[1.3fr_1fr]">
       <section className="rounded-xl border border-white/8 bg-slate-900/50 p-5"><h2 className="text-lg font-semibold text-white">Workspace Settings</h2>
         {showForm && <form onSubmit={(event) => void addWorkspace(event)} className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-slate-400">Workspace name<input required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-950 px-3 py-2 text-white" /></label>
@@ -496,7 +603,7 @@ export default function Workspaces() {
       </section>
     </div>}
 
-    {snapshot && view === "diagnostics" && <div className="mt-6 rounded-xl border border-fuchsia-400/15 bg-slate-900/55 p-5">
+    {cloudOnly && snapshot && view === "diagnostics" && <div className="mt-6 rounded-xl border border-fuchsia-400/15 bg-slate-900/55 p-5">
       <div className="flex justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-widest text-fuchsia-300">Developer verification</p><h2 className="mt-1 text-lg font-semibold text-white">Workspace Diagnostics</h2></div><Badge tone={online ? "success" : "warning"}>{online ? "Online" : "Offline"}</Badge></div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Projects" value={snapshot.projects.length} /><Metric label="Datasets" value={snapshot.datasets.length} />

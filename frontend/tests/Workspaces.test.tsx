@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import Workspaces from "../src/pages/Workspaces";
+import { WorkspaceProvider } from "../src/context/WorkspaceContext";
 
 function renderWorkspace(view = "home") {
-  return render(<MemoryRouter initialEntries={[view === "home" ? "/workspaces" : `/workspaces?view=${view}`]}>
-    <Workspaces />
+  return render(<MemoryRouter initialEntries={[`/workspaces?scope=cloud%3Aprofile-1${view === "home" ? "" : `&view=${view}`}`]}>
+    <WorkspaceProvider><Workspaces /></WorkspaceProvider>
   </MemoryRouter>);
 }
 
@@ -38,6 +39,9 @@ describe("unified desktop workspaces", () => {
   beforeEach(() => {
     window.neuroforgeDesktop = {
       detectViewers: vi.fn(async () => []),
+      getLocalWorkspaceIdentity: vi.fn(async () => ({
+        schemaVersion: 1 as const, workspaceId: "local-5df1dc24-a857-4adf-8908-1f8a7f36d058", createdAt: "2026-07-18T00:00:00Z",
+      })),
       listWorkspaces: vi.fn(async () => [profile]),
       saveWorkspace: vi.fn(),
       removeWorkspace: vi.fn(),
