@@ -220,10 +220,15 @@ export function WorkspaceSettingsPanel({
     setStartingVm(true);
     setVmLifecycleMsg(null);
     try {
-      await desktop.startEnvironment(profile.id);
-      setVmLifecycleMsg({ ok: true, text: "Instance is starting. NeuroForge will reconnect automatically." });
-      // Trigger a sync to pick up the new IP once the instance is running.
-      setTimeout(() => void forceSyncNow(), 30_000);
+      // launchEnvironment waits for the instance to be running AND the server
+      // to be reachable before returning — no polling needed in the UI.
+      const result = await desktop.launchEnvironment({ profileId: profile.id });
+      onUpdated(result.profile);
+      setVmLifecycleMsg({
+        ok: true,
+        text: `Instance ready in ${(result.elapsedMs / 1000).toFixed(0)}s. Syncing workspace…`,
+      });
+      void forceSyncNow();
     } catch (err) {
       setVmLifecycleMsg({ ok: false, text: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -485,7 +490,7 @@ export function WorkspaceSettingsPanel({
                               onClick={() => void startVm()}
                               disabled={startingVm}
                             >
-                              {startingVm ? "Starting…" : "Start instance"}
+                              {startingVm ? "Waiting for instance…" : "Start instance"}
                             </PrimaryButton>
                           )}
                           {ec2Health.instanceState === "running" && (

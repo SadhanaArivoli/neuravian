@@ -47,6 +47,7 @@ import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
 import { WorkspaceClient, resolveEc2State, startEc2Instance, stopEc2Instance } from "./workspace-client.js";
 import { WorkspaceReplicationEngine } from "./workspace-replication.js";
+import { ExecutionEnvironmentManager } from "./environment-manager.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
 import { rmdir, rm } from "node:fs/promises";
@@ -64,6 +65,7 @@ let rendererReadyTimer: NodeJS.Timeout | undefined;
 let profileStore: ConnectionProfileStore | null = null;
 let workspaceClient: WorkspaceClient | null = null;
 let workspaceWre: WorkspaceReplicationEngine | null = null;
+let workspaceEnvManager: ExecutionEnvironmentManager | null = null;
 let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
@@ -87,8 +89,9 @@ function workspaceServices(): {
   profiles: ConnectionProfileStore;
   client: WorkspaceClient;
   wre: WorkspaceReplicationEngine;
+  envManager: ExecutionEnvironmentManager;
 } {
-  if (!profileStore || !workspaceClient || !workspaceWre) {
+  if (!profileStore || !workspaceClient || !workspaceWre || !workspaceEnvManager) {
     const userData = app.getPath("userData");
     profileStore = new ConnectionProfileStore(path.join(userData, "workspaces"), {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -103,8 +106,9 @@ function workspaceServices(): {
       artifactCacheRoot: path.join(userData, "run-cache"),
       client: workspaceClient,
     });
+    workspaceEnvManager = new ExecutionEnvironmentManager(profileStore, workspaceWre);
   }
-  return { profiles: profileStore, client: workspaceClient, wre: workspaceWre };
+  return { profiles: profileStore, client: workspaceClient, wre: workspaceWre, envManager: workspaceEnvManager };
 }
 
 function localWorkspace(): LocalWorkspaceStore {
@@ -741,7 +745,16 @@ ipcMain.handle("workspaces:get-ec2-state", async (_event, profileId: string) => 
   }
   return await resolveEc2State(profile);
 });
+ipcMain.handle("workspaces:launch-environment", async (_event, input: { profileId: string }) => {
+  const { profiles, envManager } = workspaceServices();
+  const credential = await profiles.credential(input.profileId);
+  const result = await envManager.launch(input.profileId, credential);
+  return result;
+});
+
 ipcMain.handle("workspaces:start-environment", async (_event, profileId: string) => {
+  // Thin alias: just issues start-instances and returns. Does not wait for healthy.
+  // Use workspaces:launch-environment for the full orchestrated startup.
   const profiles = workspaceServices().profiles;
   const profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
@@ -753,19 +766,9 @@ ipcMain.handle("workspaces:start-environment", async (_event, profileId: string)
 });
 
 ipcMain.handle("workspaces:stop-environment", async (_event, input: { profileId: string; workspaceId?: string; runFence?: boolean }) => {
-  const { profiles, wre } = workspaceServices();
-  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
-  if (!profile) throw new Error("Workspace profile not found.");
-  if (profile.connectionMode !== "instance-id") {
-    throw new Error("Stop environment is only available for EC2 instance-id workspaces.");
-  }
+  const { envManager, profiles } = workspaceServices();
   const credential = await profiles.credential(input.profileId);
-  let fenceResult = null;
-  if (input.runFence && input.workspaceId) {
-    fenceResult = await wre.shutdownFence(profile, credential, input.workspaceId);
-  }
-  await stopEc2Instance(profile);
-  return { stopped: true, fenceResult };
+  return await envManager.stop(input.profileId, credential, input.workspaceId ?? null);
 });
 
 ipcMain.handle("workspaces:pull-to-local", async (

@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   pushCloudWorkflow: (input: unknown) => ipcRenderer.invoke("workspaces:push-workflow", input),
   replicateObjects: (input: unknown) => ipcRenderer.invoke("workspaces:replicate-objects", input),
   shutdownFence: (input: unknown) => ipcRenderer.invoke("workspaces:shutdown-fence", input),
+  launchEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:launch-environment", input),
   startEnvironment: (profileId: string) => ipcRenderer.invoke("workspaces:start-environment", profileId),
   stopEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:stop-environment", input),
 });
