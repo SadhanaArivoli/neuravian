@@ -683,6 +683,57 @@ ipcMain.handle("workspaces:replicate-objects", async (
   if (valid.length !== input.objects.length) throw new Error("One or more objects failed NeuroForgeObject validation.");
   return await wre.pushObjects(profile, credential, valid);
 });
+ipcMain.handle("workspaces:launch-pipeline", async (
+  _event,
+  input: {
+    profileId: string;
+    pipelineId: string;
+    datasetId: number;
+    params?: Record<string, unknown>;
+    autoStart?: boolean;
+  },
+) => {
+  const { profiles, envManager } = workspaceServices();
+  let profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+
+  // Auto-start: bring the environment up if it is not already running.
+  if (input.autoStart && profile.connectionMode === "instance-id") {
+    const { resolveEc2State: getState } = await import("./workspace-client.js");
+    const health = await getState(profile);
+    if (health.instanceState !== "running") {
+      const launched = await envManager.launch(input.profileId, credential);
+      profile = launched.profile;
+    }
+  }
+
+  // POST to the cloud VM's /api/runs
+  const authHeader = credential
+    ? `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`
+    : null;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authHeader) headers["Authorization"] = authHeader;
+
+  const runsUrl = new URL("/api/runs", `${profile.serverUrl}/`).toString();
+  const response = await fetch(runsUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      pipeline_id: input.pipelineId,
+      dataset_id: input.datasetId,
+      params: input.params ?? {},
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Cloud VM returned HTTP ${response.status} when creating run: ${text}`);
+  }
+  const run = await response.json() as { id: number; status: string };
+  return { runId: run.id, status: run.status, profileId: input.profileId };
+});
+
 ipcMain.handle("workspaces:shutdown-fence", async (
   _event,
   input: { profileId: string; workspaceId: string },

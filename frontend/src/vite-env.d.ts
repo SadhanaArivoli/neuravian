@@ -128,6 +128,13 @@ interface NeuroForgeDesktopBridge {
     errors: string[];
     fenceComplete: boolean;
   }>;
+  launchPipeline(input: {
+    profileId: string;
+    pipelineId: string;
+    datasetId: number;
+    params?: Record<string, unknown>;
+    autoStart?: boolean;
+  }): Promise<{ runId: number; status: string; profileId: string }>;
   launchEnvironment(input: { profileId: string }): Promise<{
     profile: WorkspaceProfile;
     workspaceId: string | null;

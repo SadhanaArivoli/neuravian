@@ -199,6 +199,12 @@ export default function WorkflowLibrary() {
   const allCloud = useAllCloudSnapshots();
   const [pushing, setPushing] = useState<Record<string, boolean>>({});
   const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
+
+  // Run on Cloud state: key = `${wfId}-${profileId}`
+  const [runOnCloudOpen, setRunOnCloudOpen] = useState<string | null>(null);
+  const [runDatasetId, setRunDatasetId] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState<Record<string, boolean>>({});
+  const [runResult, setRunResult] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +236,38 @@ export default function WorkflowLibrary() {
       setPushErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : "Push failed" }));
     } finally {
       setPushing((p) => { const n = { ...p }; delete n[key]; return n; });
+    }
+  }
+
+  async function handleRunOnCloud(wf: WorkflowSummary, profileId: string) {
+    const key = `${wf.id}-${profileId}`;
+    const datasetIdStr = runDatasetId[key];
+    if (!datasetIdStr) return;
+    const datasetId = Number(datasetIdStr);
+    if (!Number.isInteger(datasetId) || datasetId <= 0) return;
+
+    // Derive the pipeline ID from the workflow state's first node, or fall back to workflow name.
+    const detail = await fetchWorkflow(wf.id);
+    const state = detail.state as Record<string, unknown>;
+    const nodes = Array.isArray(state.nodes) ? state.nodes as Array<Record<string, unknown>> : [];
+    const pipelineId = (nodes[0]?.pipelineId as string | undefined) ?? String(detail.name).toLowerCase().replace(/\s+/g, "-");
+
+    setRunning((r) => ({ ...r, [key]: true }));
+    setRunResult((r) => { const n = { ...r }; delete n[key]; return n; });
+    try {
+      const result = await window.neuroforgeDesktop!.launchPipeline({
+        profileId,
+        pipelineId,
+        datasetId,
+        params: {},
+        autoStart: true,
+      });
+      setRunResult((r) => ({ ...r, [key]: { ok: true, text: `Run #${result.runId} started (${result.status})` } }));
+      setRunOnCloudOpen(null);
+    } catch (e) {
+      setRunResult((r) => ({ ...r, [key]: { ok: false, text: e instanceof Error ? e.message : "Launch failed" } }));
+    } finally {
+      setRunning((r) => { const n = { ...r }; delete n[key]; return n; });
     }
   }
 
@@ -503,27 +541,77 @@ export default function WorkflowLibrary() {
                   onArchive={withReload(() => updateWorkflow(wf.id, { is_archived: !wf.is_archived }).then(() => {}))}
                   onPromote={withReload(() => promoteWorkflowToTemplate(wf.id).then(() => {}))}
                 />
-                {/* Push-to-cloud buttons when cloud profiles exist */}
+                {/* Cloud actions: push + run on cloud */}
                 {cloudProfiles.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {cloudProfiles.map((cp) => {
-                      const key = `${wf.id}-${cp.id}`;
-                      return (
-                        <div key={cp.id} className="flex flex-col gap-0.5">
-                          <button
-                            type="button"
-                            disabled={pushing[key]}
-                            onClick={() => void handlePushWorkflow(wf, cp.id)}
-                            className="rounded-md border border-sky-500/25 bg-sky-500/5 px-2 py-1 text-[11px] text-sky-300 hover:border-sky-400/40 hover:bg-sky-500/10 disabled:opacity-40 transition-colors"
-                          >
-                            {pushing[key] ? "Pushing…" : `↑ ${cp.name}`}
-                          </button>
-                          {pushErrors[key] && (
-                            <p className="text-[10px] text-red-400 truncate max-w-[140px]">{pushErrors[key]}</p>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {cloudProfiles.map((cp) => {
+                        const key = `${wf.id}-${cp.id}`;
+                        const panelOpen = runOnCloudOpen === key;
+                        const cloudData = allCloud.find((c) => c.profile.id === cp.id);
+                        const cloudDatasets = cloudData?.snapshot?.datasets ?? [];
+                        return (
+                          <div key={cp.id} className="flex flex-col gap-0.5">
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                disabled={pushing[key]}
+                                onClick={() => void handlePushWorkflow(wf, cp.id)}
+                                className="rounded-md border border-sky-500/25 bg-sky-500/5 px-2 py-1 text-[11px] text-sky-300 hover:border-sky-400/40 hover:bg-sky-500/10 disabled:opacity-40 transition-colors"
+                              >
+                                {pushing[key] ? "Pushing…" : `↑ ${cp.name}`}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRunOnCloudOpen(panelOpen ? null : key)}
+                                className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-2 py-1 text-[11px] text-emerald-300 hover:border-emerald-400/40 hover:bg-emerald-500/10 transition-colors"
+                              >
+                                ▶ Run
+                              </button>
+                            </div>
+                            {pushErrors[key] && (
+                              <p className="text-[10px] text-red-400 truncate max-w-[180px]">{pushErrors[key]}</p>
+                            )}
+                            {runResult[key] && (
+                              <p className={`text-[10px] truncate max-w-[180px] ${runResult[key].ok ? "text-emerald-400" : "text-red-400"}`}>
+                                {runResult[key].text}
+                              </p>
+                            )}
+
+                            {/* Inline "Run on Cloud" panel */}
+                            {panelOpen && (
+                              <div className="mt-1 rounded-lg border border-emerald-500/20 bg-emerald-950/30 p-3 space-y-2 max-w-xs">
+                                <p className="text-[11px] font-semibold text-emerald-200">Run on {cp.name}</p>
+                                {cloudDatasets.length === 0 ? (
+                                  <p className="text-[11px] text-slate-500">No datasets found in this workspace. Sync first.</p>
+                                ) : (
+                                  <select
+                                    value={runDatasetId[key] ?? ""}
+                                    onChange={(e) => setRunDatasetId((d) => ({ ...d, [key]: e.target.value }))}
+                                    className="w-full rounded border border-white/10 bg-slate-900 px-2 py-1 text-[11px] text-white"
+                                  >
+                                    <option value="">Select a dataset…</option>
+                                    {cloudDatasets.map((ds) => (
+                                      <option key={ds.id} value={String(ds.id)}>
+                                        {(ds as Record<string, unknown>).name as string ?? `Dataset ${ds.id}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={running[key] || !runDatasetId[key]}
+                                  onClick={() => void handleRunOnCloud(wf, cp.id)}
+                                  className="w-full rounded bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-500 disabled:opacity-40 transition-colors"
+                                >
+                                  {running[key] ? "Launching…" : "Start pipeline"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
