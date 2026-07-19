@@ -71,6 +71,7 @@ describe("unified desktop workspaces", () => {
       clearWorkspaceCredentials: vi.fn(async () => true),
       resolveInstanceUrl: vi.fn(async () => null),
       pullToLocal: vi.fn(async () => ({})),
+      getEc2State: vi.fn(async () => null),
     };
   });
 

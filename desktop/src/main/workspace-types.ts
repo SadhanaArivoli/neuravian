@@ -1,4 +1,22 @@
 export type WorkspaceConnectionState = "connected" | "offline" | "syncing" | "unavailable";
+
+export type Ec2InstanceState =
+  | "pending" | "running" | "stopping" | "stopped" | "shutting-down" | "terminated";
+
+export interface Ec2ConnectionHealth {
+  instanceId: string;
+  region: string;
+  instanceState: Ec2InstanceState | "unknown";
+  publicIp: string | null;
+  /** sslip.io hostname if publicIp is available, else EC2 public DNS, else null */
+  publicHostname: string | null;
+  /** Fully-qualified serverUrl with the new hostname substituted in */
+  resolvedServerUrl: string | null;
+  lastUpdated: string;
+  /** Human-readable error if resolution failed */
+  error?: string;
+  awsCliAvailable: boolean;
+}
 export type WorkspaceCacheState =
   | "cloud-only"
   | "downloading"

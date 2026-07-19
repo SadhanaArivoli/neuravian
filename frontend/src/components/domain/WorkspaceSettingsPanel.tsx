@@ -31,13 +31,21 @@ interface Props {
   workspaceId: string | null;
   inspection: WorkspaceInspection | null;
   online: boolean;
+  ec2Health?: Ec2ConnectionHealth | null;
   onClose: () => void;
   onUpdated: (profile: WorkspaceProfile) => void;
   onRemoved: () => void;
 }
 
+function ec2StateTone(s: Ec2InstanceState | "unknown"): "success" | "warning" | "danger" {
+  if (s === "running") return "success";
+  if (s === "pending") return "warning";
+  if (s === "stopped" || s === "stopping" || s === "terminated") return "danger";
+  return "warning";
+}
+
 export function WorkspaceSettingsPanel({
-  profile, workspaceId, inspection, online, onClose, onUpdated, onRemoved,
+  profile, workspaceId, inspection, online, ec2Health, onClose, onUpdated, onRemoved,
 }: Props) {
   const desktop = window.neuroforgeDesktop!;
   const [tab, setTab] = useState<SettingsTab>("general");
@@ -353,12 +361,45 @@ export function WorkspaceSettingsPanel({
                     <InfoBanner tone="info">
                       On each reconnect, NeuroForge runs{" "}
                       <code className="font-mono">aws ec2 describe-instances</code> to find the current
-                      public IP and updates the URL automatically. AWS CLI must be configured with
-                      appropriate credentials.
+                      public IP and updates the serverUrl automatically. AWS CLI must be configured
+                      with appropriate credentials.
                     </InfoBanner>
                     <SecondaryButton onClick={() => void resolveIp()} disabled={resolvingIp}>
                       {resolvingIp ? "Resolving…" : "Resolve IP now"}
                     </SecondaryButton>
+
+                    {ec2Health && (
+                      <div className="mt-4 rounded-lg border border-white/8 bg-slate-950/60 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-white">EC2 Instance State</span>
+                          <Badge tone={ec2StateTone(ec2Health.instanceState)}>
+                            {ec2Health.instanceState}
+                          </Badge>
+                        </div>
+                        <dl className="grid gap-2 text-[11px] sm:grid-cols-2">
+                          <div><dt className="text-slate-500">Instance ID</dt><dd className="mt-0.5 font-mono text-slate-300">{ec2Health.instanceId || "—"}</dd></div>
+                          <div><dt className="text-slate-500">Region</dt><dd className="mt-0.5 font-mono text-slate-300">{ec2Health.region || "—"}</dd></div>
+                          <div><dt className="text-slate-500">Public IP</dt><dd className="mt-0.5 font-mono text-slate-300">{ec2Health.publicIp ?? "—"}</dd></div>
+                          <div><dt className="text-slate-500">Hostname</dt><dd className="mt-0.5 font-mono text-slate-300 truncate">{ec2Health.publicHostname ?? "—"}</dd></div>
+                          <div className="sm:col-span-2"><dt className="text-slate-500">Resolved URL</dt><dd className="mt-0.5 break-all font-mono text-slate-300">{ec2Health.resolvedServerUrl ?? "—"}</dd></div>
+                          <div><dt className="text-slate-500">Last checked</dt><dd className="mt-0.5 text-slate-400">{relativeTime(ec2Health.lastUpdated)}</dd></div>
+                          <div><dt className="text-slate-500">AWS CLI</dt><dd className={`mt-0.5 ${ec2Health.awsCliAvailable ? "text-emerald-300" : "text-red-400"}`}>{ec2Health.awsCliAvailable ? "Available" : "Not found"}</dd></div>
+                        </dl>
+                        {ec2Health.error && (
+                          <p className="rounded bg-red-900/30 px-3 py-2 text-[11px] text-red-300">{ec2Health.error}</p>
+                        )}
+                        {ec2Health.instanceState === "stopped" && (
+                          <InfoBanner tone="warning" title="Instance is stopped">
+                            Start the EC2 instance from the AWS Console. NeuroForge will reconnect automatically on the next sync.
+                          </InfoBanner>
+                        )}
+                        {ec2Health.instanceState === "pending" && (
+                          <InfoBanner tone="info" title="Instance is starting…">
+                            NeuroForge will reconnect automatically once the instance is running. This usually takes 1–2 minutes.
+                          </InfoBanner>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 

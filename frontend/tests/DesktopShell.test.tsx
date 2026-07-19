@@ -82,6 +82,7 @@ describe("restored desktop shell", () => {
       clearWorkspaceCredentials: vi.fn(async () => true),
       resolveInstanceUrl: vi.fn(async () => null),
       pullToLocal: vi.fn(async () => ({})),
+      getEc2State: vi.fn(async () => null),
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);

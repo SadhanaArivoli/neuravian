@@ -236,6 +236,7 @@ export default function Workspaces() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [inspection, setInspection] = useState<WorkspaceInspection | null>(null);
   const [online, setOnline] = useState(false);
+  const [ec2Health, setEc2Health] = useState<Ec2ConnectionHealth | null>(null);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "done" | "failed">("idle");
   const [error, setError] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<WorkspaceRun | null>(null);
@@ -288,6 +289,7 @@ export default function Workspaces() {
       const result = await desktop.syncWorkspace(profileId);
       setSnapshot(result.snapshot);
       setOnline(result.online);
+      if (result.ec2Health !== undefined) setEc2Health(result.ec2Health ?? null);
       await Promise.all([refreshProfiles(), refreshInspection(profileId, result.snapshot.workspaceId)]);
       if (!quiet) {
         setSyncState("done");
@@ -584,6 +586,7 @@ export default function Workspaces() {
               inspection={inspection}
               online={online}
               activeProfile={activeProfile}
+              ec2Health={ec2Health}
               runsByDataset={runsByDataset}
               onSelectRun={setSelectedRun}
               onSelectDataset={setSelectedDataset}
@@ -629,6 +632,7 @@ export default function Workspaces() {
           workspaceId={snapshot?.workspaceId ?? null}
           inspection={inspection}
           online={online}
+          ec2Health={ec2Health}
           onClose={() => setShowSettings(false)}
           onUpdated={(updated) => {
             setProfiles((prev) => prev.map((p) => p.id === updated.id ? updated : p));
@@ -647,14 +651,41 @@ export default function Workspaces() {
 
 // ── Cloud content switcher ─────────────────────────────────────────────────────
 
+function Ec2StatusRow({ health }: { health: Ec2ConnectionHealth }) {
+  const tone = health.instanceState === "running" ? "success"
+    : health.instanceState === "pending" ? "warning"
+    : health.instanceState === "stopped" || health.instanceState === "stopping" ? "danger"
+    : "warning";
+  return (
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border border-white/8 bg-slate-950/50 px-4 py-3 text-xs">
+      <div className="flex items-center gap-2 min-w-[120px]">
+        <span className="text-slate-500">Instance</span>
+        <Badge tone={tone}>{health.instanceState}</Badge>
+      </div>
+      {health.publicIp && <div><span className="text-slate-500">IP: </span><span className="font-mono text-slate-300">{health.publicIp}</span></div>}
+      {health.publicHostname && <div className="truncate max-w-[220px]"><span className="text-slate-500">Host: </span><span className="font-mono text-slate-300">{health.publicHostname}</span></div>}
+      <div><span className="text-slate-500">Region: </span><span className="text-slate-300">{health.region || "—"}</span></div>
+      <div><span className="text-slate-500">Updated: </span><span className="text-slate-400">{new Date(health.lastUpdated).toLocaleTimeString()}</span></div>
+      {health.error && <div className="w-full text-red-400">{health.error}</div>}
+      {health.instanceState === "stopped" && (
+        <div className="w-full text-amber-300">Instance is stopped — start it on AWS to reconnect. NeuroForge will detect the new IP automatically.</div>
+      )}
+      {health.instanceState === "pending" && (
+        <div className="w-full text-cyan-300">Instance is starting up… NeuroForge will reconnect automatically. This usually takes 1–2 minutes.</div>
+      )}
+    </div>
+  );
+}
+
 function CloudContent({
-  view, snapshot, inspection, online, activeProfile, runsByDataset, onSelectRun, onSelectDataset,
+  view, snapshot, inspection, online, activeProfile, ec2Health, runsByDataset, onSelectRun, onSelectDataset,
 }: {
   view: WorkspaceView;
   snapshot: WorkspaceSnapshot;
   inspection: WorkspaceInspection | null;
   online: boolean;
   activeProfile: WorkspaceProfile | null;
+  ec2Health: Ec2ConnectionHealth | null;
   runsByDataset: Map<number, WorkspaceRun[]>;
   onSelectRun: (run: WorkspaceRun) => void;
   onSelectDataset: (d: Record<string, unknown> & { id: number; remoteKey: string }) => void;
@@ -663,7 +694,8 @@ function CloudContent({
   const cloudOnlyRuns = snapshot.runs.filter((r) => r.cachedArtifacts.length === 0).length;
 
   if (view === "home") return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {ec2Health && <Ec2StatusRow health={ec2Health} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <MetricCard label="Projects" value={snapshot.projects.length} />
         <MetricCard label="Datasets" value={snapshot.datasets.length} />

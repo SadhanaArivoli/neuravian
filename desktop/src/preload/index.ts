@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   resetWorkspaceCache: (workspaceId: string) => ipcRenderer.invoke("workspaces:reset-cache", workspaceId),
   clearWorkspaceCredentials: (profileId: string) => ipcRenderer.invoke("workspaces:clear-credentials", profileId),
   resolveInstanceUrl: (profileId: string) => ipcRenderer.invoke("workspaces:resolve-instance-url", profileId),
+  getEc2State: (profileId: string) => ipcRenderer.invoke("workspaces:get-ec2-state", profileId),
   pullToLocal: (input: unknown) => ipcRenderer.invoke("workspaces:pull-to-local", input),
   syncWorkspace: (profileId: string) => ipcRenderer.invoke("workspaces:sync", profileId),
   testWorkspace: (profileId: string) => ipcRenderer.invoke("workspaces:test", profileId),

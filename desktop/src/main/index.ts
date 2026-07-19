@@ -45,7 +45,7 @@ import {
 } from "./viewer-manager.js";
 import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
-import { WorkspaceClient, resolveInstanceUrl } from "./workspace-client.js";
+import { WorkspaceClient, resolveEc2State } from "./workspace-client.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
 import { rmdir, rm } from "node:fs/promises";
@@ -487,12 +487,39 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(profileId);
 
-  // For EC2 instance-id workspaces, resolve the current public IP before connecting.
+  // For EC2 instance-id workspaces, resolve state before attempting any connection.
+  let ec2Health: import("./workspace-types.js").Ec2ConnectionHealth | null = null;
   if (profile.connectionMode === "instance-id") {
-    const resolvedUrl = await resolveInstanceUrl(profile);
-    if (resolvedUrl && resolvedUrl !== profile.serverUrl) {
-      profile = { ...profile, serverUrl: resolvedUrl, serverIdentity: null };
+    ec2Health = await resolveEc2State(profile);
+
+    if (ec2Health.resolvedServerUrl && ec2Health.resolvedServerUrl !== profile.serverUrl) {
+      // IP changed — update the stored URL so subsequent syncs use the new address.
+      profile = { ...profile, serverUrl: ec2Health.resolvedServerUrl, serverIdentity: null };
       await profiles.update(profile);
+    }
+
+    // If the instance is stopped or pending we cannot connect — return cached snapshot.
+    if (ec2Health.instanceState === "stopped" || ec2Health.instanceState === "stopping"
+      || ec2Health.instanceState === "pending" || !ec2Health.publicIp) {
+      const { WorkspaceMetadataCache } = await import("./workspace-cache.js");
+      const cached = await new WorkspaceMetadataCache(
+        path.join(app.getPath("userData"), "workspace-metadata"),
+      ).read(profileId);
+      const updated: WorkspaceProfile = { ...profile, connectionState: "offline" };
+      await profiles.update(updated);
+      return {
+        online: false,
+        profile: updated,
+        ec2Health,
+        snapshot: cached ?? {
+          schemaVersion: 1 as const,
+          workspaceId: profile.serverIdentity ?? "",
+          profileId,
+          serverUrl: profile.serverUrl,
+          synchronizedAt: profile.lastSync ?? new Date().toISOString(),
+          projects: [], datasets: [], workflows: [], runs: [], reports: [],
+        },
+      };
     }
   }
 
@@ -504,7 +531,7 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
     connectionState: result.online ? "connected" : "offline",
   };
   await profiles.update(updated);
-  return { ...result, profile: updated };
+  return { ...result, profile: updated, ec2Health };
 });
 ipcMain.handle("workspaces:test", async (_event, profileId: string) => {
   const { profiles, client } = workspaceServices();
@@ -673,11 +700,20 @@ ipcMain.handle("workspaces:resolve-instance-url", async (_event, profileId: stri
   const profiles = workspaceServices().profiles;
   const profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
-  const resolved = await resolveInstanceUrl(profile);
-  if (!resolved) return null;
-  const updated = { ...profile, serverUrl: resolved, serverIdentity: null };
+  const health = await resolveEc2State(profile);
+  if (!health.resolvedServerUrl) return null;
+  const updated = { ...profile, serverUrl: health.resolvedServerUrl, serverIdentity: null };
   await profiles.update(updated);
   return updated;
+});
+ipcMain.handle("workspaces:get-ec2-state", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.connectionMode !== "instance-id") {
+    return null; // Not an EC2-managed workspace.
+  }
+  return await resolveEc2State(profile);
 });
 ipcMain.handle("workspaces:pull-to-local", async (
   _event,

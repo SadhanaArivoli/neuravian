@@ -2,35 +2,128 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { inspectRunCache, syncRun, type SyncManifest, type SyncResult } from "./run-cache.js";
-import { remoteIdentityKey, type WorkspaceCredential, type WorkspaceProfile, type WorkspaceRun, type WorkspaceSnapshot } from "./workspace-types.js";
+import {
+  remoteIdentityKey,
+  type Ec2ConnectionHealth,
+  type WorkspaceCredential,
+  type WorkspaceProfile,
+  type WorkspaceRun,
+  type WorkspaceSnapshot,
+} from "./workspace-types.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
 
 const execFileAsync = promisify(execFile);
 
-export async function resolveInstanceUrl(profile: WorkspaceProfile): Promise<string | null> {
-  const { instanceId, awsRegion, serverUrl } = profile;
-  if (!instanceId || !awsRegion) return null;
+/** Derive a sslip.io hostname from a dotted IPv4 address. */
+function sslipHostname(ip: string): string {
+  return `${ip.replace(/\./g, "-")}.sslip.io`;
+}
+
+/**
+ * Reconstruct the workspace serverUrl with a new hostname substituted in.
+ * Preserves the original protocol, port, and path.
+ * Falls back to `https://<hostname>` if the existing serverUrl cannot be parsed.
+ */
+function rebuildServerUrl(currentServerUrl: string, newHostname: string): string {
+  if (!currentServerUrl) return `https://${newHostname}`;
   try {
+    const url = new URL(currentServerUrl);
+    url.hostname = newHostname;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return `https://${newHostname}`;
+  }
+}
+
+/**
+ * Detect the current state of an EC2 instance and derive the correct serverUrl.
+ * Replaces the old `resolveInstanceUrl` with a fully structured result so that
+ * callers can surface instance state, IP, and hostname to the user.
+ */
+export async function resolveEc2State(profile: WorkspaceProfile): Promise<Ec2ConnectionHealth> {
+  const lastUpdated = new Date().toISOString();
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+
+  if (!instanceId || !region) {
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: false,
+      error: "EC2 instance ID and region must both be set.",
+    };
+  }
+
+  // Verify AWS CLI is available before making the real call.
+  try {
+    await execFileAsync("aws", ["--version"], { timeout: 5_000, env: process.env });
+  } catch {
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: false,
+      error: "AWS CLI not found. Install it to enable automatic EC2 reconnection.",
+    };
+  }
+
+  try {
+    // Fetch state name, public IP, and public DNS in one call.
     const { stdout } = await execFileAsync(
       "aws",
       [
         "ec2", "describe-instances",
         "--instance-ids", instanceId,
-        "--region", awsRegion,
-        "--query", "Reservations[0].Instances[0].PublicIpAddress",
+        "--region", region,
+        "--query", "Reservations[0].Instances[0].[State.Name,PublicIpAddress,PublicDnsName]",
         "--output", "text",
       ],
-      { timeout: 10_000, env: process.env },
+      { timeout: 15_000, env: process.env },
     );
-    const ip = stdout.trim();
-    if (!ip || ip === "None" || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return null;
-    // Replace the host in the existing serverUrl with the new IP.
-    const existing = new URL(serverUrl);
-    existing.hostname = ip;
-    return existing.toString().replace(/\/$/, "");
-  } catch {
-    return null;
+
+    const parts = stdout.trim().split(/\t/);
+    const rawState = parts[0]?.trim() ?? "";
+    const rawIp = parts[1]?.trim() ?? "";
+    const rawDns = parts[2]?.trim() ?? "";
+
+    const instanceState = (rawState && rawState !== "None" ? rawState : "unknown") as Ec2ConnectionHealth["instanceState"];
+    const publicIp = rawIp && rawIp !== "None" && /^\d{1,3}(\.\d{1,3}){3}$/.test(rawIp) ? rawIp : null;
+    // Prefer sslip.io (stable HTTPS-compatible wildcard DNS) over EC2 public DNS.
+    const publicHostname = publicIp
+      ? sslipHostname(publicIp)
+      : (rawDns && rawDns !== "None" ? rawDns : null);
+
+    const resolvedServerUrl = publicHostname
+      ? rebuildServerUrl(profile.serverUrl, publicHostname)
+      : null;
+
+    return {
+      instanceId, region, instanceState, publicIp, publicHostname,
+      resolvedServerUrl, lastUpdated, awsCliAvailable: true,
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    let friendlyError = raw;
+    if (raw.includes("InvalidInstanceID")) {
+      friendlyError = `Instance '${instanceId}' was not found in region '${region}'. Check the instance ID.`;
+    } else if (raw.includes("UnauthorizedOperation") || raw.includes("AccessDenied")) {
+      friendlyError = "AWS credentials lack permission to describe EC2 instances (ec2:DescribeInstances).";
+    } else if (raw.includes("Could not connect to the endpoint URL") || raw.includes("EndpointResolutionError")) {
+      friendlyError = `Region '${region}' could not be reached. Verify the region name.`;
+    } else if (raw.includes("NoCredentialProviders") || raw.includes("Unable to locate credentials")) {
+      friendlyError = "No AWS credentials found. Run `aws configure` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.";
+    }
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: true, error: friendlyError,
+    };
   }
+}
+
+/** @deprecated Use resolveEc2State instead. Kept for any callers still referencing this name. */
+export async function resolveInstanceUrl(profile: WorkspaceProfile): Promise<string | null> {
+  const health = await resolveEc2State(profile);
+  return health.resolvedServerUrl;
 }
 
 type JsonRecord = Record<string, unknown>;

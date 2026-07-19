@@ -1,5 +1,20 @@
 /// <reference types="vite/client" />
 
+type Ec2InstanceState =
+  | "pending" | "running" | "stopping" | "stopped" | "shutting-down" | "terminated";
+
+interface Ec2ConnectionHealth {
+  instanceId: string;
+  region: string;
+  instanceState: Ec2InstanceState | "unknown";
+  publicIp: string | null;
+  publicHostname: string | null;
+  resolvedServerUrl: string | null;
+  lastUpdated: string;
+  error?: string;
+  awsCliAvailable: boolean;
+}
+
 interface NeuroForgeDesktopBridge {
   detectViewers(): Promise<Array<{
     viewerId: "freeview" | "mricrogl";
@@ -30,11 +45,13 @@ interface NeuroForgeDesktopBridge {
   resetWorkspaceCache(workspaceId: string): Promise<boolean>;
   clearWorkspaceCredentials(profileId: string): Promise<boolean>;
   resolveInstanceUrl(profileId: string): Promise<WorkspaceProfile | null>;
+  getEc2State(profileId: string): Promise<Ec2ConnectionHealth | null>;
   pullToLocal(input: { type: "project" | "workflow"; data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   syncWorkspace(profileId: string): Promise<{
     online: boolean;
     profile: WorkspaceProfile;
     snapshot: WorkspaceSnapshot;
+    ec2Health?: Ec2ConnectionHealth | null;
   }>;
   testWorkspace(profileId: string): Promise<{
     workspaceId: string;
