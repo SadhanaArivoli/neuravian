@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
     ipcRenderer.on("cloud:event", listener);
     return () => ipcRenderer.removeListener("cloud:event", listener);
   },
+  setAutoStop: (input: unknown) => ipcRenderer.invoke("workspaces:set-auto-stop", input),
   startEnvironment: (profileId: string) => ipcRenderer.invoke("workspaces:start-environment", profileId),
   stopEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:stop-environment", input),
 });

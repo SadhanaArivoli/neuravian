@@ -741,7 +741,48 @@ ipcMain.handle("workspaces:launch-pipeline", async (
     () => mainWindow,
   );
 
+  // Auto-stop: if enabled, subscribe to WRE events and stop the environment
+  // automatically when the run finishes (success or failure).
+  if (profile.autoStopAfterRun && profile.connectionMode === "instance-id") {
+    const { wre } = workspaceServices();
+    const unsubscribe = wre.on(async (event) => {
+      if (event.type !== "run:status-changed") return;
+      if (event.status !== "success" && event.status !== "failed") return;
+      unsubscribe();
+      stopCloudStream(input.profileId);
+      try {
+        const freshProfile = (await profiles.list()).find((p) => p.id === input.profileId);
+        if (!freshProfile) return;
+        const freshCredential = await profiles.credential(input.profileId);
+        const workspaceId = profile.serverIdentity ?? null;
+        await envManager.stop(input.profileId, freshCredential, workspaceId);
+        // Notify renderer that the environment is now offline.
+        mainWindow?.webContents.send("cloud:event", {
+          profileId: input.profileId,
+          type: "vm:stopped-auto",
+          runId: run.id,
+        });
+      } catch (err) {
+        // Log but do not rethrow — run already finished, this is cleanup.
+        console.error("[auto-stop] failed:", err);
+      }
+    });
+  }
+
   return { runId: run.id, status: run.status, profileId: input.profileId };
+});
+
+ipcMain.handle("workspaces:set-auto-stop", async (
+  _event,
+  input: { profileId: string; enabled: boolean },
+) => {
+  const profiles = workspaceServices().profiles;
+  const all = await profiles.list();
+  const profile = all.find((p) => p.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const updated = { ...profile, autoStopAfterRun: input.enabled };
+  await profiles.update(updated);
+  return updated;
 });
 
 ipcMain.handle("workspaces:shutdown-fence", async (

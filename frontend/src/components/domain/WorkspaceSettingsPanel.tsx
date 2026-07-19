@@ -682,6 +682,38 @@ export function WorkspaceSettingsPanel({
               </div>
             </Card>
 
+            {profile.connectionMode === "instance-id" && (
+              <Card>
+                <CardHeader
+                  title="Auto Stop"
+                  subtitle="Stop the EC2 instance automatically when a run finishes"
+                />
+                <p className="mt-3 text-xs text-slate-500">
+                  When enabled, NeuroForge will run the shutdown fence and stop the instance
+                  automatically after every completed run — success or failure. You can restart
+                  it any time from the Connection tab.
+                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!profile.autoStopAfterRun}
+                      onChange={async (e) => {
+                        try {
+                          const updated = await desktop.setAutoStop({ profileId: profile.id, enabled: e.target.checked });
+                          onUpdated(updated);
+                        } catch { /* ignore */ }
+                      }}
+                      className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-cyan-400"
+                    />
+                    <span className="text-xs text-slate-300">
+                      {profile.autoStopAfterRun ? "Auto Stop enabled" : "Auto Stop disabled"}
+                    </span>
+                  </label>
+                </div>
+              </Card>
+            )}
+
             <Card>
               <CardHeader
                 title="Bidirectional sync"

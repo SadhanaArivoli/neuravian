@@ -279,6 +279,8 @@ export interface WorkspaceProfile {
   connectionMode?: "url" | "instance-id";
   instanceId?: string | null;
   awsRegion?: string | null;
+  /** When true, the shutdown fence + stop runs automatically after every completed run. Default: false. */
+  autoStopAfterRun?: boolean;
 }
 
 export interface WorkspaceCredential {

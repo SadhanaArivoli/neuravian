@@ -128,6 +128,7 @@ interface NeuroForgeDesktopBridge {
     errors: string[];
     fenceComplete: boolean;
   }>;
+  setAutoStop(input: { profileId: string; enabled: boolean }): Promise<WorkspaceProfile>;
   onCloudEvent(callback: (event: {
     profileId: string;
     type: string;
@@ -167,6 +168,7 @@ interface WorkspaceProfile {
   connectionMode?: "url" | "instance-id";
   instanceId?: string | null;
   awsRegion?: string | null;
+  autoStopAfterRun?: boolean;
 }
 
 type WorkspaceCacheState =
