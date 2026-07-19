@@ -13,6 +13,7 @@ from app.api.reports import router as reports_router
 from app.api.runs import router as runs_router
 from app.api.wizard import router as wizard_router
 from app.api.workflows import router as workflows_router
+from app.api.replication import router as replication_router
 from app.api.workspace import router as workspace_router
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -54,3 +55,4 @@ app.include_router(wizard_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
+app.include_router(replication_router, prefix="/api")
