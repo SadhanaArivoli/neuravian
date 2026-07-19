@@ -1,3 +1,187 @@
+// ─── Workspace Replication Engine — core object model ────────────────────────
+//
+// The WRE is pipeline-agnostic, storage-agnostic, and event-driven.
+// It replicates typed NeuroForgeObjects between the desktop (authoritative)
+// and cloud VMs (ephemeral cache). It never reads pipeline manifests, never
+// hard-codes storage paths, and never holds EC2/Caddy infrastructure concerns.
+
+/** Every domain type the WRE can replicate. */
+export type NeuroForgeObjectType =
+  | "project"
+  | "workflow"
+  | "dataset"
+  | "run"
+  | "artifact-manifest"
+  | "report"
+  | "pipeline-template";
+
+/**
+ * A storage reference that is opaque to the WRE. The `strategy` field names
+ * a registered TransportStrategy implementation; `location` is interpreted
+ * entirely by that strategy. New storage backends (S3, SFTP, etc.) are added
+ * by registering a new strategy — no WRE changes required.
+ */
+export interface TransportRef {
+  strategy: string;
+  location: string;
+  contentHash?: string;
+  sizeBytes?: number;
+}
+
+// ── Payload types (discriminated by NeuroForgeObjectType) ──────────────────
+
+export interface ProjectPayload {
+  title: string;
+  description?: string;
+}
+
+export interface WorkflowPayload {
+  name: string;
+  description?: string;
+  definition: unknown;
+}
+
+export interface DatasetPayload {
+  name: string;
+  description?: string;
+  transportRef: TransportRef;
+  bidsValidated?: boolean;
+  subjects?: number;
+}
+
+export interface ArtifactEntry {
+  relativePath: string;
+  transportRef: TransportRef;
+  sizeBytes: number;
+}
+
+export interface ArtifactManifestPayload {
+  runObjectId: string;
+  pipelineManifestId: string;
+  artifacts: ArtifactEntry[];
+}
+
+export interface ReportPayload {
+  runObjectId: string;
+  title: string;
+  html?: string;
+  transportRef?: TransportRef;
+}
+
+export interface PipelineTemplatePayload {
+  manifestId: string;
+  version: string;
+  definition: unknown;
+}
+
+export interface RunPayload {
+  projectObjectId: string;
+  workflowObjectId: string;
+  datasetObjectId: string;
+  pipelineManifestId: string;
+  pipelineVersion: string;
+  status: string;
+  parameters?: unknown;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+export type NeuroForgePayload =
+  | ProjectPayload
+  | WorkflowPayload
+  | DatasetPayload
+  | RunPayload
+  | ArtifactManifestPayload
+  | ReportPayload
+  | PipelineTemplatePayload;
+
+/**
+ * The atomic unit of replication. Every domain object is a NeuroForgeObject.
+ * - `objectId`: UUID assigned by the desktop at creation; the cloud never mints IDs.
+ * - `revision`: monotonic counter; the cloud stores whatever revision it received.
+ * - `contentHash`: SHA256 of the canonical JSON payload; used for dedup and verification.
+ */
+export interface NeuroForgeObject {
+  objectId: string;
+  objectType: NeuroForgeObjectType;
+  revision: number;
+  contentHash: string;
+  createdAt: string;
+  modifiedAt: string;
+  payload: NeuroForgePayload;
+}
+
+// ── Typed event bus ──────────────────────────────────────────────────────────
+//
+// The WRE reacts to these events rather than polling directly.
+// Deployment concerns (EC2, Caddy, sslip.io) live in WorkspaceInfrastructure
+// and communicate with the WRE only through this bus.
+
+export type WREEvent =
+  | { type: "workspace:connected";       workspaceId: string }
+  | { type: "workspace:snapshot-ready";  workspaceId: string; snapshot: WorkspaceSnapshot }
+  | { type: "run:status-changed";        runObjectId: string; status: string; workspaceId: string }
+  | { type: "artifact:available";        runObjectId: string; relativePath: string; workspaceId: string }
+  | { type: "vm:shutdown-requested";     workspaceId: string };
+
+// ── Replication manifest ─────────────────────────────────────────────────────
+//
+// Produced by a snapshot diff: compares desktop object store revisions against
+// cloud VM snapshot. Tells the WRE exactly what to push and pull without
+// fetching every object.
+
+export interface ReplicationManifest {
+  workspaceId: string;
+  computedAt: string;
+  toPush: NeuroForgeObject[];
+  toPull: string[];
+  inSync: string[];
+}
+
+export interface CloudObjectRef {
+  objectId: string;
+  objectType: NeuroForgeObjectType;
+  revision: number;
+  contentHash: string;
+}
+
+/** Response shape of GET /replication/snapshot on the cloud VM. */
+export interface ReplicationSnapshot {
+  workspaceId: string;
+  objects: CloudObjectRef[];
+}
+
+// ── Type guards ──────────────────────────────────────────────────────────────
+
+export function isNeuroForgeObjectType(v: unknown): v is NeuroForgeObjectType {
+  return typeof v === "string" && [
+    "project", "workflow", "dataset", "run",
+    "artifact-manifest", "report", "pipeline-template",
+  ].includes(v);
+}
+
+export function isNeuroForgeObject(v: unknown): v is NeuroForgeObject {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.objectId === "string" &&
+    isNeuroForgeObjectType(o.objectType) &&
+    typeof o.revision === "number" &&
+    typeof o.contentHash === "string" &&
+    typeof o.createdAt === "string" &&
+    typeof o.modifiedAt === "string" &&
+    o.payload !== undefined
+  );
+}
+
+export function isTransportRef(v: unknown): v is TransportRef {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.strategy === "string" && typeof o.location === "string";
+}
+
+// ─── End WRE types ────────────────────────────────────────────────────────────
+
 export type WorkspaceConnectionState = "connected" | "offline" | "syncing" | "unavailable";
 
 export type Ec2InstanceState =
