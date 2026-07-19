@@ -182,6 +182,63 @@ export function isTransportRef(v: unknown): v is TransportRef {
 
 // ─── End WRE types ────────────────────────────────────────────────────────────
 
+// ─── Execution Environment abstraction ───────────────────────────────────────
+//
+// "Execution Environment" is the generalization of "Cloud VM."
+// Today that means an AWS EC2 instance. Tomorrow it could be a local Docker
+// container, an Azure VM, a GCP instance, a Slurm job on university HPC,
+// or any SSH-accessible Linux server.
+//
+// The WRE knows only about `environmentId` and `serverUrl`.
+// Everything else is opaque `providerConfig`, interpreted by a provider plugin.
+// Adding a new execution target requires implementing a provider plugin —
+// zero changes to the WRE or replication protocol.
+
+export type ExecutionEnvironmentType =
+  | "ec2"       // AWS EC2 (today)
+  | "docker"    // local Docker container
+  | "azure-vm"  // Azure Virtual Machine
+  | "gcp-vm"    // GCP Compute Engine
+  | "slurm"     // HPC cluster with Slurm scheduler
+  | "ssh"       // any Linux server reachable via SSH
+  | "url";      // static URL with no lifecycle management (bare server)
+
+export type EnvironmentLifecycleState =
+  | "not-started"   // provisioned in profile but never launched
+  | "starting"      // provider is booting the environment
+  | "ready"         // reachable, WRE can connect
+  | "stopping"      // shutdown fence running or provider stopping
+  | "stopped"       // environment is off; data is on desktop
+  | "unreachable"   // was running but can no longer be contacted
+  | "unknown";      // provider query failed or timed out
+
+/**
+ * Provider-agnostic identity for an execution environment.
+ * The WRE reads only `environmentId` and `serverUrl`.
+ * All provider-specific configuration lives in `providerConfig`,
+ * which is interpreted exclusively by the matching provider plugin.
+ */
+export interface ExecutionEnvironment {
+  /** Stable local ID for this execution target (UUID, desktop-assigned). */
+  environmentId: string;
+  type: ExecutionEnvironmentType;
+  name: string;
+  /** Resolved server URL when the environment is running; null otherwise. */
+  serverUrl: string | null;
+  lifecycleState: EnvironmentLifecycleState;
+  /**
+   * Provider-specific configuration — opaque to everything above the provider
+   * plugin layer. Examples:
+   *   ec2:    { instanceId, region }
+   *   docker: { containerId, image }
+   *   slurm:  { host, partition, jobId }
+   *   ssh:    { host, port, user }
+   */
+  providerConfig: unknown;
+}
+
+// ─── End Execution Environment abstraction ───────────────────────────────────
+
 export type WorkspaceConnectionState = "connected" | "offline" | "syncing" | "unavailable";
 
 export type Ec2InstanceState =
