@@ -51,9 +51,16 @@ export class ConnectionProfileStore {
     return Array.isArray(parsed) ? parsed as WorkspaceProfile[] : [];
   }
 
-  async save(
-    input: { id?: string; name: string; serverUrl: string; username?: string; password?: string },
-  ): Promise<WorkspaceProfile> {
+  async save(input: {
+    id?: string;
+    name: string;
+    serverUrl: string;
+    username?: string;
+    password?: string;
+    connectionMode?: "url" | "instance-id";
+    instanceId?: string | null;
+    awsRegion?: string | null;
+  }): Promise<WorkspaceProfile> {
     const profiles = await this.list();
     const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined;
     const id = existing?.id ?? randomUUID();
@@ -64,14 +71,18 @@ export class ConnectionProfileStore {
     if (hasCredential && !this.cipher.available()) {
       throw new Error("The operating-system credential store is unavailable.");
     }
+    const connectionMode = input.connectionMode ?? existing?.connectionMode ?? "url";
     const profile: WorkspaceProfile = {
       id,
       name: input.name.trim() || "NeuroForge Workspace",
-      serverUrl: normalizeServerUrl(input.serverUrl),
+      serverUrl: connectionMode === "instance-id" ? input.serverUrl : normalizeServerUrl(input.serverUrl),
       authenticationRef: hasCredential ? `os-credential:${id}` : existing?.authenticationRef ?? null,
-      serverIdentity: existing?.serverIdentity ?? null,
+      serverIdentity: connectionMode === "instance-id" ? null : (existing?.serverIdentity ?? null),
       lastSync: existing?.lastSync ?? null,
       connectionState: existing?.connectionState ?? "offline",
+      connectionMode,
+      instanceId: input.instanceId ?? existing?.instanceId ?? null,
+      awsRegion: input.awsRegion ?? existing?.awsRegion ?? null,
     };
     const nextProfiles = [...profiles.filter((item) => item.id !== id), profile];
     await atomicJson(this.profilesPath, nextProfiles);
@@ -80,6 +91,51 @@ export class ConnectionProfileStore {
       password: input.password!,
     });
     return profile;
+  }
+
+  async duplicate(profileId: string): Promise<WorkspaceProfile> {
+    const profiles = await this.list();
+    const source = profiles.find((item) => item.id === profileId);
+    if (!source) throw new Error("Workspace profile not found.");
+    const newId = randomUUID();
+    const copy: WorkspaceProfile = {
+      ...source,
+      id: newId,
+      name: `Copy of ${source.name}`,
+      serverIdentity: null,
+      lastSync: null,
+      connectionState: "offline",
+      authenticationRef: source.authenticationRef ? `os-credential:${newId}` : null,
+    };
+    if (source.authenticationRef) {
+      const credential = await this.credential(profileId);
+      if (credential) await this.writeCredential(newId, credential);
+    }
+    await atomicJson(this.profilesPath, [...profiles, copy]);
+    return copy;
+  }
+
+  async clearCredential(profileId: string): Promise<void> {
+    const profiles = await this.list();
+    const profile = profiles.find((item) => item.id === profileId);
+    if (profile) {
+      await this.update({ ...profile, authenticationRef: null });
+    }
+    await atomicJson(this.credentialsPath, (await this.readCredentials()).filter(
+      (item) => item.profileId !== profileId,
+    ));
+  }
+
+  exportProfile(profile: WorkspaceProfile): Record<string, unknown> {
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      name: profile.name,
+      serverUrl: profile.serverUrl,
+      connectionMode: profile.connectionMode ?? "url",
+      instanceId: profile.instanceId ?? null,
+      awsRegion: profile.awsRegion ?? null,
+    };
   }
 
   async update(profile: WorkspaceProfile): Promise<void> {

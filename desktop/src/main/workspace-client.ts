@@ -1,7 +1,37 @@
+import { execFile } from "node:child_process";
 import path from "node:path";
+import { promisify } from "node:util";
 import { inspectRunCache, syncRun, type SyncManifest, type SyncResult } from "./run-cache.js";
 import { remoteIdentityKey, type WorkspaceCredential, type WorkspaceProfile, type WorkspaceRun, type WorkspaceSnapshot } from "./workspace-types.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
+
+const execFileAsync = promisify(execFile);
+
+export async function resolveInstanceUrl(profile: WorkspaceProfile): Promise<string | null> {
+  const { instanceId, awsRegion, serverUrl } = profile;
+  if (!instanceId || !awsRegion) return null;
+  try {
+    const { stdout } = await execFileAsync(
+      "aws",
+      [
+        "ec2", "describe-instances",
+        "--instance-ids", instanceId,
+        "--region", awsRegion,
+        "--query", "Reservations[0].Instances[0].PublicIpAddress",
+        "--output", "text",
+      ],
+      { timeout: 10_000, env: process.env },
+    );
+    const ip = stdout.trim();
+    if (!ip || ip === "None" || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return null;
+    // Replace the host in the existing serverUrl with the new IP.
+    const existing = new URL(serverUrl);
+    existing.hostname = ip;
+    return existing.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
 
 type JsonRecord = Record<string, unknown>;
 

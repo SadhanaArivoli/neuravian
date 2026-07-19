@@ -16,6 +16,10 @@ export interface WorkspaceProfile {
   serverIdentity: string | null;
   lastSync: string | null;
   connectionState: WorkspaceConnectionState;
+  /** "url" = static server URL (default); "instance-id" = resolve EC2 public IP on each reconnect */
+  connectionMode?: "url" | "instance-id";
+  instanceId?: string | null;
+  awsRegion?: string | null;
 }
 
 export interface WorkspaceCredential {

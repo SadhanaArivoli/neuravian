@@ -1,6 +1,10 @@
 import { access, readdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import os from "node:os";
 import path from "node:path";
+
+const execFileAsync = promisify(execFile);
 
 export type ExternalViewerId = "freeview" | "mricrogl";
 export type DesktopPlatform = "darwin" | "win32" | "linux";
@@ -33,17 +37,16 @@ export interface LocalViewerLaunchRequest extends ViewerLaunchRequest {
   workspaceId: string;
 }
 
-const INSTALL_PATHS: Record<ExternalViewerId, Record<DesktopPlatform, string[]>> = {
-  freeview: {
-    darwin: ["/Applications/Freeview.app/Contents/MacOS/freeview", "/Applications/freesurfer/bin/freeview"],
-    win32: ["C:\\Program Files\\FreeSurfer\\bin\\freeview.exe"],
-    linux: ["/usr/local/freesurfer/bin/freeview", "/opt/freesurfer/bin/freeview", "/usr/bin/freeview"],
-  },
-  mricrogl: {
-    darwin: ["/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL"],
-    win32: ["C:\\Program Files\\MRIcroGL\\MRIcroGL.exe"],
-    linux: ["/usr/bin/MRIcroGL", "/usr/local/bin/MRIcroGL"],
-  },
+const FREEVIEW_PATHS: Record<DesktopPlatform, string[]> = {
+  darwin: ["/Applications/Freeview.app/Contents/MacOS/freeview", "/Applications/freesurfer/bin/freeview"],
+  win32: ["C:\\Program Files\\FreeSurfer\\bin\\freeview.exe"],
+  linux: ["/usr/local/freesurfer/bin/freeview", "/opt/freesurfer/bin/freeview", "/usr/bin/freeview"],
+};
+
+const MRICROGL_PATHS: Record<DesktopPlatform, string[]> = {
+  darwin: [],
+  win32: ["C:\\Program Files\\MRIcroGL\\MRIcroGL.exe"],
+  linux: ["/usr/bin/MRIcroGL", "/usr/local/bin/MRIcroGL"],
 };
 
 const DISPLAY_NAMES: Record<ExternalViewerId, string> = {
@@ -53,6 +56,61 @@ const DISPLAY_NAMES: Record<ExternalViewerId, string> = {
 
 async function exists(candidate: string) {
   try { await access(candidate); return true; } catch { return false; }
+}
+
+async function runCommandOutput(command: string, args: string[], timeoutMs = 5000): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(command, args, { timeout: timeoutMs, env: process.env });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function findMRIcroGLDarwin(): Promise<{ executable: string | null; searched: string[] }> {
+  const searched: string[] = [];
+
+  // 1. PATH
+  for (const cmd of ["MRIcroGL", "mricrogl"]) {
+    const found = await runCommandOutput("which", [cmd]);
+    if (found && path.isAbsolute(found) && await exists(found)) {
+      return { executable: found, searched };
+    }
+  }
+  searched.push("PATH (which MRIcroGL / mricrogl): not found");
+
+  // 2. LaunchServices via osascript — finds apps registered with macOS including mounted DMGs
+  const appPath = await runCommandOutput("osascript", ["-e", 'POSIX path of (path to application "MRIcroGL")']);
+  if (appPath) {
+    const bundlePath = appPath.replace(/\/$/, "");
+    const exe = path.join(bundlePath, "Contents", "MacOS", "MRIcroGL");
+    if (await exists(exe)) return { executable: exe, searched };
+    searched.push(`LaunchServices: ${bundlePath} (executable not found at Contents/MacOS/MRIcroGL)`);
+  } else {
+    searched.push("LaunchServices (osascript): MRIcroGL not registered");
+  }
+
+  // 3. Filesystem search: /Applications, ~/Applications, /Volumes/*/
+  const roots = ["/Applications", path.join(os.homedir(), "Applications")];
+  try {
+    const vols = await readdir("/Volumes");
+    roots.push(...vols.map((v) => `/Volumes/${v}`));
+  } catch { /* /Volumes not available */ }
+
+  for (const root of roots) {
+    try {
+      const entries = await readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.toLowerCase().startsWith("mricrogl")) {
+          const exe = path.join(root, entry.name, "Contents", "MacOS", "MRIcroGL");
+          if (await exists(exe)) return { executable: exe, searched };
+        }
+      }
+    } catch { /* skip unreadable */ }
+    searched.push(root);
+  }
+
+  return { executable: null, searched };
 }
 
 export async function versionedFreeViewCandidates(root = "/Applications/freesurfer"): Promise<string[]> {
@@ -72,23 +130,40 @@ export async function detectViewer(
   platform: DesktopPlatform,
   configuredPath?: string | null,
 ): Promise<ViewerDetection> {
-  const versioned = viewerId === "freeview" && platform === "darwin"
-    ? await versionedFreeViewCandidates()
-    : [];
-  const candidates = configuredPath ? [configuredPath] : [...INSTALL_PATHS[viewerId][platform], ...versioned];
+  const displayName = DISPLAY_NAMES[viewerId];
+
+  // Configured path (set by user via "Locate…") always takes priority.
+  if (configuredPath) {
+    if (path.isAbsolute(configuredPath) && await exists(configuredPath)) {
+      return { viewerId, displayName, installed: true, executable: configuredPath, reason: null };
+    }
+    return {
+      viewerId, displayName, installed: false, executable: null,
+      reason: `${displayName} was not found at the saved path: ${configuredPath}`,
+    };
+  }
+
+  if (viewerId === "mricrogl" && platform === "darwin") {
+    const { executable, searched } = await findMRIcroGLDarwin();
+    if (executable) return { viewerId, displayName, installed: true, executable, reason: null };
+    return {
+      viewerId, displayName, installed: false, executable: null,
+      reason: `MRIcroGL not found. Searched: ${searched.join("; ")}`,
+    };
+  }
+
+  const candidates = viewerId === "freeview"
+    ? [...FREEVIEW_PATHS[platform], ...(platform === "darwin" ? await versionedFreeViewCandidates() : [])]
+    : MRICROGL_PATHS[platform];
+
   for (const candidate of candidates) {
     if (path.isAbsolute(candidate) && await exists(candidate)) {
-      return { viewerId, displayName: DISPLAY_NAMES[viewerId], installed: true, executable: candidate, reason: null };
+      return { viewerId, displayName, installed: true, executable: candidate, reason: null };
     }
   }
   return {
-    viewerId,
-    displayName: DISPLAY_NAMES[viewerId],
-    installed: false,
-    executable: null,
-    reason: configuredPath
-      ? `${DISPLAY_NAMES[viewerId]} was not found at the configured path.`
-      : `${DISPLAY_NAMES[viewerId]} was not found in a default installation location.`,
+    viewerId, displayName, installed: false, executable: null,
+    reason: `${displayName} was not found in a default installation location.`,
   };
 }
 

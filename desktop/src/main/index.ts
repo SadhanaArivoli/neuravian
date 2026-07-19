@@ -1,6 +1,30 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } from "electron";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+// ── viewer settings helpers ────────────────────────────────────────────────────
+
+interface ViewerSettings { configured: Partial<Record<string, string>> }
+
+async function loadViewerSettings(userData: string): Promise<Partial<Record<string, string>>> {
+  try {
+    const raw = JSON.parse(await readFile(path.join(userData, "viewer-settings.json"), "utf-8")) as ViewerSettings;
+    return raw.configured ?? {};
+  } catch { return {}; }
+}
+
+async function saveViewerSetting(userData: string, viewerId: string, executablePath: string | null): Promise<void> {
+  const file = path.join(userData, "viewer-settings.json");
+  let current: ViewerSettings = { configured: {} };
+  try { current = JSON.parse(await readFile(file, "utf-8")) as ViewerSettings; } catch { /* first write */ }
+  if (executablePath === null) {
+    delete current.configured[viewerId];
+  } else {
+    current.configured[viewerId] = executablePath;
+  }
+  await writeFile(file, JSON.stringify(current, null, 2));
+}
+
 import { queryActiveRuns } from "./activity.js";
 import { DesktopCompose } from "./compose.js";
 import { formatDiagnostics } from "./diagnostics.js";
@@ -21,9 +45,10 @@ import {
 } from "./viewer-manager.js";
 import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
-import { WorkspaceClient } from "./workspace-client.js";
+import { WorkspaceClient, resolveInstanceUrl } from "./workspace-client.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
+import { rmdir, rm } from "node:fs/promises";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -405,12 +430,46 @@ ipcMain.handle("logs:open", async () => { await openDesktopLogs(); return true; 
 ipcMain.handle("frontend:open-browser", async () => { await shell.openExternal(FRONTEND_URL); return true; });
 ipcMain.handle("docker:open-desktop", async () => await shell.openPath("/Applications/Docker.app"));
 ipcMain.handle("docker:install", async () => { await shell.openExternal(DOCKER_INSTALL_URL); return true; });
-ipcMain.handle("viewers:detect", async (_event, configured: Partial<Record<ExternalViewerId, string>> = {}) => {
+ipcMain.handle("viewers:detect", async (_event, overrides: Partial<Record<ExternalViewerId, string>> = {}) => {
   if (!["darwin", "win32", "linux"].includes(process.platform)) return [];
   const platform = process.platform as DesktopPlatform;
+  const saved = await loadViewerSettings(app.getPath("userData"));
   return await Promise.all((["freeview", "mricrogl"] as const).map(
-    (viewerId) => detectViewer(viewerId, platform, configured[viewerId]),
+    (viewerId) => detectViewer(viewerId, platform, overrides[viewerId] ?? saved[viewerId]),
   ));
+});
+ipcMain.handle("viewers:browse-for-executable", async (_event, viewerId: string) => {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined!, {
+    title: `Locate ${viewerId === "mricrogl" ? "MRIcroGL" : viewerId} executable`,
+    properties: ["openFile"],
+    filters: process.platform === "win32" ? [{ name: "Executables", extensions: ["exe"] }] : [],
+  });
+  return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+ipcMain.handle("viewers:save-configured", async (
+  _event,
+  input: { viewerId: string; executablePath: string | null },
+) => {
+  await saveViewerSetting(app.getPath("userData"), input.viewerId, input.executablePath);
+  return true;
+});
+ipcMain.handle("viewers:read-artifact", async (
+  _event,
+  input: { workspaceId: string; runId: number; relativePath: string },
+) => {
+  const { workspaceId, runId, relativePath } = input;
+  if (typeof workspaceId !== "string" || /[/\\]/.test(workspaceId) || !workspaceId) {
+    throw new Error("Invalid workspaceId.");
+  }
+  if (!Number.isInteger(runId) || runId < 1) throw new Error("Invalid runId.");
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..") || normalized.includes("\0")) {
+    throw new Error("Unsafe artifact path rejected.");
+  }
+  const root = path.resolve(app.getPath("userData"), "run-cache", workspaceId, `run-${runId}`, "artifacts");
+  const file = path.resolve(root, normalized);
+  if (!file.startsWith(`${root}${path.sep}`)) throw new Error("Artifact path escaped cache root.");
+  return await readFile(file);
 });
 ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
 ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
@@ -424,13 +483,20 @@ ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
 });
 ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
   const { profiles, client } = workspaceServices();
-  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  let profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(profileId);
-  const result = await client.synchronize(
-    { ...profile, connectionState: "syncing" },
-    credential,
-  );
+
+  // For EC2 instance-id workspaces, resolve the current public IP before connecting.
+  if (profile.connectionMode === "instance-id") {
+    const resolvedUrl = await resolveInstanceUrl(profile);
+    if (resolvedUrl && resolvedUrl !== profile.serverUrl) {
+      profile = { ...profile, serverUrl: resolvedUrl, serverIdentity: null };
+      await profiles.update(profile);
+    }
+  }
+
+  const result = await client.synchronize({ ...profile, connectionState: "syncing" }, credential);
   const updated: WorkspaceProfile = {
     ...profile,
     serverIdentity: result.snapshot.workspaceId,
@@ -456,10 +522,12 @@ ipcMain.handle("workspaces:inspect", async (
   if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
     throw new Error("Workspace identity mismatch.");
   }
+  const userData = app.getPath("userData");
+  const configured = await loadViewerSettings(userData);
   const [cache, viewers] = await Promise.all([
     inspectWorkspaceCache(input.workspaceId),
     Promise.all((["freeview", "mricrogl"] as const).map(
-      (viewerId) => detectViewer(viewerId, process.platform as DesktopPlatform),
+      (viewerId) => detectViewer(viewerId, process.platform as DesktopPlatform, configured[viewerId]),
     )),
   ]);
   const legacyCacheEntries = await detectLegacyRunCaches(path.join(app.getPath("userData"), "run-cache"));
@@ -568,6 +636,65 @@ ipcMain.handle("workspaces:push-workflow", async (
   }
   return response.json();
 });
+ipcMain.handle("workspaces:duplicate", async (_event, profileId: string) => {
+  return await workspaceServices().profiles.duplicate(profileId);
+});
+ipcMain.handle("workspaces:export", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return profiles.exportProfile(profile);
+});
+ipcMain.handle("workspaces:import", async (
+  _event,
+  input: { name?: string; serverUrl: string; username?: string; password?: string; connectionMode?: "url" | "instance-id"; instanceId?: string | null; awsRegion?: string | null },
+) => {
+  return await workspaceServices().profiles.save({
+    name: input.name ?? "Imported Workspace",
+    serverUrl: input.serverUrl,
+    username: input.username,
+    password: input.password,
+    connectionMode: input.connectionMode,
+    instanceId: input.instanceId,
+    awsRegion: input.awsRegion,
+  });
+});
+ipcMain.handle("workspaces:reset-cache", async (_event, workspaceId: string) => {
+  if (!workspaceId || /[/\\]/.test(workspaceId)) throw new Error("Invalid workspaceId.");
+  const cacheDir = path.join(app.getPath("userData"), "run-cache", workspaceId);
+  try { await rm(cacheDir, { recursive: true, force: true }); } catch { /* already empty */ }
+  return true;
+});
+ipcMain.handle("workspaces:clear-credentials", async (_event, profileId: string) => {
+  await workspaceServices().profiles.clearCredential(profileId);
+  return true;
+});
+ipcMain.handle("workspaces:resolve-instance-url", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const resolved = await resolveInstanceUrl(profile);
+  if (!resolved) return null;
+  const updated = { ...profile, serverUrl: resolved, serverIdentity: null };
+  await profiles.update(updated);
+  return updated;
+});
+ipcMain.handle("workspaces:pull-to-local", async (
+  _event,
+  input: { type: "project" | "workflow"; data: Record<string, unknown> },
+) => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const route = input.type === "project" ? "/api/projects" : "/api/workflows";
+  const response = await fetch(`http://127.0.0.1:8000${route}`, {
+    method: "POST", headers, body: JSON.stringify(input.data),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Local NeuroForge returned HTTP ${response.status}: ${text}`);
+  }
+  return response.json();
+});
+
 ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunchRequest) => {
   const identity = await localWorkspace().get();
   if (request.workspaceId !== identity.workspaceId) throw new Error("Local workspace identity mismatch.");

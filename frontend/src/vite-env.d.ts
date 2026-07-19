@@ -16,8 +16,21 @@ interface NeuroForgeDesktopBridge {
     serverUrl: string;
     username?: string;
     password?: string;
+    connectionMode?: "url" | "instance-id";
+    instanceId?: string | null;
+    awsRegion?: string | null;
   }): Promise<WorkspaceProfile>;
   removeWorkspace(profileId: string): Promise<boolean>;
+  duplicateWorkspace(profileId: string): Promise<WorkspaceProfile>;
+  exportWorkspace(profileId: string): Promise<Record<string, unknown>>;
+  importWorkspace(input: {
+    name?: string; serverUrl: string; username?: string; password?: string;
+    connectionMode?: "url" | "instance-id"; instanceId?: string | null; awsRegion?: string | null;
+  }): Promise<WorkspaceProfile>;
+  resetWorkspaceCache(workspaceId: string): Promise<boolean>;
+  clearWorkspaceCredentials(profileId: string): Promise<boolean>;
+  resolveInstanceUrl(profileId: string): Promise<WorkspaceProfile | null>;
+  pullToLocal(input: { type: "project" | "workflow"; data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   syncWorkspace(profileId: string): Promise<{
     online: boolean;
     profile: WorkspaceProfile;
@@ -85,6 +98,9 @@ interface NeuroForgeDesktopBridge {
       is_archived?: boolean;
     };
   }): Promise<Record<string, unknown>>;
+  browseForViewer(viewerId: string): Promise<string | null>;
+  saveViewerConfig(input: { viewerId: string; executablePath: string | null }): Promise<boolean>;
+  readArtifact(input: { workspaceId: string; runId: number; relativePath: string }): Promise<Uint8Array>;
 }
 
 interface WorkspaceProfile {
@@ -95,6 +111,9 @@ interface WorkspaceProfile {
   serverIdentity: string | null;
   lastSync: string | null;
   connectionState: "connected" | "offline" | "syncing" | "unavailable";
+  connectionMode?: "url" | "instance-id";
+  instanceId?: string | null;
+  awsRegion?: string | null;
 }
 
 type WorkspaceCacheState =
