@@ -421,21 +421,41 @@ export function CloudRunDetail({
                   </button>
                 )}
 
-                {/* Secondary local viewers */}
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {/* NeuroForge Viewer — available when FastSurfer artifacts are cached */}
+                {/* Secondary local viewers — always shown so every viewer is reachable regardless of primary */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {/* NeuroForge Viewer */}
                   <button
                     disabled={!neuroforgeViewerCanOpen || primaryAction === "neuroforge-viewer"}
                     onClick={() => setShowViewer(true)}
                     className="rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    <span className="text-xs font-medium text-gray-400">Open in NeuroForge Viewer</span>
+                    <span className="text-xs font-medium text-gray-400">NeuroForge Viewer</span>
                     <span className="mt-0.5 block text-[10px] text-gray-600">
                       {neuroforgeViewerCanOpen
-                        ? primaryAction === "neuroforge-viewer" ? "Selected as primary action above" : "Built-in NiiVue viewer"
+                        ? primaryAction === "neuroforge-viewer" ? "Primary (selected above)" : "Built-in NiiVue viewer"
                         : fastsurferRequired.length !== 2
-                        ? "No compatible artifacts for this pipeline"
-                        : "Required artifacts not cached locally"}
+                        ? "No compatible artifacts"
+                        : "Artifacts not cached locally"}
+                    </span>
+                  </button>
+
+                  {/* FreeView */}
+                  <button
+                    disabled={!freeviewCanOpen || primaryAction === "freeview"}
+                    onClick={() => void openFreeView()}
+                    className="rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <span className="text-xs font-medium text-gray-400">FreeView</span>
+                    <span className="mt-0.5 block text-[10px] text-gray-600">
+                      {!freeview?.installed
+                        ? (freeview?.reason ?? "Not installed")
+                        : primaryAction === "freeview"
+                        ? "Primary (selected above)"
+                        : fastsurferRequired.length !== 2
+                        ? "No compatible artifacts"
+                        : freeviewCanOpen
+                        ? (fastsurferCached ? "Ready from local cache" : "Will download on open")
+                        : "Artifacts not cached — reconnect to download"}
                     </span>
                   </button>
 
@@ -446,11 +466,11 @@ export function CloudRunDetail({
                       onClick={() => void openMRIcroGL()}
                       className="rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
                     >
-                      <span className="text-xs font-medium text-gray-400">Open in MRIcroGL</span>
+                      <span className="text-xs font-medium text-gray-400">MRIcroGL</span>
                       <span className="mt-0.5 block text-[10px] text-gray-600">
                         {mricrogl?.installed
-                          ? primaryAction === "mricrogl" ? "Selected as primary action above"
-                            : !fastsurferCached ? "Required artifacts not cached"
+                          ? primaryAction === "mricrogl" ? "Primary (selected above)"
+                            : !fastsurferCached ? "Artifacts not cached"
                             : "Ready from local cache"
                           : "Not detected"}
                       </span>
@@ -485,25 +505,7 @@ export function CloudRunDetail({
                   </div>
                 )}
 
-                {/* FreeView shown as secondary when cloud browser is primary (and FreeView wasn't already chosen above) */}
-                {primaryAction === "cloud-browser" && (freeview !== undefined || fastsurferRequired.length > 0) && (
-                  <div className="mt-3">
-                    <button
-                      disabled={!freeview?.installed || fastsurferRequired.length !== 2 || (!online && !fastsurferCached)}
-                      onClick={() => void openFreeView()}
-                      className="w-full rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      <span className="text-xs font-medium text-gray-400">Open in FreeView</span>
-                      <span className="mt-0.5 block text-[10px] text-gray-600">
-                        {!freeview?.installed
-                          ? (freeview?.reason ?? "Not installed")
-                          : fastsurferRequired.length !== 2
-                          ? "No compatible artifacts for this pipeline"
-                          : "Required artifacts not cached — reconnect to download"}
-                      </span>
-                    </button>
-                  </div>
-                )}
+
 
                 {downloading.length > 0 && (
                   <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
