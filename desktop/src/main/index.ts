@@ -508,7 +508,9 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
       const cached = await new WorkspaceMetadataCache(
         path.join(app.getPath("userData"), "workspace-metadata"),
       ).read(profileId);
-      const updated: WorkspaceProfile = { ...profile, connectionState: "offline" };
+      // Re-read to avoid clobbering concurrent user saves (same fix as the non-early-exit path).
+      const freshProfile = (await profiles.list()).find((item) => item.id === profileId) ?? profile;
+      const updated: WorkspaceProfile = { ...freshProfile, connectionState: "offline" };
       await profiles.update(updated);
       return {
         online: false,
@@ -527,8 +529,13 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
   }
 
   const result = await client.synchronize({ ...profile, connectionState: "syncing" }, credential);
+  // Re-read from disk before writing so we don't overwrite concurrent settings changes
+  // (e.g. user changing region in the Connection tab while a sync is in flight).
+  // We only own: serverIdentity, lastSync, connectionState.
+  const freshProfile = (await profiles.list()).find((item) => item.id === profileId) ?? profile;
   const updated: WorkspaceProfile = {
-    ...profile,
+    ...freshProfile,
+    serverUrl: profile.serverUrl, // keep the resolved URL from this sync run
     serverIdentity: result.snapshot.workspaceId,
     lastSync: result.snapshot.synchronizedAt,
     connectionState: result.online ? "connected" : "offline",
