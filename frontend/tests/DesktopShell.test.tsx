@@ -72,6 +72,16 @@ describe("restored desktop shell", () => {
       launchViewer: vi.fn(async () => true),
       pushCloudProject: vi.fn(async () => ({})),
       pushCloudWorkflow: vi.fn(async () => ({})),
+      browseForViewer: vi.fn(async () => null),
+      saveViewerConfig: vi.fn(async () => true),
+      readArtifact: vi.fn(async () => new Uint8Array()),
+      duplicateWorkspace: vi.fn(async () => ({} as WorkspaceProfile)),
+      exportWorkspace: vi.fn(async () => ({})),
+      importWorkspace: vi.fn(async () => ({} as WorkspaceProfile)),
+      resetWorkspaceCache: vi.fn(async () => true),
+      clearWorkspaceCredentials: vi.fn(async () => true),
+      resolveInstanceUrl: vi.fn(async () => null),
+      pullToLocal: vi.fn(async () => ({})),
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
