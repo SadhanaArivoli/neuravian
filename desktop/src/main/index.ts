@@ -46,6 +46,7 @@ import {
 import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
 import { WorkspaceClient, resolveEc2State } from "./workspace-client.js";
+import { WorkspaceReplicationEngine } from "./workspace-replication.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
 import { rmdir, rm } from "node:fs/promises";
@@ -62,6 +63,7 @@ let logger: DesktopLogger | null = null;
 let rendererReadyTimer: NodeJS.Timeout | undefined;
 let profileStore: ConnectionProfileStore | null = null;
 let workspaceClient: WorkspaceClient | null = null;
+let workspaceWre: WorkspaceReplicationEngine | null = null;
 let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
@@ -84,8 +86,9 @@ function diagnosticsText(): string {
 function workspaceServices(): {
   profiles: ConnectionProfileStore;
   client: WorkspaceClient;
+  wre: WorkspaceReplicationEngine;
 } {
-  if (!profileStore || !workspaceClient) {
+  if (!profileStore || !workspaceClient || !workspaceWre) {
     const userData = app.getPath("userData");
     profileStore = new ConnectionProfileStore(path.join(userData, "workspaces"), {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -96,8 +99,12 @@ function workspaceServices(): {
       new WorkspaceMetadataCache(path.join(userData, "workspace-metadata")),
       path.join(userData, "run-cache"),
     );
+    workspaceWre = new WorkspaceReplicationEngine({
+      artifactCacheRoot: path.join(userData, "run-cache"),
+      client: workspaceClient,
+    });
   }
-  return { profiles: profileStore, client: workspaceClient };
+  return { profiles: profileStore, client: workspaceClient, wre: workspaceWre };
 }
 
 function localWorkspace(): LocalWorkspaceStore {
@@ -485,7 +492,7 @@ ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
   return true;
 });
 ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
-  const { profiles, client } = workspaceServices();
+  const { profiles, wre } = workspaceServices();
   let profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(profileId);
@@ -528,7 +535,7 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
     }
   }
 
-  const result = await client.synchronize({ ...profile, connectionState: "syncing" }, credential);
+  const result = await wre.synchronize({ ...profile, connectionState: "syncing" }, credential);
   // Re-read from disk before writing so we don't overwrite concurrent settings changes
   // (e.g. user changing region in the Connection tab while a sync is in flight).
   // We only own: serverIdentity, lastSync, connectionState.
@@ -584,13 +591,13 @@ ipcMain.handle("workspaces:sync-artifacts", async (
   _event,
   input: { profileId: string; workspaceId: string; runId: number; relativePaths: string[] },
 ) => {
-  const { profiles, client } = workspaceServices();
+  const { profiles, wre } = workspaceServices();
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
     throw new Error("Workspace identity mismatch.");
   }
-  return await client.syncArtifacts(
+  return await wre.syncArtifacts(
     profile,
     await profiles.credential(profile.id),
     input.workspaceId,
@@ -602,76 +609,76 @@ ipcMain.handle("workspaces:sync-all-run-artifacts", async (
   _event,
   input: { profileId: string; workspaceId: string; runId: number },
 ) => {
-  const { profiles, client } = workspaceServices();
+  const { profiles, wre } = workspaceServices();
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
     throw new Error("Workspace identity mismatch.");
   }
-  const credential = await profiles.credential(input.profileId);
-  return await client.syncAllRunArtifacts(profile, credential, input.workspaceId, input.runId);
+  return await wre.syncAllRunArtifacts(
+    profile,
+    await profiles.credential(input.profileId),
+    input.workspaceId,
+    input.runId,
+  );
 });
 
 ipcMain.handle("workspaces:push-project", async (
   _event,
   input: {
     profileId: string;
-    project: {
-      title: string;
-      description?: string | null;
-      institution?: string | null;
-      lab?: string | null;
-      pi_name?: string | null;
-      collaborators?: string[];
-      tags?: string[];
-      status?: string;
-    };
+    objectId: string;
+    revision: number;
+    project: Record<string, unknown>;
+    timestamps?: { createdAt?: string; modifiedAt?: string };
   },
 ) => {
-  const { profiles } = workspaceServices();
+  const { profiles, wre } = workspaceServices();
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (credential) headers["Authorization"] = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
-  const url = new URL("/api/projects", profile.serverUrl).toString();
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(input.project) });
-  if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new Error(`Cloud project create failed (${response.status}): ${text}`);
-  }
-  return response.json();
+  const obj = wre.buildObject(input.objectId, "project", input.revision, input.project, input.timestamps);
+  return await wre.pushObjects(profile, credential, [obj]);
 });
 ipcMain.handle("workspaces:push-workflow", async (
   _event,
   input: {
     profileId: string;
-    workflow: {
-      name: string;
-      description?: string | null;
-      dataset_id?: number | null;
-      tags?: string[];
-      state: Record<string, unknown>;
-      schema_version?: string;
-      is_template?: boolean;
-      is_favorite?: boolean;
-      is_archived?: boolean;
-    };
+    objectId: string;
+    revision: number;
+    workflow: Record<string, unknown>;
+    timestamps?: { createdAt?: string; modifiedAt?: string };
   },
 ) => {
-  const { profiles } = workspaceServices();
+  const { profiles, wre } = workspaceServices();
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (credential) headers["Authorization"] = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
-  const url = new URL("/api/workflows", profile.serverUrl).toString();
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(input.workflow) });
-  if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new Error(`Cloud workflow create failed (${response.status}): ${text}`);
-  }
-  return response.json();
+  const obj = wre.buildObject(input.objectId, "workflow", input.revision, input.workflow, input.timestamps);
+  return await wre.pushObjects(profile, credential, [obj]);
+});
+ipcMain.handle("workspaces:replicate-objects", async (
+  _event,
+  input: { profileId: string; objects: unknown[] },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const { isNeuroForgeObject } = await import("./workspace-types.js");
+  const valid = input.objects.filter(isNeuroForgeObject);
+  if (valid.length !== input.objects.length) throw new Error("One or more objects failed NeuroForgeObject validation.");
+  return await wre.pushObjects(profile, credential, valid);
+});
+ipcMain.handle("workspaces:shutdown-fence", async (
+  _event,
+  input: { profileId: string; workspaceId: string },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  return await wre.shutdownFence(profile, credential, input.workspaceId);
 });
 ipcMain.handle("workspaces:duplicate", async (_event, profileId: string) => {
   return await workspaceServices().profiles.duplicate(profileId);

@@ -118,6 +118,16 @@ interface NeuroForgeDesktopBridge {
   browseForViewer(viewerId: string): Promise<string | null>;
   saveViewerConfig(input: { viewerId: string; executablePath: string | null }): Promise<boolean>;
   readArtifact(input: { workspaceId: string; runId: number; relativePath: string }): Promise<Uint8Array>;
+  replicateObjects(input: { profileId: string; objects: unknown[] }): Promise<{
+    pushed: string[];
+    skipped: string[];
+    errors: Array<{ objectId: string; error: string }>;
+  }>;
+  shutdownFence(input: { profileId: string; workspaceId: string }): Promise<{
+    artifactsPulled: string[];
+    errors: string[];
+    fenceComplete: boolean;
+  }>;
 }
 
 interface WorkspaceProfile {

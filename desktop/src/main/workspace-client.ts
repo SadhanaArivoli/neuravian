@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { inspectRunCache, syncRun, type SyncManifest, type SyncResult } from "./run-cache.js";
+import { inspectRunCache, type SyncManifest } from "./run-cache.js";
 import {
   remoteIdentityKey,
   type Ec2ConnectionHealth,
@@ -181,9 +181,6 @@ function withRemoteKey<T extends JsonRecord & { id: number | string }>(
 }
 
 export class WorkspaceClient {
-  /** Tracks runs whose artifacts are currently being auto-synced in the background. */
-  private readonly autoSyncingRuns = new Set<string>();
-
   constructor(
     private readonly metadataCache: WorkspaceMetadataCache,
     private readonly artifactCacheRoot: string,
@@ -274,26 +271,6 @@ export class WorkspaceClient {
           ? await inspectRunCache(path.join(this.artifactCacheRoot, workspaceId), manifest)
           : { state: "cloud-only" as const, cachedPaths: [] };
 
-        // Auto-sync: download all artifacts for completed runs that are not yet fully cached.
-        // Fire-and-forget — never blocks the snapshot response.
-        const autoSyncKey = `${workspaceId}:${summary.id}`;
-        if (manifest && inspection.state !== "fully-cached" && !this.autoSyncingRuns.has(autoSyncKey)) {
-          this.autoSyncingRuns.add(autoSyncKey);
-          const resolvedManifest: SyncManifest = {
-            ...manifest,
-            artifacts: manifest.artifacts.map((artifact) => ({
-              ...artifact,
-              url: new URL(artifact.url, `${profile.serverUrl}/`).toString(),
-            })),
-          };
-          syncRun(path.join(this.artifactCacheRoot, workspaceId), resolvedManifest, fetcher)
-            .then(() => { this.autoSyncingRuns.delete(autoSyncKey); })
-            .catch((e: unknown) => {
-              console.error(`[auto-sync] run ${summary.id} failed:`, e instanceof Error ? e.message : e);
-              this.autoSyncingRuns.delete(autoSyncKey);
-            });
-        }
-
         return {
           ...summary,
           ...details,
@@ -348,52 +325,4 @@ export class WorkspaceClient {
     }
   }
 
-  async syncArtifacts(
-    profile: WorkspaceProfile,
-    credential: WorkspaceCredential | null,
-    workspaceId: string,
-    runId: number,
-    relativePaths: string[],
-  ): Promise<SyncResult> {
-    if (!Number.isInteger(runId) || runId < 1 || relativePaths.length === 0) {
-      throw new Error("Artifact synchronization requires a run and at least one artifact.");
-    }
-    const fetcher = authenticatedFetcher(credential, this.fetcher);
-    const manifest = await json<SyncManifest>(profile, `/api/runs/${runId}/sync-manifest`, fetcher);
-    const requested = new Set(relativePaths);
-    manifest.artifacts = manifest.artifacts
-      .filter((artifact) => requested.has(artifact.relativePath))
-      .map((artifact) => ({
-        ...artifact,
-        url: new URL(artifact.url, `${profile.serverUrl}/`).toString(),
-      }));
-    if (manifest.artifacts.length !== requested.size) {
-      throw new Error("One or more requested artifacts are not in the run manifest.");
-    }
-    return await syncRun(path.join(this.artifactCacheRoot, workspaceId), manifest, fetcher);
-  }
-
-  /** Download every artifact for a completed run in a single call. */
-  async syncAllRunArtifacts(
-    profile: WorkspaceProfile,
-    credential: WorkspaceCredential | null,
-    workspaceId: string,
-    runId: number,
-  ): Promise<SyncResult> {
-    if (!Number.isInteger(runId) || runId < 1) throw new Error("Invalid run ID.");
-    const fetcher = authenticatedFetcher(credential, this.fetcher);
-    const manifest = await json<SyncManifest>(profile, `/api/runs/${runId}/sync-manifest`, fetcher);
-    manifest.artifacts = manifest.artifacts.map((artifact) => ({
-      ...artifact,
-      url: new URL(artifact.url, `${profile.serverUrl}/`).toString(),
-    }));
-    // Mark as auto-syncing so the background job doesn't start a duplicate.
-    const key = `${workspaceId}:${runId}`;
-    this.autoSyncingRuns.add(key);
-    try {
-      return await syncRun(path.join(this.artifactCacheRoot, workspaceId), manifest, fetcher);
-    } finally {
-      this.autoSyncingRuns.delete(key);
-    }
-  }
 }
