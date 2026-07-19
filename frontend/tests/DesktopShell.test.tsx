@@ -41,7 +41,7 @@ const snapshot: WorkspaceSnapshot = {
 };
 
 const navigationLabels = [
-  "Home", "Projects", "Datasets", "Pipelines", "Runs", "Workflows", "Library",
+  "Home", "Projects", "Datasets", "Pipelines", "Runs", "Workflows",
   "DICOM Wizard", "Plugins", "Remote Hosts", "Workspace", "Settings",
 ];
 

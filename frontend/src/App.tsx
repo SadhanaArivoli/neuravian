@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
@@ -45,6 +45,7 @@ export default function App() {
             <Route path="/pipelines" element={<Pipelines />} />
             <Route path="/runs" element={<Runs />} />
             <Route path="/runs/:id" element={<RunDetail />} />
+            <Route path="/workflows" element={<Navigate to="/workflows/library" replace />} />
             <Route path="/workflows/new" element={<WorkflowBuilder />} />
             <Route path="/workflows/library" element={<WorkflowLibrary />} />
             <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
