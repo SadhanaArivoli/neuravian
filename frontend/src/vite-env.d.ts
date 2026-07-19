@@ -129,6 +129,13 @@ interface NeuroForgeDesktopBridge {
     fenceComplete: boolean;
   }>;
   setAutoStop(input: { profileId: string; enabled: boolean }): Promise<WorkspaceProfile>;
+  loadSession(profileId: string): Promise<{ session: WorkspaceSession | null; cachedSnapshot: WorkspaceSnapshot | null }>;
+  loadRunHistory(input: { profileId: string; page?: number; pageSize?: number }): Promise<{
+    entries: SessionRunHistoryEntry[];
+    totalCount: number;
+    hasMore: boolean;
+  }>;
+  saveUiState(input: { profileId: string; uiState: SessionUIState }): Promise<{ ok: boolean }>;
   onCloudEvent(callback: (event: {
     profileId: string;
     type: string;
@@ -236,6 +243,73 @@ interface WorkspaceInspection {
     executable: string | null;
     reason: string | null;
   }>;
+}
+
+interface SessionUIState {
+  activeView: string;
+  selectedProjectId: string | null;
+  selectedWorkflowId: string | null;
+  selectedRunId: number | null;
+  openPanels: string[];
+  scrollPositions: Record<string, number>;
+}
+
+interface SessionSyncStatus {
+  lastSyncAt: string | null;
+  lastOnlineAt: string | null;
+  pendingArtifacts: number;
+  syncErrors: string[];
+}
+
+interface SessionRunHistoryEntry {
+  runId: number;
+  remoteKey: string;
+  pipelineId: string;
+  pipelineName: string;
+  datasetId: number;
+  status: string;
+  launchedAt: string;
+  finishedAt: string | null;
+  cacheState: WorkspaceCacheState;
+  artifactCount: number;
+  fenceComplete: boolean;
+}
+
+interface WorkspaceSession {
+  sessionId: string;
+  profileId: string;
+  workspaceId: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  projectSummaries: Array<{ id: number; remoteKey: string; title: string }>;
+  workflowSummaries: Array<{ id: number; remoteKey: string; name: string }>;
+  datasetSummaries: Array<{ id: number; remoteKey: string; name: string }>;
+  /** Display cache — last 50 entries. Complete history is in RunHistoryStore. */
+  recentRunHistory: SessionRunHistoryEntry[];
+  pendingExecutions: Array<{
+    runId: number; profileId: string; pipelineId: string; launchedAt: string; autoStop: boolean;
+  }>;
+  notifications: Array<{
+    notificationId: string;
+    type: string;
+    message: string;
+    timestamp: string;
+    runId: number | null;
+    read: boolean;
+  }>;
+  uiState: SessionUIState;
+  viewerState: {
+    lastRunId: number | null;
+    openFiles: string[];
+    viewerPreference: "freeview" | "mricrogl" | "neuroforge-viewer" | null;
+  };
+  syncStatus: SessionSyncStatus;
+  researchContext: {
+    annotations: Record<string, Record<string, unknown>>;
+    recentlyViewed: string[];
+    scratch: string;
+    preferences: Record<string, unknown>;
+  };
 }
 
 interface Window {

@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   setAutoStop: (input: unknown) => ipcRenderer.invoke("workspaces:set-auto-stop", input),
   startEnvironment: (profileId: string) => ipcRenderer.invoke("workspaces:start-environment", profileId),
   stopEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:stop-environment", input),
+  loadSession: (profileId: string) => ipcRenderer.invoke("workspaces:load-session", profileId),
+  saveUiState: (input: { profileId: string; uiState: unknown }) => ipcRenderer.invoke("workspaces:save-ui-state", input),
+  loadRunHistory: (input: unknown) => ipcRenderer.invoke("workspaces:run-history", input),
 });
 
 ipcRenderer.send("startup:trace", { stage: 3, name: "preload loaded" });

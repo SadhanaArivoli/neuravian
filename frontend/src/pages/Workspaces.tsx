@@ -49,7 +49,7 @@ function cacheClass(state: WorkspaceCacheState): string {
   if (state === "fully-cached" || state === "offline-cached") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-300";
   if (state === "downloading" || state === "partially-cached") return "border-amber-400/25 bg-amber-400/10 text-amber-300";
   if (state === "server-unavailable") return "border-red-400/25 bg-red-400/10 text-red-300";
-  return "border-sky-400/20 bg-sky-400/10 text-sky-300";
+  return "border-accent/20 bg-accent/10 text-accent";
 }
 
 // ── Local workspace types & loading ────────────────────────────────────────────
@@ -120,8 +120,8 @@ function SyncBanner({ state }: { state: "idle" | "syncing" | "done" | "failed" }
     >
       <div className="mt-2 grid grid-cols-4 gap-2">
         {["Projects", "Datasets", "Runs", "Reports"].map((label) => (
-          <div key={label} className="rounded-md bg-slate-950/50 px-2 py-1.5 text-center text-[10px]">
-            <span className={state === "done" ? "text-emerald-300" : state === "syncing" ? "text-cyan-300" : "text-red-300"}>
+          <div key={label} className="rounded-md bg-surface/50 px-2 py-1.5 text-center text-[10px]">
+            <span className={state === "done" ? "text-emerald-300" : state === "syncing" ? "text-accent" : "text-red-300"}>
               {state === "done" ? "✓ " : state === "syncing" ? "• " : "× "}
             </span>
             {label}
@@ -138,12 +138,12 @@ function ViewerStatusCard({ inspection }: { inspection: WorkspaceInspection | nu
       {(["freeview", "mricrogl"] as const).map((viewerId) => {
         const v = inspection?.viewers.find((item) => item.viewerId === viewerId);
         return (
-          <div key={viewerId} className="rounded-lg border border-white/8 bg-slate-950/45 p-3">
+          <div key={viewerId} className="rounded-lg border border-white/8 bg-surface/45 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-white">{viewerId === "freeview" ? "FreeView" : "MRIcroGL"}</span>
               <Badge tone={v?.installed ? "success" : "warning"}>{v?.installed ? "Installed" : "Not found"}</Badge>
             </div>
-            <p className="mt-1 truncate text-[10px] text-slate-500">{v?.executable ?? v?.reason ?? "—"}</p>
+            <p className="mt-1 truncate text-[10px] text-gray-500">{v?.executable ?? v?.reason ?? "—"}</p>
           </div>
         );
       })}
@@ -152,11 +152,11 @@ function ViewerStatusCard({ inspection }: { inspection: WorkspaceInspection | nu
 }
 
 function ArtifactTable({ run }: { run: WorkspaceRun }) {
-  if (!run.artifacts.length) return <p className="text-sm text-slate-500">No artifact manifest available.</p>;
+  if (!run.artifacts.length) return <p className="text-sm text-gray-500">No artifact manifest available.</p>;
   return (
     <div className="overflow-x-auto rounded-lg border border-white/8">
       <table className="w-full min-w-[720px] text-left text-xs">
-        <thead className="bg-slate-950/70 text-slate-500">
+        <thead className="bg-surface/70 text-gray-500">
           <tr>
             <th className="px-3 py-2">Artifact</th>
             <th className="px-3 py-2">Location</th>
@@ -169,7 +169,7 @@ function ArtifactTable({ run }: { run: WorkspaceRun }) {
           {run.artifacts.map((a) => {
             const cached = run.cachedArtifacts.includes(a.relativePath);
             return (
-              <tr key={String(a.artifactId)} className="text-slate-300">
+              <tr key={String(a.artifactId)} className="text-gray-300">
                 <td className="px-3 py-2 font-mono text-[11px]">{a.relativePath}</td>
                 <td className="px-3 py-2"><Badge tone={cached ? "success" : "cloud"}>{cached ? "Cached" : "Cloud"}</Badge></td>
                 <td className="px-3 py-2">{formatBytes(a.sizeBytes)}</td>
@@ -193,16 +193,16 @@ function WorkspaceProfileCard({
   return (
     <div
       className={`group rounded-xl border p-4 transition-colors cursor-pointer ${
-        active ? "border-cyan-400/30 bg-cyan-400/5" : "border-white/8 bg-slate-900/50 hover:border-white/15"
+        active ? "border-accent/30 bg-accent/5" : "border-white/8 bg-surface-raised hover:border-white/15"
       }`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-semibold text-white">{profile.name}</p>
-          <p className="mt-0.5 truncate text-[11px] text-slate-500">{profile.serverUrl}</p>
+          <p className="mt-0.5 truncate text-[11px] text-gray-500">{profile.serverUrl}</p>
           {profile.connectionMode === "instance-id" && profile.instanceId && (
-            <p className="mt-0.5 text-[10px] text-sky-400">{profile.instanceId} · {profile.awsRegion}</p>
+            <p className="mt-0.5 text-[10px] text-accent">{profile.instanceId} · {profile.awsRegion}</p>
           )}
         </div>
         <Badge tone={profile.connectionState === "connected" ? "success" : "warning"}>
@@ -210,11 +210,11 @@ function WorkspaceProfileCard({
         </Badge>
       </div>
       <div className="mt-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onDuplicate} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">
+        <button onClick={onDuplicate} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
           Duplicate
         </button>
-        <span className="text-slate-700">·</span>
-        <button onClick={onExport} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">
+        <span className="text-gray-700">·</span>
+        <button onClick={onExport} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
           Export
         </button>
       </div>
@@ -234,6 +234,12 @@ export default function Workspaces() {
   const [profiles, setProfiles] = useState<WorkspaceProfile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  // session is loaded on workspace selection; drives UI restoration in Session B.
+  const sessionRef = useRef<WorkspaceSession | null>(null);
+  // Ref tracks which profile is currently intended to be displayed.
+  // Checked at every await boundary to discard stale async responses when
+  // the user switches workspaces before the previous load/sync completes.
+  const activeIdRef = useRef<string | null>(null);
   const [inspection, setInspection] = useState<WorkspaceInspection | null>(null);
   const [online, setOnline] = useState(false);
   const [ec2Health, setEc2Health] = useState<Ec2ConnectionHealth | null>(null);
@@ -287,6 +293,9 @@ export default function Workspaces() {
     setError(null);
     try {
       const result = await desktop.syncWorkspace(profileId);
+      // Guard: discard this response if the user switched to a different workspace
+      // while the network call was in flight.
+      if (activeIdRef.current !== profileId) return;
       setSnapshot(result.snapshot);
       setOnline(result.online);
       if (result.ec2Health !== undefined) setEc2Health(result.ec2Health ?? null);
@@ -296,11 +305,17 @@ export default function Workspaces() {
         window.setTimeout(() => setSyncState("idle"), 2500);
       }
     } catch (cause) {
+      if (activeIdRef.current !== profileId) return; // stale error for old workspace
       setOnline(false);
       setSyncState("failed");
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }, [desktop, refreshInspection, refreshProfiles]);
+
+  // Keep activeIdRef in sync with the state value.
+  // This ref is the authoritative "which workspace is currently shown" marker
+  // used by async callbacks to discard stale responses.
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
 
   useEffect(() => { void refreshProfiles(); }, [refreshProfiles]);
   useEffect(() => {
@@ -312,12 +327,40 @@ export default function Workspaces() {
     const profileId = scope.slice(6);
     if (profiles.some((p) => p.id === profileId)) setActiveId(profileId);
   }, [profiles, scope]);
+  // On workspace selection: load session + cached snapshot immediately (fast local read),
+  // then begin background sync against the cloud. The user sees data within ~20 ms
+  // rather than waiting for the full network round-trip.
   useEffect(() => {
-    if (!activeId) return;
-    void synchronize(activeId);
-    const timer = window.setInterval(() => void synchronize(activeId, true), REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [activeId, synchronize]);
+    if (!activeId || !desktop) return;
+    let cancelled = false;
+
+    async function loadAndSync() {
+      if (!desktop) return;
+      // Phase 1: local read — fast (<20 ms). Show whatever we have on disk.
+      try {
+        const profileId = activeId!;
+        const { session: s, cachedSnapshot } = await desktop.loadSession(profileId);
+        // Discard if the user switched profiles while the local read was in flight.
+        if (cancelled || activeIdRef.current !== profileId) return;
+        if (s) sessionRef.current = s;
+        // Apply the cached snapshot for this specific profile — guarantees no
+        // cross-profile flash when switching workspaces.
+        if (cachedSnapshot) setSnapshot(cachedSnapshot);
+      } catch {
+        // Session load is best-effort — a failure here is not fatal.
+      }
+      // Phase 2: network sync — slower. Updates snapshot when it returns.
+      if (!cancelled) await synchronize(activeId!, false);
+    }
+
+    void loadAndSync();
+    const timer = window.setInterval(() => void synchronize(activeId!, true), REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   const activeProfile = profiles.find((p) => p.id === activeId) ?? null;
   const runsByDataset = useMemo(() => new Map(
@@ -404,11 +447,11 @@ export default function Workspaces() {
   if (!desktop) return (
     <Page>
       <h1 className="text-xl font-semibold text-white">Workspace</h1>
-      <p className="mt-2 text-sm text-slate-400">Unified cloud workspaces are available in NeuroForge Desktop.</p>
+      <p className="mt-2 text-sm text-gray-400">Unified cloud workspaces are available in NeuroForge Desktop.</p>
     </Page>
   );
 
-  const inputCls = "w-full rounded border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none";
+  const inputCls = "w-full rounded border border-white/10 bg-surface px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-accent/50 focus:outline-none";
 
   return (
     <Page>
@@ -427,7 +470,7 @@ export default function Workspaces() {
               <Badge tone={online ? "success" : "warning"}>{online ? "Connected" : snapshot ? "Offline" : "Not connected"}</Badge>
             )}
             {showsCloud && activeProfile && (
-              <span className="text-xs text-slate-500">{activeProfile.serverUrl}</span>
+              <span className="text-xs text-gray-500">{activeProfile.serverUrl}</span>
             )}
           </div>
         }
@@ -468,17 +511,17 @@ export default function Workspaces() {
 
       {/* Add workspace form */}
       {showForm && (
-        <div className="mt-5 rounded-xl border border-white/8 bg-slate-900/50 p-5">
+        <div className="mt-5 rounded-xl border border-white/8 bg-surface-raised p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-white">Add workspace</h2>
-            <button onClick={() => setShowForm(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
           </div>
           <form onSubmit={(e) => void addWorkspace(e)} className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-slate-400">
+            <label className="text-xs text-gray-400">
               Workspace name
               <input required value={formName} onChange={(e) => setFormName(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="My NeuroForge Server" />
             </label>
-            <label className="text-xs text-slate-400">
+            <label className="text-xs text-gray-400">
               Connection mode
               <select value={formMode} onChange={(e) => setFormMode(e.target.value as "url" | "instance-id")} className={`mt-1 ${inputCls}`}>
                 <option value="url">Static HTTPS URL</option>
@@ -486,32 +529,32 @@ export default function Workspaces() {
               </select>
             </label>
             {formMode === "url" && (
-              <label className="text-xs text-slate-400 sm:col-span-2">
+              <label className="text-xs text-gray-400 sm:col-span-2">
                 Server URL
                 <input required type="url" value={formUrl} onChange={(e) => setFormUrl(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="https://your-server.example.com" />
               </label>
             )}
             {formMode === "instance-id" && (
               <>
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-gray-400">
                   EC2 Instance ID
                   <input required value={formInstanceId} onChange={(e) => setFormInstanceId(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="i-0abc123def456789" />
                 </label>
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-gray-400">
                   AWS Region
                   <input required value={formRegion} onChange={(e) => setFormRegion(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="us-east-1" />
                 </label>
-                <label className="text-xs text-slate-400 sm:col-span-2">
+                <label className="text-xs text-gray-400 sm:col-span-2">
                   Server URL template (will be updated with resolved IP)
                   <input value={formUrl} onChange={(e) => setFormUrl(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="https://PLACEHOLDER:8000" />
                 </label>
               </>
             )}
-            <label className="text-xs text-slate-400">
+            <label className="text-xs text-gray-400">
               Username
               <input required autoComplete="username" value={formUser} onChange={(e) => setFormUser(e.target.value)} className={`mt-1 ${inputCls}`} />
             </label>
-            <label className="text-xs text-slate-400">
+            <label className="text-xs text-gray-400">
               Password
               <input required type="password" autoComplete="current-password" value={formPass} onChange={(e) => setFormPass(e.target.value)} className={`mt-1 ${inputCls}`} />
             </label>
@@ -525,10 +568,10 @@ export default function Workspaces() {
 
       {/* Import form */}
       {showImport && (
-        <div className="mt-5 rounded-xl border border-white/8 bg-slate-900/50 p-5">
+        <div className="mt-5 rounded-xl border border-white/8 bg-surface-raised p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-white">Import workspace</h2>
-            <button onClick={() => setShowImport(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+            <button onClick={() => setShowImport(false)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
           </div>
           <form onSubmit={(e) => void importProfile(e)} className="space-y-3">
             <div>
@@ -538,7 +581,7 @@ export default function Workspaces() {
                 Load from file
               </SecondaryButton>
             </div>
-            <label className="block text-xs text-slate-400">
+            <label className="block text-xs text-gray-400">
               Or paste JSON
               <textarea
                 value={importJson} onChange={(e) => setImportJson(e.target.value)}
@@ -657,21 +700,21 @@ function Ec2StatusRow({ health }: { health: Ec2ConnectionHealth }) {
     : health.instanceState === "stopped" || health.instanceState === "stopping" ? "danger"
     : "warning";
   return (
-    <div className="flex flex-wrap items-start gap-3 rounded-lg border border-white/8 bg-slate-950/50 px-4 py-3 text-xs">
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border border-white/8 bg-surface/50 px-4 py-3 text-xs">
       <div className="flex items-center gap-2 min-w-[120px]">
-        <span className="text-slate-500">Instance</span>
+        <span className="text-gray-500">Instance</span>
         <Badge tone={tone}>{health.instanceState}</Badge>
       </div>
-      {health.publicIp && <div><span className="text-slate-500">IP: </span><span className="font-mono text-slate-300">{health.publicIp}</span></div>}
-      {health.publicHostname && <div className="truncate max-w-[220px]"><span className="text-slate-500">Host: </span><span className="font-mono text-slate-300">{health.publicHostname}</span></div>}
-      <div><span className="text-slate-500">Region: </span><span className="text-slate-300">{health.region || "—"}</span></div>
-      <div><span className="text-slate-500">Updated: </span><span className="text-slate-400">{new Date(health.lastUpdated).toLocaleTimeString()}</span></div>
+      {health.publicIp && <div><span className="text-gray-500">IP: </span><span className="font-mono text-gray-300">{health.publicIp}</span></div>}
+      {health.publicHostname && <div className="truncate max-w-[220px]"><span className="text-gray-500">Host: </span><span className="font-mono text-gray-300">{health.publicHostname}</span></div>}
+      <div><span className="text-gray-500">Region: </span><span className="text-gray-300">{health.region || "—"}</span></div>
+      <div><span className="text-gray-500">Updated: </span><span className="text-gray-400">{new Date(health.lastUpdated).toLocaleTimeString()}</span></div>
       {health.error && <div className="w-full text-red-400">{health.error}</div>}
       {health.instanceState === "stopped" && (
         <div className="w-full text-amber-300">Instance is stopped — start it on AWS to reconnect. NeuroForge will detect the new IP automatically.</div>
       )}
       {health.instanceState === "pending" && (
-        <div className="w-full text-cyan-300">Instance is starting up… NeuroForge will reconnect automatically. This usually takes 1–2 minutes.</div>
+        <div className="w-full text-accent">Instance is starting up… NeuroForge will reconnect automatically. This usually takes 1–2 minutes.</div>
       )}
     </div>
   );
@@ -708,16 +751,16 @@ function CloudContent({
         <Card>
           <CardHeader title="Workspace home" />
           <dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2">
-            <div><dt className="text-slate-500">Last sync</dt><dd className="mt-1 text-slate-200">{relativeTime(activeProfile?.lastSync ?? snapshot.synchronizedAt)}</dd></div>
-            <div><dt className="text-slate-500">Cloud health</dt><dd className={`mt-1 ${online ? "text-emerald-300" : "text-amber-300"}`}>{online ? "Healthy and reachable" : "Using cached metadata"}</dd></div>
-            <div className="sm:col-span-2"><dt className="text-slate-500">Workspace UUID</dt><dd className="mt-1 break-all font-mono text-slate-300">{snapshot.workspaceId}</dd></div>
+            <div><dt className="text-gray-500">Last sync</dt><dd className="mt-1 text-gray-200">{relativeTime(activeProfile?.lastSync ?? snapshot.synchronizedAt)}</dd></div>
+            <div><dt className="text-gray-500">Cloud health</dt><dd className={`mt-1 ${online ? "text-emerald-300" : "text-amber-300"}`}>{online ? "Healthy and reachable" : "Using cached metadata"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-gray-500">Workspace UUID</dt><dd className="mt-1 break-all font-mono text-gray-300">{snapshot.workspaceId}</dd></div>
           </dl>
         </Card>
         <Card>
           <CardHeader title="Cache and viewers" />
           <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
-            <div><dt className="text-slate-500">Cache size</dt><dd className="mt-1 text-white">{formatBytes(inspection?.cacheSizeBytes ?? 0)}</dd></div>
-            <div><dt className="text-slate-500">Cached runs</dt><dd className="mt-1 text-white">{inspection?.cachedRuns ?? 0}</dd></div>
+            <div><dt className="text-gray-500">Cache size</dt><dd className="mt-1 text-white">{formatBytes(inspection?.cacheSizeBytes ?? 0)}</dd></div>
+            <div><dt className="text-gray-500">Cached runs</dt><dd className="mt-1 text-white">{inspection?.cachedRuns ?? 0}</dd></div>
           </dl>
           <div className="mt-4"><ViewerStatusCard inspection={inspection} /></div>
         </Card>
@@ -735,15 +778,15 @@ function CloudContent({
             const datasetIds = Array.isArray(project.datasetIds) ? project.datasetIds.map(Number) : [];
             const runs = snapshot.runs.filter((r) => datasetIds.includes(r.dataset_id));
             return (
-              <article key={project.remoteKey} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+              <article key={project.remoteKey} className="rounded-xl border border-white/8 bg-surface-raised p-4">
                 <div className="flex justify-between gap-2">
                   <h3 className="font-semibold text-white">{sv(project.title, `Project ${project.id}`)}</h3>
                   <Badge tone="cloud">Cloud</Badge>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                  <div><strong className="block text-lg text-white">{datasetIds.length}</strong><span className="text-slate-500">Datasets</span></div>
-                  <div><strong className="block text-lg text-white">{snapshot.workflows.filter((w) => datasetIds.includes(Number(w.dataset_id))).length}</strong><span className="text-slate-500">Workflows</span></div>
-                  <div><strong className="block text-lg text-white">{runs.length}</strong><span className="text-slate-500">Runs</span></div>
+                  <div><strong className="block text-lg text-white">{datasetIds.length}</strong><span className="text-gray-500">Datasets</span></div>
+                  <div><strong className="block text-lg text-white">{snapshot.workflows.filter((w) => datasetIds.includes(Number(w.dataset_id))).length}</strong><span className="text-gray-500">Workflows</span></div>
+                  <div><strong className="block text-lg text-white">{runs.length}</strong><span className="text-gray-500">Runs</span></div>
                 </div>
               </article>
             );
@@ -762,10 +805,10 @@ function CloudContent({
             const runs = runsByDataset.get(d.id) ?? [];
             return (
               <button key={d.remoteKey} onClick={() => onSelectDataset(d)}
-                className="rounded-xl border border-white/8 bg-slate-900/55 p-4 text-left transition hover:border-cyan-400/30 w-full">
+                className="rounded-xl border border-white/8 bg-surface-raised p-4 text-left transition hover:border-accent/30 w-full">
                 <div className="flex justify-between"><h3 className="font-semibold text-white">{sv(d.name, `Dataset ${d.id}`)}</h3><Badge tone="cloud">Cloud</Badge></div>
-                <p className="mt-1 text-xs text-slate-500">{sv(d.validation_status, "Validation unknown")}</p>
-                <div className="mt-3 flex gap-4 text-xs text-slate-400"><span>{runs.length} runs</span></div>
+                <p className="mt-1 text-xs text-gray-500">{sv(d.validation_status, "Validation unknown")}</p>
+                <div className="mt-3 flex gap-4 text-xs text-gray-400"><span>{runs.length} runs</span></div>
               </button>
             );
           })}
@@ -782,17 +825,17 @@ function CloudContent({
           {snapshot.workflows.map((wf) => {
             const nodes = workflowNodes(wf);
             return (
-              <article key={wf.remoteKey} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+              <article key={wf.remoteKey} className="rounded-xl border border-white/8 bg-surface-raised p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div><h3 className="font-semibold text-white">{sv(wf.name, `Workflow ${wf.id}`)}</h3>
-                    <p className="mt-1 text-xs text-slate-500">Dataset #{String(wf.dataset_id ?? "—")}</p></div>
+                    <p className="mt-1 text-xs text-gray-500">Dataset #{String(wf.dataset_id ?? "—")}</p></div>
                   <Badge tone="cloud">Cloud</Badge>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {nodes.map((n, i) => (
                     <div key={n.id} className="flex items-center gap-2">
-                      {i > 0 && <span className="text-slate-700">→</span>}
-                      <span className="rounded-md border border-white/8 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">{n.pipelineId}</span>
+                      {i > 0 && <span className="text-gray-700">→</span>}
+                      <span className="rounded-md border border-white/8 bg-surface/60 px-3 py-2 text-xs text-gray-300">{n.pipelineId}</span>
                     </div>
                   ))}
                 </div>
@@ -814,11 +857,11 @@ function CloudContent({
         : <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {snapshot.runs.map((run) => (
             <button key={run.remoteKey} onClick={() => onSelectRun(run)}
-              className="rounded-xl border border-white/8 bg-slate-900/55 p-4 text-left transition hover:border-cyan-400/30">
+              className="rounded-xl border border-white/8 bg-surface-raised p-4 text-left transition hover:border-accent/30">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-cyan-300">Run #{run.id}</span>
+                    <span className="font-mono text-sm text-accent">Run #{run.id}</span>
                     <Badge tone="cloud">Cloud</Badge>
                   </div>
                   <h3 className="mt-2 font-semibold capitalize text-white">{run.pipeline_manifest_id}</h3>
@@ -832,7 +875,7 @@ function CloudContent({
                 <span className={`rounded-full border px-2 py-0.5 text-[10px] ${cacheClass(run.cacheState)}`}>{cacheLabel(run.cacheState)}</span>
                 <Badge>{run.artifacts.length} artifacts</Badge>
               </div>
-              <div className="mt-3 flex justify-between text-[10px] text-slate-600">
+              <div className="mt-3 flex justify-between text-[10px] text-gray-600">
                 <span>Created {new Date(run.created_at).toLocaleDateString()}</span>
                 <span>{run.finished_at ? `Completed ${new Date(run.finished_at).toLocaleDateString()}` : "—"}</span>
               </div>
@@ -849,7 +892,7 @@ function CloudContent({
         ? <EmptyState title="No reports" subtitle="Report records will appear here after sync." />
         : <div className="mt-4 grid gap-3">
           {snapshot.reports.map((r) => (
-            <article key={r.remoteKey} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
+            <article key={r.remoteKey} className="rounded-lg border border-white/8 bg-surface-raised p-4">
               <div className="flex justify-between">
                 <span className="text-sm text-white">{sv(r.title, `Report ${r.id}`)}</span>
                 <Badge tone="cloud">Cloud</Badge>
@@ -907,7 +950,7 @@ function RunDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm" role="dialog">
-      <div className="h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-[#0a0f1a] p-6 shadow-2xl">
+      <div className="h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-surface p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -915,7 +958,7 @@ function RunDrawer({
               <Badge tone="cloud">Cloud</Badge>
               <span className={`rounded-full border px-2 py-0.5 text-[10px] ${cacheClass(run.cacheState)}`}>{cacheLabel(run.cacheState)}</span>
             </div>
-            <p className="mt-1 text-sm text-slate-400">{run.pipeline_manifest_id} · {run.status}</p>
+            <p className="mt-1 text-sm text-gray-400">{run.pipeline_manifest_id} · {run.status}</p>
           </div>
           <SecondaryButton onClick={onClose}>Close</SecondaryButton>
         </div>
@@ -938,46 +981,46 @@ function RunDrawer({
                 <CardHeader title="Open results" />
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <button onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
-                    className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-left text-sm text-cyan-200">
+                    className="rounded-lg border border-accent/20 bg-accent/10 p-3 text-left text-sm text-accent">
                     Open in Cloud Browser
-                    <span className="mt-1 block text-[10px] text-slate-500">Authenticated cloud run page</span>
+                    <span className="mt-1 block text-[10px] text-gray-500">Authenticated cloud run page</span>
                   </button>
                   <button disabled={!freeview?.installed || required.length !== 2 || (!online && !cached)}
                     onClick={() => void openFreeView()}
-                    className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-left text-sm text-cyan-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                    className="rounded-lg border border-accent/20 bg-accent/10 p-3 text-left text-sm text-accent disabled:opacity-40 disabled:cursor-not-allowed">
                     Open in FreeView
-                    <span className="mt-1 block text-[10px] text-slate-500">
+                    <span className="mt-1 block text-[10px] text-gray-500">
                       {!freeview?.installed ? (freeview?.reason ?? "Not installed") : required.length !== 2 ? "No compatible artifacts" : cached ? "Ready from cache" : "Downloads 2 artifacts"}
                     </span>
                   </button>
-                  <button disabled className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed">
+                  <button disabled className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-gray-400 disabled:opacity-40 disabled:cursor-not-allowed">
                     Open in MRIcroGL
-                    <span className="mt-1 block text-[10px] text-slate-500">Configure in Workspace Settings → Viewers</span>
+                    <span className="mt-1 block text-[10px] text-gray-500">Configure in Workspace Settings → Viewers</span>
                   </button>
                 </div>
                 {downloading.length > 0 && (
                   <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
                     <p className="text-xs font-semibold text-amber-300">Downloading</p>
                     {downloading.map((f) => (
-                      <div key={f} className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                      <div key={f} className="mt-2 flex items-center gap-2 text-xs text-gray-300">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-amber-300" />{f.split("/").pop()}
                       </div>
                     ))}
                   </div>
                 )}
-                {message && <p className="mt-3 text-xs text-slate-400">{message}</p>}
+                {message && <p className="mt-3 text-xs text-gray-400">{message}</p>}
               </Card>
               <Card>
                 <CardHeader title="Pipeline parameters" />
-                <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-slate-950/70 p-3 text-[11px] text-slate-400">
+                <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-surface/70 p-3 text-[11px] text-gray-400">
                   {JSON.stringify(run.parameters ?? {}, null, 2)}
                 </pre>
               </Card>
             </div>
           )}
           {tab === "artifacts" && <ArtifactTable run={run} />}
-          {tab === "logs" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-slate-950/70 p-4 text-[11px] text-slate-400">{JSON.stringify(run.logs ?? { message: "No logs cached" }, null, 2)}</pre>}
-          {tab === "reports" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-slate-950/70 p-4 text-[11px] text-slate-400">{JSON.stringify(run.reports ?? [], null, 2)}</pre>}
+          {tab === "logs" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-surface/70 p-4 text-[11px] text-gray-400">{JSON.stringify(run.logs ?? { message: "No logs cached" }, null, 2)}</pre>}
+          {tab === "reports" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-surface/70 p-4 text-[11px] text-gray-400">{JSON.stringify(run.reports ?? [], null, 2)}</pre>}
         </div>
       </div>
     </div>
@@ -1016,14 +1059,14 @@ function DatasetDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm" role="dialog">
-      <div className="h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#0a0f1a] p-6 shadow-2xl">
+      <div className="h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-surface p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold text-white">{sv(dataset.name, `Dataset ${dataset.id}`)}</h2>
               <Badge tone="cloud">Cloud</Badge>
             </div>
-            <p className="mt-1 text-sm text-slate-400">{profile.name} · Dataset #{dataset.id}</p>
+            <p className="mt-1 text-sm text-gray-400">{profile.name} · Dataset #{dataset.id}</p>
           </div>
           <SecondaryButton onClick={onClose}>Close</SecondaryButton>
         </div>
@@ -1037,7 +1080,7 @@ function DatasetDrawer({
         {online && (
           <div className="mt-4 flex items-center gap-3">
             <SecondaryButton onClick={() => void pullToLocal()}>Pull to local</SecondaryButton>
-            {pullMsg && <p className="text-xs text-slate-400">{pullMsg}</p>}
+            {pullMsg && <p className="text-xs text-gray-400">{pullMsg}</p>}
           </div>
         )}
 
@@ -1046,17 +1089,17 @@ function DatasetDrawer({
             <h3 className="text-sm font-semibold text-white mb-3">Runs</h3>
             <div className="space-y-2">
               {runs.map((run) => (
-                <div key={run.remoteKey} className="rounded-lg border border-white/8 bg-slate-900/55 px-4 py-3">
+                <div key={run.remoteKey} className="rounded-lg border border-white/8 bg-surface-raised px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-mono text-xs text-cyan-300">Run #{run.id}</span>
-                      <span className="ml-2 text-sm text-slate-200">{run.pipeline_manifest_id}</span>
+                      <span className="font-mono text-xs text-accent">Run #{run.id}</span>
+                      <span className="ml-2 text-sm text-gray-200">{run.pipeline_manifest_id}</span>
                     </div>
                     <Badge tone={run.status === "success" ? "success" : run.status === "failed" ? "danger" : "warning"}>
                       {run.status}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-[10px] text-slate-500">{run.artifacts.length} artifacts · {cacheLabel(run.cacheState)}</p>
+                  <p className="mt-1 text-[10px] text-gray-500">{run.artifacts.length} artifacts · {cacheLabel(run.cacheState)}</p>
                 </div>
               ))}
             </div>
@@ -1079,17 +1122,17 @@ function LocalWorkspaceView({
     return (
       <section className="mt-6">
         <h2 className="text-lg font-semibold text-white">All Workspaces · Runs</h2>
-        <p className="mt-1 text-xs text-slate-500">Local and cloud IDs remain separate.</p>
+        <p className="mt-1 text-xs text-gray-500">Local and cloud IDs remain separate.</p>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {combined.map((run) => (
             <Link key={run.key} to={run.local ? `/runs/${run.id}` : `/workspaces?scope=cloud&view=runs`}
-              className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+              className="rounded-xl border border-white/8 bg-surface-raised p-4">
               <div className="flex justify-between">
-                <span className="font-mono text-sm text-cyan-300">Run #{run.id}</span>
+                <span className="font-mono text-sm text-accent">Run #{run.id}</span>
                 <Badge tone={run.local ? "success" : "cloud"}>{run.workspace}</Badge>
               </div>
               <p className="mt-2 text-sm capitalize text-white">{run.pipeline}</p>
-              <p className="mt-1 text-xs text-slate-500">{run.status}</p>
+              <p className="mt-1 text-xs text-gray-500">{run.status}</p>
             </Link>
           ))}
         </div>
@@ -1115,8 +1158,8 @@ function LocalWorkspaceView({
           <Badge tone="success">Available offline</Badge>
         </div>
         <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
-          <div><dt className="text-slate-500">Workspace identity</dt><dd className="mt-1 break-all font-mono text-slate-300">{workspaceId}</dd></div>
-          <div><dt className="text-slate-500">Storage</dt><dd className="mt-1 text-slate-300">Local API and scientific database</dd></div>
+          <div><dt className="text-gray-500">Workspace identity</dt><dd className="mt-1 break-all font-mono text-gray-300">{workspaceId}</dd></div>
+          <div><dt className="text-gray-500">Storage</dt><dd className="mt-1 text-gray-300">Local API and scientific database</dd></div>
         </dl>
       </Card>
     </div>
@@ -1129,7 +1172,7 @@ function LocalWorkspaceView({
         ? <EmptyState title="No local projects" />
         : <div className="mt-4 grid gap-3">
           {data.projects.map((item) => (
-            <Link key={item.id} to={`/projects/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
+            <Link key={item.id} to={`/projects/${item.id}`} className="rounded-lg border border-white/8 bg-surface-raised p-4">
               <div className="flex justify-between">
                 <span className="text-white">{sv(item.title ?? item.name, `Project ${item.id}`)}</span>
                 <Badge tone="success">Local</Badge>
@@ -1147,7 +1190,7 @@ function LocalWorkspaceView({
         ? <EmptyState title="No local datasets" />
         : <div className="mt-4 grid gap-3 md:grid-cols-2">
           {data.datasets.map((item) => (
-            <Link key={item.id} to={`/datasets/${item.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4">
+            <Link key={item.id} to={`/datasets/${item.id}`} className="rounded-lg border border-white/8 bg-surface-raised p-4">
               <div className="flex justify-between">
                 <span className="text-white">{sv(item.name, `Dataset ${item.id}`)}</span>
                 <Badge tone="success">Local</Badge>
@@ -1161,8 +1204,8 @@ function LocalWorkspaceView({
   if (view === "workflows") return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold text-white">Local Saved Workflows</h2>
-      <p className="mt-2 text-sm text-slate-400">{data.workflows.length} saved workflows.</p>
-      <Link to="/workflows/library" className="mt-4 inline-flex rounded border border-white/10 px-3 py-2 text-xs text-cyan-300">
+      <p className="mt-2 text-sm text-gray-400">{data.workflows.length} saved workflows.</p>
+      <Link to="/workflows/library" className="mt-4 inline-flex rounded border border-white/10 px-3 py-2 text-xs text-accent">
         Open workflow library
       </Link>
     </section>
@@ -1178,13 +1221,13 @@ function LocalWorkspaceView({
         ? <EmptyState title="No local runs" />
         : <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {data.runs.map((run) => (
-            <Link key={run.id} to={`/runs/${run.id}`} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+            <Link key={run.id} to={`/runs/${run.id}`} className="rounded-xl border border-white/8 bg-surface-raised p-4">
               <div className="flex justify-between">
-                <span className="font-mono text-cyan-300">Run #{run.id}</span>
+                <span className="font-mono text-accent">Run #{run.id}</span>
                 <Badge tone="success">Local</Badge>
               </div>
               <p className="mt-2 text-sm capitalize text-white">{sv(run.pipeline_manifest_id)}</p>
-              <p className="mt-1 text-xs text-slate-500">{sv(run.status)}</p>
+              <p className="mt-1 text-xs text-gray-500">{sv(run.status)}</p>
             </Link>
           ))}
         </div>}
@@ -1196,7 +1239,7 @@ function LocalWorkspaceView({
       <h2 className="text-lg font-semibold text-white">Local Reports</h2>
       <div className="mt-4 grid gap-3">
         {data.reports.map((report) => (
-          <Link key={report.id} to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="rounded-lg border border-white/8 bg-slate-900/55 p-4 text-sm text-white">
+          <Link key={report.id} to={`/datasets/${report.dataset_id}/reports/${report.id}`} className="rounded-lg border border-white/8 bg-surface-raised p-4 text-sm text-white">
             Report #{report.id} · Dataset #{report.dataset_id}
           </Link>
         ))}

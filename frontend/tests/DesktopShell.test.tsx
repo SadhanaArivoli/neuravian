@@ -91,6 +91,9 @@ describe("restored desktop shell", () => {
       launchEnvironment: vi.fn(async () => ({ profile: { id: "p1", name: "Test", serverUrl: "https://test.example.com", authenticationRef: null, serverIdentity: null, lastSync: null, connectionState: "offline" as const, connectionMode: "url" as const }, workspaceId: null, elapsedMs: 1000 })),
       startEnvironment: vi.fn(async () => ({ started: true })),
       stopEnvironment: vi.fn(async () => ({ stopped: true, fenceResult: null })),
+      loadSession: vi.fn(async () => ({ session: null, cachedSnapshot: null })),
+      saveUiState: vi.fn(async () => ({ ok: true })),
+      loadRunHistory: vi.fn(async () => ({ entries: [], totalCount: 0, hasMore: false })),
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);

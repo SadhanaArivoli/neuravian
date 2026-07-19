@@ -50,6 +50,9 @@ import { WorkspaceReplicationEngine } from "./workspace-replication.js";
 import { ExecutionEnvironmentManager } from "./environment-manager.js";
 import { startCloudStream, stopCloudStream, stopAllCloudStreams } from "./cloud-event-stream.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
+import { WorkspaceSessionStore } from "./workspace-session-store.js";
+import { RunHistoryStore } from "./workspace-run-history.js";
+import type { SessionRunHistoryEntry } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
 import { rmdir, rm } from "node:fs/promises";
 
@@ -67,6 +70,8 @@ let profileStore: ConnectionProfileStore | null = null;
 let workspaceClient: WorkspaceClient | null = null;
 let workspaceWre: WorkspaceReplicationEngine | null = null;
 let workspaceEnvManager: ExecutionEnvironmentManager | null = null;
+let workspaceSessionStore: WorkspaceSessionStore | null = null;
+let workspaceRunHistoryStore: RunHistoryStore | null = null;
 let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
@@ -91,8 +96,11 @@ function workspaceServices(): {
   client: WorkspaceClient;
   wre: WorkspaceReplicationEngine;
   envManager: ExecutionEnvironmentManager;
+  sessionStore: WorkspaceSessionStore;
+  runHistory: RunHistoryStore;
 } {
-  if (!profileStore || !workspaceClient || !workspaceWre || !workspaceEnvManager) {
+  if (!profileStore || !workspaceClient || !workspaceWre || !workspaceEnvManager
+      || !workspaceSessionStore || !workspaceRunHistoryStore) {
     const userData = app.getPath("userData");
     profileStore = new ConnectionProfileStore(path.join(userData, "workspaces"), {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -108,8 +116,17 @@ function workspaceServices(): {
       client: workspaceClient,
     });
     workspaceEnvManager = new ExecutionEnvironmentManager(profileStore, workspaceWre);
+    workspaceSessionStore = new WorkspaceSessionStore(path.join(userData, "workspace-sessions"));
+    workspaceRunHistoryStore = new RunHistoryStore(path.join(userData, "workspace-run-history"));
   }
-  return { profiles: profileStore, client: workspaceClient, wre: workspaceWre, envManager: workspaceEnvManager };
+  return {
+    profiles: profileStore,
+    client: workspaceClient,
+    wre: workspaceWre,
+    envManager: workspaceEnvManager,
+    sessionStore: workspaceSessionStore,
+    runHistory: workspaceRunHistoryStore,
+  };
 }
 
 function localWorkspace(): LocalWorkspaceStore {
@@ -497,7 +514,7 @@ ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
   return true;
 });
 ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
-  const { profiles, wre } = workspaceServices();
+  const { profiles, wre, sessionStore, runHistory } = workspaceServices();
   let profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(profileId);
@@ -553,8 +570,71 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
     connectionState: result.online ? "connected" : "offline",
   };
   await profiles.update(updated);
+
+  // Build run history entries from this sync's snapshot.
+  const incomingEntries: SessionRunHistoryEntry[] = result.snapshot.runs.map((r) => ({
+    runId: r.id,
+    remoteKey: r.remoteKey,
+    pipelineId: r.pipeline_manifest_id,
+    pipelineName: r.pipeline_manifest_id,
+    datasetId: r.dataset_id,
+    status: r.status,
+    launchedAt: r.created_at,
+    finishedAt: r.finished_at ?? null,
+    cacheState: r.cacheState,
+    artifactCount: r.artifacts.length,
+    fenceComplete: false,
+  }));
+
+  // Persist to the durable run history index (append-only, never trimmed).
+  // Persist to the session (recentRunHistory = last 50, display cache only).
+  // Both awaited: the sync response is not returned until local persistence is complete.
+  const recentHistory = await runHistory
+    .append(profileId, incomingEntries)
+    .then(() => runHistory.loadRecent(profileId, 50))
+    .catch((err) => {
+      console.error("[sync] Run history save failed:", err);
+      return incomingEntries.slice(-50);  // degrade to in-memory slice on failure
+    });
+
+  await sessionStore
+    .updateFromSnapshot(profileId, result.snapshot, result.online, recentHistory)
+    .catch((err) => console.error("[sync] Session save failed:", err));
+
   return { ...result, profile: updated, ec2Health };
 });
+
+ipcMain.handle("workspaces:run-history", async (
+  _event,
+  input: { profileId: string; page?: number; pageSize?: number },
+) => {
+  const { runHistory } = workspaceServices();
+  return runHistory.loadPage(input.profileId, input.page ?? 0, input.pageSize ?? 100);
+});
+
+ipcMain.handle("workspaces:load-session", async (_event, profileId: string) => {
+  const { sessionStore } = workspaceServices();
+  // Load both in parallel — both are fast local reads (< 10 ms each).
+  const userData = app.getPath("userData");
+  const [session, cachedSnapshot] = await Promise.all([
+    sessionStore.load(profileId),
+    new WorkspaceMetadataCache(path.join(userData, "workspace-metadata")).read(profileId),
+  ]);
+  return { session, cachedSnapshot: cachedSnapshot ?? null };
+});
+
+ipcMain.handle("workspaces:save-ui-state", async (
+  _event,
+  input: { profileId: string; uiState: unknown },
+) => {
+  const { sessionStore } = workspaceServices();
+  await sessionStore.saveUiState(
+    input.profileId,
+    input.uiState as import("./workspace-types.js").SessionUIState,
+  );
+  return { ok: true };
+});
+
 ipcMain.handle("workspaces:test", async (_event, profileId: string) => {
   const { profiles, client } = workspaceServices();
   const profile = (await profiles.list()).find((item) => item.id === profileId);

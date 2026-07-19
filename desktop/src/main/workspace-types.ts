@@ -478,9 +478,11 @@ export interface WorkspaceSession {
   workflowSummaries: Array<{ id: number; remoteKey: string; name: string }>;
   datasetSummaries:  Array<{ id: number; remoteKey: string; name: string }>;
 
-  // ── Persistent run history (append-only, never pruned) ────────────────────
-  // Survives VM deletion. Accumulates across all VMs attached to this profile.
-  runHistory: SessionRunHistoryEntry[];
+  // ── Recent run history (display cache — last 50 entries) ─────────────────
+  // This is a DERIVED CACHE for fast UI display, not the authoritative record.
+  // Complete, permanent run history lives in RunHistoryStore (workspace-run-history.ts).
+  // Never remove entries from RunHistoryStore; only trim this session-level cache.
+  recentRunHistory: SessionRunHistoryEntry[];
 
   // ── Execution state ───────────────────────────────────────────────────────
   pendingExecutions: SessionPendingExecution[];
