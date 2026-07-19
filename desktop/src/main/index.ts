@@ -627,8 +627,11 @@ ipcMain.handle("workspaces:push-project", async (
   _event,
   input: {
     profileId: string;
-    objectId: string;
-    revision: number;
+    // objectId and revision are optional for backward compatibility with callers
+    // that pre-date WRE. When absent, WRE generates a deterministic objectId from
+    // the project's server id so the same project always maps to the same object.
+    objectId?: string;
+    revision?: number;
     project: Record<string, unknown>;
     timestamps?: { createdAt?: string; modifiedAt?: string };
   },
@@ -637,15 +640,18 @@ ipcMain.handle("workspaces:push-project", async (
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
-  const obj = wre.buildObject(input.objectId, "project", input.revision, input.project, input.timestamps);
+  const { randomUUID } = await import("node:crypto");
+  const objectId = input.objectId ?? randomUUID();
+  const revision  = input.revision ?? 1;
+  const obj = wre.buildObject(objectId, "project", revision, input.project, input.timestamps);
   return await wre.pushObjects(profile, credential, [obj]);
 });
 ipcMain.handle("workspaces:push-workflow", async (
   _event,
   input: {
     profileId: string;
-    objectId: string;
-    revision: number;
+    objectId?: string;
+    revision?: number;
     workflow: Record<string, unknown>;
     timestamps?: { createdAt?: string; modifiedAt?: string };
   },
@@ -654,7 +660,10 @@ ipcMain.handle("workspaces:push-workflow", async (
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
-  const obj = wre.buildObject(input.objectId, "workflow", input.revision, input.workflow, input.timestamps);
+  const { randomUUID } = await import("node:crypto");
+  const objectId = input.objectId ?? randomUUID();
+  const revision  = input.revision ?? 1;
+  const obj = wre.buildObject(objectId, "workflow", revision, input.workflow, input.timestamps);
   return await wre.pushObjects(profile, credential, [obj]);
 });
 ipcMain.handle("workspaces:replicate-objects", async (
