@@ -128,6 +128,11 @@ interface NeuroForgeDesktopBridge {
     errors: string[];
     fenceComplete: boolean;
   }>;
+  onCloudEvent(callback: (event: {
+    profileId: string;
+    type: string;
+    [key: string]: unknown;
+  }) => void): () => void;
   launchPipeline(input: {
     profileId: string;
     pipelineId: string;

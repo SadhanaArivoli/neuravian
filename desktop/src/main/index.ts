@@ -48,6 +48,7 @@ import { WorkspaceMetadataCache } from "./workspace-cache.js";
 import { WorkspaceClient, resolveEc2State, startEc2Instance, stopEc2Instance } from "./workspace-client.js";
 import { WorkspaceReplicationEngine } from "./workspace-replication.js";
 import { ExecutionEnvironmentManager } from "./environment-manager.js";
+import { startCloudStream, stopCloudStream, stopAllCloudStreams } from "./cloud-event-stream.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
 import { rmdir, rm } from "node:fs/promises";
@@ -731,6 +732,15 @@ ipcMain.handle("workspaces:launch-pipeline", async (
     throw new Error(`Cloud VM returned HTTP ${response.status} when creating run: ${text}`);
   }
   const run = await response.json() as { id: number; status: string };
+
+  // Start the SSE event stream so live progress flows to the renderer.
+  startCloudStream(
+    input.profileId,
+    profile.serverUrl,
+    authHeader,
+    () => mainWindow,
+  );
+
   return { runId: run.id, status: run.status, profileId: input.profileId };
 });
 
@@ -819,6 +829,7 @@ ipcMain.handle("workspaces:start-environment", async (_event, profileId: string)
 ipcMain.handle("workspaces:stop-environment", async (_event, input: { profileId: string; workspaceId?: string; runFence?: boolean }) => {
   const { envManager, profiles } = workspaceServices();
   const credential = await profiles.credential(input.profileId);
+  stopCloudStream(input.profileId);
   return await envManager.stop(input.profileId, credential, input.workspaceId ?? null);
 });
 

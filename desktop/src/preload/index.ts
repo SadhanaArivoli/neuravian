@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   shutdownFence: (input: unknown) => ipcRenderer.invoke("workspaces:shutdown-fence", input),
   launchEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:launch-environment", input),
   launchPipeline: (input: unknown) => ipcRenderer.invoke("workspaces:launch-pipeline", input),
+  onCloudEvent: (callback: (event: Record<string, unknown>) => void) => {
+    const listener = (_ipcEvent: Electron.IpcRendererEvent, event: Record<string, unknown>) => callback(event);
+    ipcRenderer.on("cloud:event", listener);
+    return () => ipcRenderer.removeListener("cloud:event", listener);
+  },
   startEnvironment: (profileId: string) => ipcRenderer.invoke("workspaces:start-environment", profileId),
   stopEnvironment: (input: unknown) => ipcRenderer.invoke("workspaces:stop-environment", input),
 });

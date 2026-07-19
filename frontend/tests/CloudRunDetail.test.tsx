@@ -82,6 +82,7 @@ describe("CloudRunDetail viewer priority", () => {
       replicateObjects: vi.fn(async () => ({ pushed: [], skipped: [], errors: [] })),
       shutdownFence: vi.fn(async () => ({ artifactsPulled: [], errors: [], fenceComplete: true })),
       launchPipeline: vi.fn(async () => ({ runId: 1, status: "queued", profileId: "p1" })),
+      onCloudEvent: vi.fn(() => () => {}),
       launchEnvironment: vi.fn(async () => ({ profile: { id: "p1", name: "Test", serverUrl: "https://test.example.com", authenticationRef: null, serverIdentity: null, lastSync: null, connectionState: "offline" as const, connectionMode: "url" as const }, workspaceId: null, elapsedMs: 1000 })),
       startEnvironment: vi.fn(async () => ({ started: true })),
       stopEnvironment: vi.fn(async () => ({ stopped: true, fenceResult: null })),
