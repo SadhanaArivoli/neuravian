@@ -475,7 +475,10 @@ ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles
 ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
 ipcMain.handle("workspaces:save", async (
   _event,
-  input: { id?: string; name: string; serverUrl: string; username?: string; password?: string },
+  input: {
+    id?: string; name: string; serverUrl: string; username?: string; password?: string;
+    connectionMode?: "url" | "instance-id"; instanceId?: string | null; awsRegion?: string | null;
+  },
 ) => await workspaceServices().profiles.save(input));
 ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
   await workspaceServices().profiles.remove(profileId);
