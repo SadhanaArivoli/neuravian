@@ -347,3 +347,156 @@ export interface WorkspaceSnapshot {
   runs: WorkspaceRun[];
   reports: Array<Record<string, unknown> & { id: number | string; remoteKey: string }>;
 }
+
+// ─── WorkspaceSession ─────────────────────────────────────────────────────────
+//
+// The permanent representation of a researcher's work in one workspace.
+// Survives VM deletion, NeuroForge restarts, and network interruptions.
+//
+// Key separation from WorkspaceProfile and WRE:
+//   WorkspaceProfile = how to reach the execution environment
+//   WRE              = how data moves between desktop and cloud
+//   WorkspaceSession = the researcher's accumulated work and context
+//
+// The session is the source of truth for what the researcher sees.
+// The WRE populates it via events; the session never calls WRE directly.
+
+/**
+ * Researcher annotation on a single workspace object.
+ * Keyed by objectId (for WRE objects) or remoteKey (for synced resources).
+ *
+ * Intentionally open-ended: new annotation types (e.g. "starred", "reviewed")
+ * are added as optional fields without schema migration or new arrays.
+ */
+export interface ResearcherAnnotation {
+  pinned?:      boolean;
+  bookmarked?:  boolean;
+  favorite?:    boolean;
+  note?:        string;
+  tags?:        string[];
+  // Open extension point: caller may store any additional fields.
+  [key: string]:  unknown;
+}
+
+/**
+ * Researcher-curated context for the workspace.
+ * Distinct from sync state (WRE) and connection state (WorkspaceProfile).
+ * This is where researcher meaning lives — not execution mechanics.
+ */
+export interface WorkspaceResearchContext {
+  /**
+   * Annotations keyed by objectId or remoteKey.
+   * One entry per workspace object; grows incrementally as the researcher
+   * annotates their work. Never cleared by sync or VM lifecycle events.
+   */
+  annotations: Record<string, ResearcherAnnotation>;
+
+  /**
+   * Ordered list of objectId / remoteKey strings, most recently viewed first.
+   * Populated automatically as the researcher opens items. Capped at 100.
+   */
+  recentlyViewed: string[];
+
+  /**
+   * Scratch notes for the workspace as a whole (plain text).
+   * Not synced to the cloud — this is the researcher's local context.
+   */
+  scratch: string;
+
+  /**
+   * Workspace-specific researcher preferences.
+   * Examples: default viewer, preferred pipeline parameters, display density.
+   * Intentionally untyped so new preferences never require a schema change.
+   */
+  preferences: Record<string, unknown>;
+}
+
+export interface SessionRunHistoryEntry {
+  runId:          number;
+  remoteKey:      string;
+  pipelineId:     string;
+  pipelineName:   string;
+  datasetId:      number;
+  status:         string;
+  launchedAt:     string;
+  finishedAt:     string | null;
+  cacheState:     WorkspaceCacheState;
+  artifactCount:  number;
+  fenceComplete:  boolean;
+}
+
+export interface SessionPendingExecution {
+  runId:      number;
+  profileId:  string;
+  pipelineId: string;
+  launchedAt: string;
+  autoStop:   boolean;
+}
+
+export interface SessionNotification {
+  notificationId: string;
+  type:           "run:complete" | "run:failed" | "artifact:ready" | "vm:stopped" | "sync:complete" | "sync:error";
+  message:        string;
+  timestamp:      string;
+  runId:          number | null;
+  read:           boolean;
+}
+
+export interface SessionUIState {
+  activeView:         string;
+  selectedProjectId:  string | null;
+  selectedWorkflowId: string | null;
+  selectedRunId:      number | null;
+  openPanels:         string[];
+  scrollPositions:    Record<string, number>;
+}
+
+export interface SessionViewerState {
+  lastRunId:         number | null;
+  openFiles:         string[];
+  viewerPreference:  "freeview" | "mricrogl" | "neuroforge-viewer" | null;
+}
+
+export interface SessionSyncStatus {
+  lastSyncAt:       string | null;
+  lastOnlineAt:     string | null;
+  pendingArtifacts: number;
+  syncErrors:       string[];
+}
+
+export interface WorkspaceSession {
+  // ── Identity ──────────────────────────────────────────────────────────────
+  sessionId:    string;   // stable UUID; never changes across restarts or VM changes
+  profileId:    string;   // which WorkspaceProfile this session belongs to
+  workspaceId:  string | null;  // server identity from /api/workspace/identity
+  createdAt:    string;
+  lastActiveAt: string;
+
+  // ── Last-known workspace state (survives offline) ──────────────────────────
+  // Shallow summaries only — not full objects. Updated on every successful sync.
+  projectSummaries:  Array<{ id: number; remoteKey: string; title: string }>;
+  workflowSummaries: Array<{ id: number; remoteKey: string; name: string }>;
+  datasetSummaries:  Array<{ id: number; remoteKey: string; name: string }>;
+
+  // ── Persistent run history (append-only, never pruned) ────────────────────
+  // Survives VM deletion. Accumulates across all VMs attached to this profile.
+  runHistory: SessionRunHistoryEntry[];
+
+  // ── Execution state ───────────────────────────────────────────────────────
+  pendingExecutions: SessionPendingExecution[];
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  notifications: SessionNotification[];
+
+  // ── UI continuity (ephemeral, but persisted so restarts feel seamless) ────
+  uiState:     SessionUIState;
+  viewerState: SessionViewerState;
+
+  // ── Synchronization status ────────────────────────────────────────────────
+  syncStatus: SessionSyncStatus;
+
+  // ── Research context (permanent researcher annotations and meaning) ────────
+  // This namespace is intentionally separate from all operational state above.
+  // It is the researcher's space — never touched by sync, VM lifecycle, or WRE.
+  researchContext: WorkspaceResearchContext;
+}
