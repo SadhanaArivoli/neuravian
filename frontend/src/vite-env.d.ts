@@ -128,6 +128,15 @@ interface NeuroForgeDesktopBridge {
     errors: string[];
     fenceComplete: boolean;
   }>;
+  startEnvironment(profileId: string): Promise<{ started: boolean }>;
+  stopEnvironment(input: {
+    profileId: string;
+    workspaceId?: string;
+    runFence?: boolean;
+  }): Promise<{
+    stopped: boolean;
+    fenceResult: { artifactsPulled: string[]; errors: string[]; fenceComplete: boolean } | null;
+  }>;
 }
 
 interface WorkspaceProfile {

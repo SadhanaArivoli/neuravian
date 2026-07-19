@@ -72,6 +72,10 @@ describe("unified desktop workspaces", () => {
       resolveInstanceUrl: vi.fn(async () => null),
       pullToLocal: vi.fn(async () => ({})),
       getEc2State: vi.fn(async () => null),
+      replicateObjects: vi.fn(async () => ({ pushed: [], skipped: [], errors: [] })),
+      shutdownFence: vi.fn(async () => ({ artifactsPulled: [], errors: [], fenceComplete: true })),
+      startEnvironment: vi.fn(async () => ({ started: true })),
+      stopEnvironment: vi.fn(async () => ({ stopped: true, fenceResult: null })),
     };
   });
 

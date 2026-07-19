@@ -80,6 +80,19 @@ export function WorkspaceSettingsPanel({
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  // Shutdown fence (manual trigger, sync tab)
+  const [fencing, setFencing] = useState(false);
+  const [fenceResult, setFenceResult] = useState<{
+    artifactsPulled: string[];
+    errors: string[];
+    fenceComplete: boolean;
+  } | null>(null);
+
+  // EC2 lifecycle (connection tab)
+  const [startingVm, setStartingVm] = useState(false);
+  const [stoppingVm, setStoppingVm] = useState(false);
+  const [vmLifecycleMsg, setVmLifecycleMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Danger
   const [dangerMsg, setDangerMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -201,6 +214,67 @@ export function WorkspaceSettingsPanel({
   async function clearViewerPath(viewerId: "freeview" | "mricrogl") {
     await desktop.saveViewerConfig({ viewerId, executablePath: null });
     setViewerMsg(`${viewerId} custom path cleared — detection will restart on next sync.`);
+  }
+
+  async function startVm() {
+    setStartingVm(true);
+    setVmLifecycleMsg(null);
+    try {
+      await desktop.startEnvironment(profile.id);
+      setVmLifecycleMsg({ ok: true, text: "Instance is starting. NeuroForge will reconnect automatically." });
+      // Trigger a sync to pick up the new IP once the instance is running.
+      setTimeout(() => void forceSyncNow(), 30_000);
+    } catch (err) {
+      setVmLifecycleMsg({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setStartingVm(false);
+    }
+  }
+
+  async function stopVm() {
+    setStoppingVm(true);
+    setVmLifecycleMsg(null);
+    try {
+      const result = await desktop.stopEnvironment({
+        profileId: profile.id,
+        workspaceId: workspaceId ?? undefined,
+        runFence: !!workspaceId,
+      });
+      const pulled = result.fenceResult?.artifactsPulled.length ?? 0;
+      const errors = result.fenceResult?.errors.length ?? 0;
+      if (errors > 0) {
+        setVmLifecycleMsg({ ok: false, text: `Instance stopped, but ${errors} artifact${errors !== 1 ? "s" : ""} could not be synced. Check the Synchronization tab.` });
+      } else {
+        setVmLifecycleMsg({
+          ok: true,
+          text: pulled > 0
+            ? `Instance stopped. ${pulled} artifact${pulled !== 1 ? "s" : ""} saved locally.`
+            : "Instance stopped. All artifacts were already cached locally.",
+        });
+      }
+    } catch (err) {
+      setVmLifecycleMsg({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setStoppingVm(false);
+    }
+  }
+
+  async function stopAndSync() {
+    if (!workspaceId) return;
+    setFencing(true);
+    setFenceResult(null);
+    try {
+      const result = await desktop.shutdownFence({ profileId: profile.id, workspaceId });
+      setFenceResult(result);
+    } catch (err) {
+      setFenceResult({
+        artifactsPulled: [],
+        errors: [err instanceof Error ? err.message : String(err)],
+        fenceComplete: false,
+      });
+    } finally {
+      setFencing(false);
+    }
   }
 
   async function forceSyncNow() {
@@ -390,7 +464,7 @@ export function WorkspaceSettingsPanel({
                         )}
                         {ec2Health.instanceState === "stopped" && (
                           <InfoBanner tone="warning" title="Instance is stopped">
-                            Start the EC2 instance from the AWS Console. NeuroForge will reconnect automatically on the next sync.
+                            Start the instance below. NeuroForge will reconnect automatically once it is running.
                           </InfoBanner>
                         )}
                         {ec2Health.instanceState === "pending" && (
@@ -398,6 +472,36 @@ export function WorkspaceSettingsPanel({
                             NeuroForge will reconnect automatically once the instance is running. This usually takes 1–2 minutes.
                           </InfoBanner>
                         )}
+                        {ec2Health.instanceState === "stopping" && (
+                          <InfoBanner tone="warning" title="Instance is stopping…">
+                            The instance is shutting down.
+                          </InfoBanner>
+                        )}
+
+                        {/* Lifecycle actions */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {(ec2Health.instanceState === "stopped" || ec2Health.instanceState === "unknown") && (
+                            <PrimaryButton
+                              onClick={() => void startVm()}
+                              disabled={startingVm}
+                            >
+                              {startingVm ? "Starting…" : "Start instance"}
+                            </PrimaryButton>
+                          )}
+                          {ec2Health.instanceState === "running" && (
+                            <SecondaryButton
+                              onClick={() => void stopVm()}
+                              disabled={stoppingVm}
+                            >
+                              {stoppingVm ? "Stopping…" : "Stop instance"}
+                            </SecondaryButton>
+                          )}
+                          {vmLifecycleMsg && (
+                            <span className={`text-xs ${vmLifecycleMsg.ok ? "text-emerald-300" : "text-red-400"}`}>
+                              {vmLifecycleMsg.text}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </>
@@ -583,6 +687,65 @@ export function WorkspaceSettingsPanel({
                 cloud items to your local NeuroForge instance.
               </p>
             </Card>
+
+            {profile.connectionMode === "instance-id" && (
+              <Card>
+                <CardHeader
+                  title="Manual artifact sync"
+                  subtitle="Pull all run artifacts without stopping the instance"
+                />
+                <p className="mt-3 text-xs text-slate-500">
+                  Syncs all completed run artifacts to your local machine. Use this if you need
+                  artifacts cached locally without stopping the instance. To stop the instance,
+                  use the <strong className="text-slate-300">Connection</strong> tab — NeuroForge
+                  will sync artifacts and stop the VM automatically.
+                </p>
+
+                {fenceResult && (
+                  <div className={`mt-3 rounded-lg border px-4 py-3 text-xs space-y-1 ${
+                    fenceResult.fenceComplete
+                      ? "border-emerald-500/30 bg-emerald-900/20"
+                      : "border-amber-500/30 bg-amber-900/20"
+                  }`}>
+                    <p className={`font-semibold ${fenceResult.fenceComplete ? "text-emerald-300" : "text-amber-300"}`}>
+                      {fenceResult.fenceComplete
+                        ? "All artifacts saved locally — safe to stop the instance."
+                        : "Sync completed with errors — review before stopping."}
+                    </p>
+                    {fenceResult.artifactsPulled.length > 0 && (
+                      <p className="text-slate-400">
+                        {fenceResult.artifactsPulled.length} artifact{fenceResult.artifactsPulled.length !== 1 ? "s" : ""} downloaded.
+                      </p>
+                    )}
+                    {fenceResult.artifactsPulled.length === 0 && fenceResult.fenceComplete && (
+                      <p className="text-slate-400">All artifacts were already cached locally.</p>
+                    )}
+                    {fenceResult.errors.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-red-400">
+                        {fenceResult.errors.map((e, i) => (
+                          <li key={i}>• {e}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center gap-3">
+                  <SecondaryButton
+                    onClick={() => void stopAndSync()}
+                    disabled={fencing || !online || !workspaceId}
+                  >
+                    {fencing ? "Syncing artifacts…" : "Sync all artifacts now"}
+                  </SecondaryButton>
+                  {fencing && (
+                    <p className="text-xs text-slate-400">Pulling all run artifacts — please wait…</p>
+                  )}
+                  {!online && !fencing && (
+                    <p className="text-xs text-slate-500">Workspace must be online to run the fence.</p>
+                  )}
+                </div>
+              </Card>
+            )}
           </div>
         )}
 

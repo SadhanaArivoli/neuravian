@@ -120,6 +120,41 @@ export async function resolveEc2State(profile: WorkspaceProfile): Promise<Ec2Con
   }
 }
 
+/**
+ * Start a stopped EC2 instance. Returns immediately after the API call —
+ * callers should poll resolveEc2State until instanceState === "running".
+ */
+export async function startEc2Instance(profile: WorkspaceProfile): Promise<void> {
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+  if (!instanceId || !region) {
+    throw new Error("EC2 instance ID and region must both be set to start an instance.");
+  }
+  await execFileAsync(
+    "aws",
+    ["ec2", "start-instances", "--instance-ids", instanceId, "--region", region],
+    { timeout: 15_000, env: process.env },
+  );
+}
+
+/**
+ * Stop a running EC2 instance (graceful stop — data is preserved).
+ * This does NOT terminate the instance. Callers should run the shutdown
+ * fence before calling this to ensure all artifacts are local first.
+ */
+export async function stopEc2Instance(profile: WorkspaceProfile): Promise<void> {
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+  if (!instanceId || !region) {
+    throw new Error("EC2 instance ID and region must both be set to stop an instance.");
+  }
+  await execFileAsync(
+    "aws",
+    ["ec2", "stop-instances", "--instance-ids", instanceId, "--region", region],
+    { timeout: 15_000, env: process.env },
+  );
+}
+
 /** @deprecated Use resolveEc2State instead. Kept for any callers still referencing this name. */
 export async function resolveInstanceUrl(profile: WorkspaceProfile): Promise<string | null> {
   const health = await resolveEc2State(profile);

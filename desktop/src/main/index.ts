@@ -45,7 +45,7 @@ import {
 } from "./viewer-manager.js";
 import { ConnectionProfileStore } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
-import { WorkspaceClient, resolveEc2State } from "./workspace-client.js";
+import { WorkspaceClient, resolveEc2State, startEc2Instance, stopEc2Instance } from "./workspace-client.js";
 import { WorkspaceReplicationEngine } from "./workspace-replication.js";
 import type { WorkspaceProfile } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
@@ -741,6 +741,33 @@ ipcMain.handle("workspaces:get-ec2-state", async (_event, profileId: string) => 
   }
   return await resolveEc2State(profile);
 });
+ipcMain.handle("workspaces:start-environment", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.connectionMode !== "instance-id") {
+    throw new Error("Start environment is only available for EC2 instance-id workspaces.");
+  }
+  await startEc2Instance(profile);
+  return { started: true };
+});
+
+ipcMain.handle("workspaces:stop-environment", async (_event, input: { profileId: string; workspaceId?: string; runFence?: boolean }) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.connectionMode !== "instance-id") {
+    throw new Error("Stop environment is only available for EC2 instance-id workspaces.");
+  }
+  const credential = await profiles.credential(input.profileId);
+  let fenceResult = null;
+  if (input.runFence && input.workspaceId) {
+    fenceResult = await wre.shutdownFence(profile, credential, input.workspaceId);
+  }
+  await stopEc2Instance(profile);
+  return { stopped: true, fenceResult };
+});
+
 ipcMain.handle("workspaces:pull-to-local", async (
   _event,
   input: { type: "project" | "workflow"; data: Record<string, unknown> },
