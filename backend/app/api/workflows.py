@@ -288,6 +288,14 @@ def _transfer_root(execution_uuid: str) -> Path:
     return root
 
 
+def _workflow_dataset_path(execution_uuid: str) -> Path:
+    return (
+        Path(settings.backend_datasets_mount)
+        / ".neuroforge-workflow-transfers"
+        / execution_uuid
+    )
+
+
 @router.post(
     "/workflow-executions/{execution_uuid}/dataset",
     response_model=WorkflowDatasetRead,
@@ -306,7 +314,7 @@ def materialize_workflow_dataset(
     if not execution:
         raise HTTPException(status_code=404, detail="Workflow execution not found")
 
-    path = str(_transfer_root(execution_uuid))
+    path = str(_workflow_dataset_path(execution_uuid))
     dataset = db.query(Dataset).filter_by(path=path).first()
     if dataset is None:
         dataset = Dataset(

@@ -108,6 +108,7 @@ def test_handoff_dataset_materialization_translates_local_id(client, tmp_path, m
     from app.api import workflows
 
     monkeypatch.setattr(workflows.settings, "data_dir", str(tmp_path))
+    monkeypatch.setattr(workflows.settings, "backend_datasets_mount", "/host-data")
     execution = start(client, workflow(client)["id"])
     url = f"/api/workflow-executions/{execution['execution_uuid']}/dataset"
 
@@ -119,6 +120,9 @@ def test_handoff_dataset_materialization_translates_local_id(client, tmp_path, m
     assert first.json()["source_dataset_id"] == 42
     assert first.json()["id"] != 42
     assert first.json()["workflow_execution_uuid"] == execution["execution_uuid"]
+    assert first.json()["path"] == (
+        f"/host-data/.neuroforge-workflow-transfers/{execution['execution_uuid']}"
+    )
 
 
 def test_handoff_dataset_requires_existing_execution(client):
