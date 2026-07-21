@@ -796,7 +796,34 @@ ipcMain.handle("workspaces:prepare-workflow-handoff", async (
   const sync = await wre.syncWorkflowInputs(
     profile, credential, persistedExecutionUuid, input.upstreamRunId, input.artifactType,
   );
-  return { execution, executionUuid: persistedExecutionUuid, cloudWorkflowId, ...sync };
+  const localRunResponse = await fetch(`http://127.0.0.1:8000/api/runs/${input.upstreamRunId}`);
+  if (!localRunResponse.ok) throw new Error(`Local run lookup failed: HTTP ${localRunResponse.status}`);
+  const localRun = await localRunResponse.json() as { dataset_id: number };
+  const localDatasetResponse = await fetch(`http://127.0.0.1:8000/api/datasets/${localRun.dataset_id}`);
+  if (!localDatasetResponse.ok) throw new Error(`Local dataset lookup failed: HTTP ${localDatasetResponse.status}`);
+  const localDataset = await localDatasetResponse.json() as { id: number; name?: string | null };
+  const remoteDatasetResponse = await fetch(
+    new URL(`/api/workflow-executions/${persistedExecutionUuid}/dataset`, `${profile.serverUrl}/`).toString(),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ source_dataset_id: localDataset.id, name: localDataset.name ?? null }),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  if (!remoteDatasetResponse.ok) {
+    const text = await remoteDatasetResponse.text().catch(() => remoteDatasetResponse.statusText);
+    throw new Error(`Cloud dataset materialization failed: HTTP ${remoteDatasetResponse.status}: ${text}`);
+  }
+  const remoteDataset = await remoteDatasetResponse.json() as { id: number };
+  return {
+    execution,
+    executionUuid: persistedExecutionUuid,
+    cloudWorkflowId,
+    remoteDatasetId: remoteDataset.id,
+    sourceDatasetId: localDataset.id,
+    ...sync,
+  };
 });
 
 ipcMain.handle("workspaces:update-workflow-execution", async (

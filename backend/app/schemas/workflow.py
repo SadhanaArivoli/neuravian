@@ -102,3 +102,16 @@ class WorkflowTransferRead(BaseModel):
     bytes_received: int
     status: str
     staged_path: str | None = None
+
+
+class WorkflowDatasetCreate(BaseModel):
+    source_dataset_id: int = Field(..., ge=1)
+    name: str | None = Field(None, max_length=256)
+
+
+class WorkflowDatasetRead(BaseModel):
+    id: int
+    source_dataset_id: int
+    name: str | None
+    path: str
+    workflow_execution_uuid: str

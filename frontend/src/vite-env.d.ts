@@ -95,6 +95,8 @@ interface NeuroForgeDesktopBridge {
     execution: Record<string, unknown>;
     executionUuid: string;
     cloudWorkflowId: number;
+    remoteDatasetId: number;
+    sourceDatasetId: number;
     uploaded: string[];
     reused: string[];
     stagedPaths: Record<string, string>;

@@ -1,5 +1,5 @@
-import json
 import hashlib
+import json
 import re
 import uuid
 from datetime import UTC, datetime
@@ -10,12 +10,20 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.dataset import Dataset
 from app.models.workflow import SavedWorkflow
 from app.models.workflow_execution import WorkflowExecution, WorkflowTransfer
 from app.schemas.workflow import (
-    WorkflowCreate, WorkflowExecutionCreate, WorkflowExecutionRead,
-    WorkflowExecutionUpdate, WorkflowRead, WorkflowSummary,
-    WorkflowTransferRead, WorkflowUpdate,
+    WorkflowCreate,
+    WorkflowDatasetCreate,
+    WorkflowDatasetRead,
+    WorkflowExecutionCreate,
+    WorkflowExecutionRead,
+    WorkflowExecutionUpdate,
+    WorkflowRead,
+    WorkflowSummary,
+    WorkflowTransferRead,
+    WorkflowUpdate,
 )
 
 router = APIRouter(tags=["workflows"])
@@ -278,6 +286,51 @@ def _transfer_root(execution_uuid: str) -> Path:
     root = Path(settings.data_dir).resolve() / "workflow-transfers" / execution_uuid / "inputs"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+@router.post(
+    "/workflow-executions/{execution_uuid}/dataset",
+    response_model=WorkflowDatasetRead,
+)
+def materialize_workflow_dataset(
+    execution_uuid: str,
+    body: WorkflowDatasetCreate,
+    db: Session = Depends(get_db),
+) -> WorkflowDatasetRead:
+    """Create the cloud-local dataset identity used by a handed-off run."""
+    execution = (
+        db.query(WorkflowExecution)
+        .filter_by(execution_uuid=execution_uuid)
+        .first()
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Workflow execution not found")
+
+    path = str(_transfer_root(execution_uuid))
+    dataset = db.query(Dataset).filter_by(path=path).first()
+    if dataset is None:
+        dataset = Dataset(
+            name=body.name,
+            path=path,
+            validation_status="external",
+            indexed_metadata=json.dumps(
+                {
+                    "workflow_execution_uuid": execution_uuid,
+                    "source_dataset_id": body.source_dataset_id,
+                }
+            ),
+        )
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+
+    return WorkflowDatasetRead(
+        id=dataset.id,
+        source_dataset_id=body.source_dataset_id,
+        name=dataset.name,
+        path=dataset.path,
+        workflow_execution_uuid=execution_uuid,
+    )
 
 
 @router.put("/workflow-executions/{execution_uuid}/inputs/{artifact_key}")

@@ -1240,6 +1240,10 @@ export default function WorkflowBuilder() {
         state: serialized as unknown as Record<string, unknown>,
       });
       const persistedExecutionUuid = prepared.executionUuid;
+      const remoteDatasetId = Number(prepared.remoteDatasetId);
+      if (!Number.isInteger(remoteDatasetId) || remoteDatasetId < 1) {
+        throw new Error("Cloud handoff did not return a valid remote dataset ID.");
+      }
       let executionRevision = Number(prepared.execution.revision ?? 1);
       const persistExecution = async (
         status: string, currentNodeId: string | null, returnSyncComplete = false,
@@ -1296,7 +1300,7 @@ export default function WorkflowBuilder() {
         const launched = await window.neuroforgeDesktop.launchPipeline({
           profileId: selectedWorkspaceId,
           pipelineId: node.pipelineId,
-          datasetId: resolveDatasetId(node, upstream),
+          datasetId: remoteDatasetId,
           params,
           autoStart: true,
           lineage: {

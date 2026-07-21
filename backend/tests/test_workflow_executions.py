@@ -104,6 +104,31 @@ def test_input_upload_is_checksum_verified_and_idempotent(client, tmp_path, monk
     assert first.json()["status"] == "complete"
 
 
+def test_handoff_dataset_materialization_translates_local_id(client, tmp_path, monkeypatch):
+    from app.api import workflows
+
+    monkeypatch.setattr(workflows.settings, "data_dir", str(tmp_path))
+    execution = start(client, workflow(client)["id"])
+    url = f"/api/workflow-executions/{execution['execution_uuid']}/dataset"
+
+    first = client.post(url, json={"source_dataset_id": 42, "name": "fresh-bids"})
+    second = client.post(url, json={"source_dataset_id": 42, "name": "fresh-bids"})
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["source_dataset_id"] == 42
+    assert first.json()["id"] != 42
+    assert first.json()["workflow_execution_uuid"] == execution["execution_uuid"]
+
+
+def test_handoff_dataset_requires_existing_execution(client):
+    response = client.post(
+        "/api/workflow-executions/00000000-0000-0000-0000-000000000000/dataset",
+        json={"source_dataset_id": 2, "name": "missing"},
+    )
+    assert response.status_code == 404
+
+
 def test_input_upload_rejects_checksum_mismatch(client, tmp_path, monkeypatch):
     from app.api import workflows
 
