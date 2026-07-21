@@ -117,6 +117,7 @@ const CATEGORY_META: Record<
   quality_control:  { label: "Quality control",   icon: "QC", iconColor: "text-amber-300",  iconBg: "bg-surface-overlay border-white/8" },
   segmentation:     { label: "Segmentation",      icon: "SG", iconColor: "text-accent",     iconBg: "bg-surface-overlay border-white/8" },
   preprocessing:    { label: "Preprocessing",     icon: "PR", iconColor: "text-orange-300", iconBg: "bg-surface-overlay border-white/8" },
+  registration:     { label: "Registration",      icon: "RG", iconColor: "text-accent",     iconBg: "bg-surface-overlay border-white/8" },
   deidentification: { label: "De-identification", icon: "DI", iconColor: "text-red-300",    iconBg: "bg-surface-overlay border-white/8" },
   connectivity:     { label: "Connectivity",      icon: "CN", iconColor: "text-accent",    iconBg: "bg-surface-overlay border-white/8" },
   unknown:          { label: "Pipeline",          icon: "PL", iconColor: "text-gray-400",   iconBg: "bg-surface-raised border-white/8"  },
@@ -128,6 +129,7 @@ const RUNTIME_HINT_BY_CATEGORY: Partial<Record<PipelineCategory, string>> = {
   quality_control: "often minutes",
   segmentation: "varies by tool",
   preprocessing: "long running",
+  registration: "varies by tool",
   deidentification: "varies locally",
   connectivity: "usually minutes",
 };
@@ -196,7 +198,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
 }
 
 function categoryMeta(category: PipelineCategory | null | undefined) {
-  return CATEGORY_META[category ?? "unknown"];
+  return CATEGORY_META[category ?? "unknown"] ?? CATEGORY_META.unknown;
 }
 
 function runtimeHint(category: PipelineCategory | null, profile: ComputeProfile | null) {

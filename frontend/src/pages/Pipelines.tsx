@@ -34,6 +34,7 @@ const CATEGORY_LABEL: Record<PipelineCategory, string> = {
   quality_control: "Quality control",
   segmentation: "Segmentation",
   preprocessing: "Preprocessing",
+  registration: "Registration",
   deidentification: "De-identification",
   connectivity: "Connectivity",
 };
