@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 /absolute/path/to/neuroforge-logo.001-removebg-preview.png" >&2
+  echo "Usage: $0 /absolute/path/to/Neuroforge_Logo.png" >&2
   exit 2
 fi
 

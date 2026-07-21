@@ -1,0 +1,402 @@
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
+import { inspectRunCache, readRunCacheReports, type SyncManifest } from "./run-cache.js";
+import { classifyArtifactRole } from "./artifact-classifier.js";
+import {
+  remoteIdentityKey,
+  type Ec2ConnectionHealth,
+  type WorkspaceCredential,
+  type WorkspaceProfile,
+  type WorkspaceRun,
+  type WorkspaceSnapshot,
+} from "./workspace-types.js";
+import { WorkspaceMetadataCache } from "./workspace-cache.js";
+
+const execFileAsync = promisify(execFile);
+
+/** Derive a sslip.io hostname from a dotted IPv4 address. */
+function sslipHostname(ip: string): string {
+  return `${ip.replace(/\./g, "-")}.sslip.io`;
+}
+
+/**
+ * Reconstruct the workspace serverUrl with a new hostname substituted in.
+ * Preserves the original protocol, port, and path.
+ * Falls back to `https://<hostname>` if the existing serverUrl cannot be parsed.
+ */
+export function rebuildServerUrl(currentServerUrl: string, newHostname: string): string {
+  if (!currentServerUrl) return `https://${newHostname}`;
+  try {
+    const url = new URL(currentServerUrl);
+    url.hostname = newHostname;
+    // Instance-managed workspaces expose the authenticated gateway on HTTPS.
+    // Legacy profiles may still contain the backend/frontend container ports,
+    // which are intentionally not public.
+    if (url.protocol === "https:" && (url.port === "8000" || url.port === "3000")) {
+      url.port = "";
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return `https://${newHostname}`;
+  }
+}
+
+/**
+ * Detect the current state of an EC2 instance and derive the correct serverUrl.
+ * Replaces the old `resolveInstanceUrl` with a fully structured result so that
+ * callers can surface instance state, IP, and hostname to the user.
+ */
+export async function resolveEc2State(profile: WorkspaceProfile): Promise<Ec2ConnectionHealth> {
+  const lastUpdated = new Date().toISOString();
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+
+  if (!instanceId || !region) {
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: false,
+      error: "EC2 instance ID and region must both be set.",
+    };
+  }
+
+  // Verify AWS CLI is available before making the real call.
+  try {
+    await execFileAsync("aws", ["--version"], { timeout: 5_000, env: process.env });
+  } catch {
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: false,
+      error: "AWS CLI not found. Install it to enable automatic EC2 reconnection.",
+    };
+  }
+
+  try {
+    // Fetch state name, public IP, and public DNS in one call.
+    const { stdout } = await execFileAsync(
+      "aws",
+      [
+        "ec2", "describe-instances",
+        "--instance-ids", instanceId,
+        "--region", region,
+        "--query", "Reservations[0].Instances[0].[State.Name,PublicIpAddress,PublicDnsName]",
+        "--output", "text",
+      ],
+      { timeout: 15_000, env: process.env },
+    );
+
+    const parts = stdout.trim().split(/\t/);
+    const rawState = parts[0]?.trim() ?? "";
+    const rawIp = parts[1]?.trim() ?? "";
+    const rawDns = parts[2]?.trim() ?? "";
+
+    const instanceState = (rawState && rawState !== "None" ? rawState : "unknown") as Ec2ConnectionHealth["instanceState"];
+    const publicIp = rawIp && rawIp !== "None" && /^\d{1,3}(\.\d{1,3}){3}$/.test(rawIp) ? rawIp : null;
+    // Prefer sslip.io (stable HTTPS-compatible wildcard DNS) over EC2 public DNS.
+    const publicHostname = publicIp
+      ? sslipHostname(publicIp)
+      : (rawDns && rawDns !== "None" ? rawDns : null);
+
+    const resolvedServerUrl = publicHostname
+      ? rebuildServerUrl(profile.serverUrl, publicHostname)
+      : null;
+
+    return {
+      instanceId, region, instanceState, publicIp, publicHostname,
+      resolvedServerUrl, lastUpdated, awsCliAvailable: true,
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    let friendlyError = raw;
+    if (raw.includes("InvalidInstanceID")) {
+      friendlyError = `Instance '${instanceId}' was not found in region '${region}'. Check the instance ID.`;
+    } else if (raw.includes("UnauthorizedOperation") || raw.includes("AccessDenied")) {
+      friendlyError = "AWS credentials lack permission to describe EC2 instances (ec2:DescribeInstances).";
+    } else if (raw.includes("Could not connect to the endpoint URL") || raw.includes("EndpointResolutionError")) {
+      friendlyError = `Region '${region}' could not be reached. Verify the region name.`;
+    } else if (raw.includes("NoCredentialProviders") || raw.includes("Unable to locate credentials")) {
+      friendlyError = "No AWS credentials found. Run `aws configure` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.";
+    }
+    return {
+      instanceId, region, instanceState: "unknown",
+      publicIp: null, publicHostname: null, resolvedServerUrl: null,
+      lastUpdated, awsCliAvailable: true, error: friendlyError,
+    };
+  }
+}
+
+/**
+ * Start a stopped EC2 instance. Returns immediately after the API call —
+ * callers should poll resolveEc2State until instanceState === "running".
+ */
+export async function startEc2Instance(profile: WorkspaceProfile): Promise<void> {
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+  if (!instanceId || !region) {
+    throw new Error("EC2 instance ID and region must both be set to start an instance.");
+  }
+  await execFileAsync(
+    "aws",
+    ["ec2", "start-instances", "--instance-ids", instanceId, "--region", region],
+    { timeout: 15_000, env: process.env },
+  );
+}
+
+/**
+ * Stop a running EC2 instance (graceful stop — data is preserved).
+ * This does NOT terminate the instance. Callers should run the shutdown
+ * fence before calling this to ensure all artifacts are local first.
+ */
+export async function stopEc2Instance(profile: WorkspaceProfile): Promise<void> {
+  const instanceId = profile.instanceId ?? "";
+  const region = profile.awsRegion ?? "";
+  if (!instanceId || !region) {
+    throw new Error("EC2 instance ID and region must both be set to stop an instance.");
+  }
+  await execFileAsync(
+    "aws",
+    ["ec2", "stop-instances", "--instance-ids", instanceId, "--region", region],
+    { timeout: 15_000, env: process.env },
+  );
+}
+
+/** @deprecated Use resolveEc2State instead. Kept for any callers still referencing this name. */
+export async function resolveInstanceUrl(profile: WorkspaceProfile): Promise<string | null> {
+  const health = await resolveEc2State(profile);
+  return health.resolvedServerUrl;
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function authorization(credential: WorkspaceCredential | null): string | null {
+  if (!credential) return null;
+  return `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+}
+
+function authenticatedFetcher(
+  credential: WorkspaceCredential | null,
+  fetcher: typeof fetch,
+): typeof fetch {
+  const header = authorization(credential);
+  return (input, init = {}) => fetcher(input, {
+    ...init,
+    headers: {
+      ...init.headers,
+      ...(header ? { Authorization: header } : {}),
+    },
+  });
+}
+
+function endpoint(profile: WorkspaceProfile, route: string): string {
+  return new URL(route.replace(/^\//, ""), `${profile.serverUrl}/`).toString();
+}
+
+async function json<T>(
+  profile: WorkspaceProfile,
+  route: string,
+  fetcher: typeof fetch,
+): Promise<T> {
+  const response = await fetcher(endpoint(profile, route));
+  if (!response.ok) throw new Error(`Workspace request failed with HTTP ${response.status}.`);
+  return await response.json() as T;
+}
+
+async function settledOr<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  try { return await promise; } catch { return fallback; }
+}
+
+function withRemoteKey<T extends JsonRecord & { id: number | string }>(
+  workspaceId: string,
+  resourceType: "project" | "dataset" | "workflow" | "report",
+  value: T,
+): T & { remoteKey: string } {
+  return {
+    ...value,
+    remoteKey: remoteIdentityKey({
+      workspaceId,
+      resourceType,
+      serverResourceId: String(value.id),
+    }),
+  };
+}
+
+export class WorkspaceClient {
+  constructor(
+    private readonly metadataCache: WorkspaceMetadataCache,
+    private readonly artifactCacheRoot: string,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {}
+
+  async testConnection(
+    profile: WorkspaceProfile,
+    credential: WorkspaceCredential | null,
+  ): Promise<{ workspaceId: string; product: string; apiVersion: string; serverVersion: string }> {
+    const fetcher = authenticatedFetcher(credential, this.fetcher);
+    const [identity, about] = await Promise.all([
+      json<{ workspace_id: string; product: string; api_version: string }>(
+        profile, "/api/workspace/identity", fetcher,
+      ),
+      json<{ version?: string; backend_version?: string }>(profile, "/api/about", fetcher),
+    ]);
+    if (profile.serverIdentity && profile.serverIdentity !== identity.workspace_id) {
+      throw new Error("Workspace server identity changed; connection refused.");
+    }
+    return {
+      workspaceId: identity.workspace_id,
+      product: identity.product,
+      apiVersion: identity.api_version,
+      serverVersion: about.version ?? about.backend_version ?? "unknown",
+    };
+  }
+
+  async synchronize(
+    profile: WorkspaceProfile,
+    credential: WorkspaceCredential | null,
+  ): Promise<{ snapshot: WorkspaceSnapshot; online: boolean }> {
+    const fetcher = authenticatedFetcher(credential, this.fetcher);
+    try {
+      const identity = await json<{ workspace_id: string }>(
+        profile, "/api/workspace/identity", fetcher,
+      );
+      if (profile.serverIdentity && profile.serverIdentity !== identity.workspace_id) {
+        throw new Error("Workspace server identity changed; connection refused.");
+      }
+      const [rawProjects, rawDatasets, workflowSummaries, runSummaries] = await Promise.all([
+        json<JsonRecord[]>(profile, "/api/projects", fetcher),
+        json<JsonRecord[]>(profile, "/api/datasets", fetcher),
+        json<Array<JsonRecord & { id: number }>>(profile, "/api/workflows", fetcher),
+        json<Array<JsonRecord & { id: number; status: string }>>(profile, "/api/runs", fetcher),
+      ]);
+      const workspaceId = identity.workspace_id;
+      const projects = await Promise.all(rawProjects.map(async (project) => {
+        const projectDatasets = await settledOr(
+          json<Array<{ id: number }>>(profile, `/api/projects/${project.id}/datasets`, fetcher),
+          [],
+        );
+        return withRemoteKey(workspaceId, "project", {
+          ...project,
+          id: Number(project.id),
+          datasetIds: projectDatasets.map((dataset) => dataset.id),
+        });
+      }));
+      const datasets = rawDatasets.map((dataset) => withRemoteKey(workspaceId, "dataset", {
+        ...dataset, id: Number(dataset.id),
+      }));
+      const workflows = await Promise.all(workflowSummaries.map(async (summary) =>
+        withRemoteKey(workspaceId, "workflow", await settledOr(
+          json<JsonRecord & { id: number }>(profile, `/api/workflows/${summary.id}`, fetcher),
+          summary,
+        )),
+      ));
+      const reportsNested = await Promise.all(datasets.map((dataset) => settledOr(
+        json<Array<JsonRecord & { id: number | string }>>(
+          profile, `/api/datasets/${dataset.id}/reports`, fetcher,
+        ),
+        [],
+      )));
+      const reports = reportsNested.flat().map((report) =>
+        withRemoteKey(workspaceId, "report", report));
+      const runs: WorkspaceRun[] = [];
+      for (const summary of runSummaries) {
+        const hasFinalizedOutputs = ["success", "failed", "cancelled", "interrupted"].includes(summary.status);
+        const [details, provenance, results, logs, manifest] = await Promise.all([
+          settledOr(json<JsonRecord>(profile, `/api/runs/${summary.id}`, fetcher), summary),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/provenance`, fetcher), null)
+            : Promise.resolve(null),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/results`, fetcher), null)
+            : Promise.resolve(null),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/logs`, fetcher), null)
+            : Promise.resolve(null),
+          summary.status === "success"
+            ? settledOr(json<SyncManifest>(profile, `/api/runs/${summary.id}/sync-manifest`, fetcher), null)
+            : Promise.resolve(null),
+        ]);
+        // Stamp semanticRole once at registration. Priority:
+        //   1. Server-provided role (future: manifest declarations).
+        //   2. Filename inference fallback (classifyArtifactRole).
+        const artifacts = (manifest?.artifacts ?? []).map((a) => ({
+          ...a,
+          semanticRole: a.semanticRole ?? classifyArtifactRole(a),
+        }));
+        const inspection = manifest
+          ? await inspectRunCache(path.join(this.artifactCacheRoot, workspaceId), manifest)
+          : { state: "cloud-only" as const, cachedPaths: [] };
+
+        runs.push({
+          ...summary,
+          ...details,
+          id: summary.id,
+          remoteKey: remoteIdentityKey({
+            workspaceId, resourceType: "run", serverResourceId: String(summary.id),
+          }),
+          pipeline_manifest_id: String(details.pipeline_manifest_id ?? summary.pipeline_manifest_id),
+          pipeline_version: String(details.pipeline_version ?? summary.pipeline_version),
+          dataset_id: Number(details.dataset_id ?? summary.dataset_id),
+          status: String(details.status ?? summary.status),
+          created_at: String(details.created_at ?? summary.created_at),
+          parameters: details.params,
+          provenance,
+          results,
+          logs,
+          // Run reports are execution artifacts returned by the run endpoints.
+          // Dataset reports are separate Study Report Studio snapshots and do
+          // not carry a run_id, so filtering them here always produced [].
+          reports: Array.isArray(manifest?.reports)
+            ? manifest.reports
+            : (
+              results && typeof results === "object" && "reports" in results
+                && Array.isArray((results as { reports?: unknown }).reports)
+                ? (results as { reports: unknown[] }).reports
+                : []
+            ),
+          artifacts,
+          cachedArtifacts: inspection.cachedPaths,
+          cacheState: inspection.state,
+        });
+      }
+      const snapshot: WorkspaceSnapshot = {
+        schemaVersion: 1,
+        workspaceId,
+        profileId: profile.id,
+        serverUrl: profile.serverUrl,
+        synchronizedAt: new Date().toISOString(),
+        projects,
+        datasets,
+        workflows,
+        runs,
+        reports,
+      };
+      await this.metadataCache.write(snapshot);
+      return { snapshot, online: true };
+    } catch (error) {
+      const cached = await this.metadataCache.read(profile.id);
+      if (!cached) throw error;
+      const runs = await Promise.all(cached.runs.map(async (run) => {
+        const cacheReports = await readRunCacheReports(
+          path.join(this.artifactCacheRoot, cached.workspaceId),
+          run.id,
+        );
+        return {
+          ...run,
+          reports: cacheReports ?? run.reports,
+          cacheState: run.cacheState === "fully-cached" || run.cacheState === "partially-cached"
+            ? "offline-cached" as const
+            : "server-unavailable" as const,
+        };
+      }));
+      return {
+        online: false,
+        snapshot: {
+          ...cached,
+          runs,
+        },
+      };
+    }
+  }
+
+}

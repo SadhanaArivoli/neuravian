@@ -36,6 +36,8 @@ import {
   serializeWorkflowState,
   type SerializedSource,
 } from "../lib/workflowPersistence";
+import { planWorkflowExecution, type PlannedNode } from "../lib/workflowExecution";
+import { WorkflowHandoffPanel } from "../components/domain/WorkflowHandoffPanel";
 
 type SourceKind = "dataset" | "run";
 type WorkflowNodeStatus = "draft" | "ready" | "running" | "success" | "failed";
@@ -68,6 +70,7 @@ interface WorkflowNode {
   runId?: number;
   error?: string;
   resolvedOutputs?: RunArtifact[];
+  executionLocation?: "Local" | "Cloud";
 }
 
 interface SourceArtifacts {
@@ -109,13 +112,13 @@ const CATEGORY_META: Record<
 > = {
   dataset:          { label: "Dataset",           icon: "DS", iconColor: "text-accent",     iconBg: "bg-accent/10 border-accent/20"  },
   run:              { label: "Run",               icon: "RN", iconColor: "text-accent",     iconBg: "bg-accent/10 border-accent/20"  },
-  conversion:       { label: "Conversion",        icon: "CV", iconColor: "text-cyan-300",   iconBg: "bg-surface-overlay border-white/8" },
+  conversion:       { label: "Conversion",        icon: "CV", iconColor: "text-accent",   iconBg: "bg-surface-overlay border-white/8" },
   validation:       { label: "Validation",        icon: "VA", iconColor: "text-green-300",  iconBg: "bg-surface-overlay border-white/8" },
   quality_control:  { label: "Quality control",   icon: "QC", iconColor: "text-amber-300",  iconBg: "bg-surface-overlay border-white/8" },
   segmentation:     { label: "Segmentation",      icon: "SG", iconColor: "text-accent",     iconBg: "bg-surface-overlay border-white/8" },
   preprocessing:    { label: "Preprocessing",     icon: "PR", iconColor: "text-orange-300", iconBg: "bg-surface-overlay border-white/8" },
   deidentification: { label: "De-identification", icon: "DI", iconColor: "text-red-300",    iconBg: "bg-surface-overlay border-white/8" },
-  connectivity:     { label: "Connectivity",      icon: "CN", iconColor: "text-sky-300",    iconBg: "bg-surface-overlay border-white/8" },
+  connectivity:     { label: "Connectivity",      icon: "CN", iconColor: "text-accent",    iconBg: "bg-surface-overlay border-white/8" },
   unknown:          { label: "Pipeline",          icon: "PL", iconColor: "text-gray-400",   iconBg: "bg-surface-raised border-white/8"  },
 };
 
@@ -704,6 +707,11 @@ export default function WorkflowBuilder() {
   const [isLoadingCompat, setIsLoadingCompat] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [handoffIndex, setHandoffIndex] = useState<number | null>(null);
+  const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfile[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [templateChosen, setTemplateChosen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
@@ -722,6 +730,19 @@ export default function WorkflowBuilder() {
   const [renameValue, setRenameValue] = useState("");
   const saveSuccessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const executionPlan = useMemo(
+    () => planWorkflowExecution(nodes),
+    [nodes],
+  );
+
+  useEffect(() => {
+    if (!window.neuroforgeDesktop) return;
+    window.neuroforgeDesktop.listWorkspaces().then((profiles) => {
+      setWorkspaceProfiles(profiles);
+      setSelectedWorkspaceId((current) => current || profiles[0]?.id || "");
+    }).catch(() => setWorkspaceProfiles([]));
+  }, []);
+
   // Load a saved workflow from ?open=<id> param
   useEffect(() => {
     const openId = searchParams.get("open");
@@ -739,7 +760,7 @@ export default function WorkflowBuilder() {
         suppressDirty.current = true;
         const src = state.source as WorkflowSource;
         setSource(src);
-        setNodes(state.nodes.map((n) => ({ ...n, status: "draft" as const })));
+        setNodes(state.nodes.map((n) => ({ ...n, status: n.status ?? "draft" as const })));
         setActiveTemplate(null);
         setSavedWorkflowId(wf.id);
         setWorkflowName(wf.name);
@@ -1025,6 +1046,12 @@ export default function WorkflowBuilder() {
     );
   }
 
+  async function persistRuntimeState() {
+    if (!savedWorkflowId) return;
+    const state = serializeWorkflowState(source as SerializedSource, nodes, activeTemplate?.id ?? null);
+    await updateWorkflow(savedWorkflowId, { state: state as unknown as Record<string, unknown> });
+  }
+
   async function getArtifactsForIndex(index: number): Promise<SourceArtifacts> {
     if (index === 0) {
       if (source.kind === "dataset") {
@@ -1104,6 +1131,13 @@ export default function WorkflowBuilder() {
     try {
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
+        if (node.status === "success" && node.runId) continue;
+        const planned = executionPlan[i];
+        if (planned?.executionLocation === "Cloud") {
+          setHandoffIndex(i);
+          setRunMessage("This workflow now requires cloud execution.");
+          return;
+        }
         updateNode(node.id, { status: "running", error: undefined });
 
         const upstream = await getArtifactsForIndex(i);
@@ -1126,34 +1160,198 @@ export default function WorkflowBuilder() {
           params,
           lineage: buildLineage(node, upstream, artifactPath),
         });
+        node.runId = created.id;
         updateNode(node.id, { runId: created.id });
 
         const finished = await waitForRun(created.id);
         const results = await fetchRunResults(created.id).catch(() => null);
         if (finished.status === "failed") {
+          node.status = "failed";
           updateNode(node.id, {
             status: "failed",
             runId: finished.id,
             resolvedOutputs: results?.artifacts ?? [],
             error: finished.error_message ?? `Run #${finished.id} failed.`,
           });
+          await persistRuntimeState();
           setRunMessage(`Stopped at ${node.displayName}.`);
           return;
         }
+        node.status = "success";
+        node.resolvedOutputs = results?.artifacts ?? [];
+        node.executionLocation = "Local";
         updateNode(node.id, {
           status: "success",
           runId: finished.id,
           resolvedOutputs: results?.artifacts ?? [],
+          executionLocation: "Local",
         });
+        await persistRuntimeState();
       }
       setRunMessage("Workflow completed.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Workflow failed.";
       const runningNode = nodes.find((n) => n.status === "running");
-      if (runningNode) updateNode(runningNode.id, { status: "failed", error: message });
+      if (runningNode) {
+        runningNode.status = "failed";
+        runningNode.error = message;
+        updateNode(runningNode.id, { status: "failed", error: message });
+        await persistRuntimeState();
+      }
       setRunMessage(message);
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function continueInCloud() {
+    if (handoffIndex == null) return;
+    if (!window.neuroforgeDesktop?.prepareWorkflowHandoff || !selectedWorkspaceId) {
+      setHandoffError("Choose a configured cloud workspace in NeuroForge Desktop.");
+      return;
+    }
+    if (!savedWorkflowId) {
+      setHandoffError("Save this workflow before cloud handoff so its history can be recovered.");
+      return;
+    }
+    const upstream = await getArtifactsForIndex(handoffIndex).catch((error) => {
+      setHandoffError(error instanceof Error ? error.message : "Required inputs are unavailable.");
+      return null;
+    });
+    if (!upstream?.sourceRun) {
+      setHandoffError("Cloud handoff currently requires a completed upstream run.");
+      return;
+    }
+    setHandoffBusy(true);
+    setHandoffError(null);
+    const executionUuid = crypto.randomUUID();
+    const idempotencyKey = `workflow-${savedWorkflowId}-${nodes.map((node) => node.runId ?? "pending").join("-")}`;
+    try {
+      const serialized = serializeWorkflowState(source as SerializedSource, nodes, activeTemplate?.id ?? null);
+      const prepared = await window.neuroforgeDesktop.prepareWorkflowHandoff({
+        profileId: selectedWorkspaceId,
+        workflowId: savedWorkflowId,
+        executionUuid,
+        idempotencyKey,
+        upstreamRunId: upstream.sourceRun.id,
+        artifactType: nodes[handoffIndex]!.edge.artifactType,
+        state: serialized as unknown as Record<string, unknown>,
+      });
+      const persistedExecutionUuid = prepared.executionUuid;
+      let executionRevision = Number(prepared.execution.revision ?? 1);
+      const persistExecution = async (
+        status: string, currentNodeId: string | null, returnSyncComplete = false,
+      ) => {
+        if (!window.neuroforgeDesktop?.updateWorkflowExecution) return;
+        const updated = await window.neuroforgeDesktop.updateWorkflowExecution({
+          profileId: selectedWorkspaceId,
+          executionUuid: persistedExecutionUuid,
+          expectedRevision: executionRevision,
+          status,
+          currentNodeId,
+          returnSyncComplete,
+          state: {
+            source,
+            nodes: nodes.map((item) => ({
+              id: item.id, pipelineId: item.pipelineId, status: item.status,
+              runId: item.runId ?? null, executionLocation: item.executionLocation ?? null,
+              error: item.error ?? null,
+            })),
+          },
+        });
+        executionRevision = updated.revision;
+      };
+      let injectedPath: string | null = Object.values(prepared.stagedPaths)[0] ?? null;
+      let upstreamRunId = upstream.sourceRun.id;
+      let upstreamPipelineId = upstream.sourceRun.pipeline_manifest_id;
+      let remoteStartIndex = nodes.findIndex((node, index) => index >= handoffIndex && node.status !== "success");
+      if (remoteStartIndex < 0) remoteStartIndex = nodes.length;
+      if (remoteStartIndex > handoffIndex) {
+        const previous = nodes[remoteStartIndex - 1]!;
+        const snapshot = await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+        const previousRun = snapshot.snapshot.runs.find((run) => run.id === previous.runId);
+        const nextNode = nodes[remoteStartIndex]!;
+        const previousResults = previousRun?.results as { artifacts?: RunArtifact[] } | null | undefined;
+        const artifact = previousResults?.artifacts?.find(
+          (item) => item.resolved && item.type === nextNode.edge.artifactType,
+        );
+        if (!previousRun || !artifact) throw new Error("The last successful cloud node could not be recovered for retry.");
+        upstreamRunId = previousRun.id;
+        upstreamPipelineId = previousRun.pipeline_manifest_id;
+        injectedPath = artifact.host_paths?.[0] ?? artifact.paths?.[0] ?? null;
+      }
+      for (let index = remoteStartIndex; index < nodes.length; index++) {
+        const node = nodes[index]!;
+        const params = { ...node.params };
+        if (node.edge.acceptParam) {
+          if (!injectedPath) throw new Error(`${node.displayName} has no synchronized upstream input.`);
+          params[node.edge.acceptParam] = injectedPath;
+        }
+        updateNode(node.id, { status: "running", executionLocation: "Cloud", error: undefined });
+        node.status = "running";
+        node.executionLocation = "Cloud";
+        await persistExecution("running-remote", node.id);
+        const launched = await window.neuroforgeDesktop.launchPipeline({
+          profileId: selectedWorkspaceId,
+          pipelineId: node.pipelineId,
+          datasetId: resolveDatasetId(node, upstream),
+          params,
+          autoStart: true,
+          lineage: {
+            upstream_run_id: upstreamRunId,
+            upstream_pipeline_id: upstreamPipelineId,
+            upstream_pipeline_display_name: upstreamPipelineId,
+            artifact_type: node.edge.artifactType,
+            artifact_label: node.edge.acceptLabel ?? node.edge.artifactType,
+            injected_param: node.edge.acceptParam ?? undefined,
+            injected_path: injectedPath ?? undefined,
+            external: index === handoffIndex,
+            workflow_execution_uuid: persistedExecutionUuid,
+          },
+        });
+        node.runId = launched.runId;
+        updateNode(node.id, { runId: launched.runId });
+        let remoteRun: WorkspaceRun | null = null;
+        for (let attempt = 0; attempt < 900; attempt++) {
+          const sync = await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+          remoteRun = sync.snapshot.runs.find((run) => run.id === launched.runId) ?? null;
+          if (remoteRun && ["success", "failed", "cancelled", "interrupted"].includes(remoteRun.status)) break;
+          await wait(2000);
+        }
+        if (!remoteRun || remoteRun.status !== "success") {
+          const failure = remoteRun ? `Cloud run #${remoteRun.id} ${remoteRun.status}.` : "Cloud run status could not be recovered.";
+          updateNode(node.id, { status: "failed", error: failure });
+          node.status = "failed";
+          node.error = failure;
+          await persistExecution("failed", node.id);
+          await persistRuntimeState();
+          throw new Error(failure);
+        }
+        node.status = "success";
+        node.executionLocation = "Cloud";
+        updateNode(node.id, { status: "success", executionLocation: "Cloud" });
+        await persistRuntimeState();
+        upstreamRunId = remoteRun.id;
+        upstreamPipelineId = remoteRun.pipeline_manifest_id;
+        const nextNode = nodes[index + 1];
+        if (nextNode) {
+          const remoteResults = remoteRun.results as { artifacts?: RunArtifact[] } | null | undefined;
+          const nextArtifact = remoteResults?.artifacts?.find(
+            (artifact) => artifact.resolved && artifact.type === nextNode.edge.artifactType,
+          );
+          injectedPath = nextArtifact?.host_paths?.[0] ?? nextArtifact?.paths?.[0] ?? null;
+        }
+      }
+      await persistExecution("synchronizing-results", null);
+      await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+      await persistExecution("complete", null, true);
+      setHandoffIndex(null);
+      setRunMessage("Workflow completed and cloud results synchronized locally.");
+    } catch (error) {
+      setHandoffError(error instanceof Error ? error.message : "Cloud continuation failed.");
+      setRunMessage("Cloud handoff paused. Retry resumes from the first incomplete node.");
+    } finally {
+      setHandoffBusy(false);
     }
   }
 
@@ -1388,6 +1586,58 @@ export default function WorkflowBuilder() {
               <p>Compatible recommendations come from <code className="font-mono text-xs text-gray-500">/api/pipelines/compatible</code>.</p>
               <p>Lineage is attached when a node starts from an upstream run.</p>
             </div>
+          )}
+
+          {nodes.length > 0 && (
+            <section className="mt-5 rounded-lg border border-white/8 bg-surface-raised p-4" aria-label="Execution plan">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Planned execution</h2>
+                  <p className="mt-1 text-xs text-gray-500">One workflow history; location is selected per node.</p>
+                </div>
+                <span className="text-xs text-gray-500">{executionPlan.length} nodes</span>
+              </div>
+              <ol className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {executionPlan.map((planned: PlannedNode) => (
+                  <li key={planned.id} className="flex items-center justify-between gap-3 rounded-md border border-white/8 bg-surface px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-gray-200">{planned.displayName}</p>
+                      <p className="truncate text-xs text-gray-500">{planned.reason}</p>
+                    </div>
+                    <span className={classNames(
+                      "shrink-0 rounded-full border px-2 py-1 text-[11px] font-semibold",
+                      planned.executionLocation === "Local"
+                        ? "border-green-800 bg-green-900/30 text-green-300"
+                        : planned.executionLocation === "Cloud"
+                          ? "border-blue-800 bg-blue-900/30 text-blue-300"
+                          : "border-red-800 bg-red-900/30 text-red-300",
+                    )}>
+                      {planned.requirement}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          {handoffIndex != null && (
+            <WorkflowHandoffPanel
+              pipelineNames={nodes.slice(handoffIndex).map((node) => node.displayName)}
+              artifactType={nodes[handoffIndex]?.edge.artifactType ?? "Required upstream artifact"}
+              profiles={workspaceProfiles}
+              selectedProfileId={selectedWorkspaceId}
+              busy={handoffBusy}
+              error={handoffError}
+              onSelectProfile={setSelectedWorkspaceId}
+              onContinue={() => void continueInCloud()}
+            />
+          )}
+
+          {handoffIndex == null && nodes.length > 0 && nodes.every((node) => node.status === "success") && nodes.some((node) => node.executionLocation === "Cloud") && (
+            <section className="mt-5 rounded-lg border border-green-500/30 bg-green-500/10 p-5" aria-label="Cloud return complete">
+              <h2 className="text-lg font-semibold text-white">Cloud results synchronized locally.</h2>
+              <p className="mt-1 text-sm text-green-200">Reports, logs, provenance, artifact metadata, and compatible viewer files are available in the same workflow history.</p>
+            </section>
           )}
         </header>
 

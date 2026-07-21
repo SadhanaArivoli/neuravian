@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # When set, the backend rewrites paths transparently so users can paste
     # their normal Mac paths into the import form.
     host_datasets_mount: str | None = None
+    # Stable dataset namespace inside the backend container. Dataset records
+    # are stored in this form; Docker bind sources use host_datasets_mount.
+    backend_datasets_mount: str = "/host-data"
     # Directory used for run logs and pipeline derivatives output.
     # In Docker this maps to the data volume (/app/data). In local dev it
     # defaults to ./data relative to the working directory.

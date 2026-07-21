@@ -3,14 +3,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import NeuroImageViewer, {
   calculateHistogram,
   defaultColormap,
+  extractVoxelTimeSeries,
+  finiteScaledSamples,
   inferMapType,
+  viewerLocationValue,
 } from "../src/components/domain/NeuroImageViewer";
 import NiivuePanel from "../src/components/domain/NiivuePanel";
 import NiivueViewer from "../src/components/domain/NiivueViewer";
+import {
+  computeDisplayStatistics,
+  DISPLAY_PROFILES,
+} from "../src/lib/scientificDisplayProfiles";
+import { freeSurferLabelName } from "../src/lib/freesurferLut";
 
-const mocks = vi.hoisted(() => ({ instances: [] as Array<Record<string, unknown>> }));
+const mocks = vi.hoisted(() => ({
+  instances: [] as Array<Record<string, unknown>>,
+  volumeData: new Map<string, { img: ArrayLike<number>; slope: number; inter: number; frames?: number }>(),
+}));
 
 vi.mock("@niivue/niivue", () => ({
+  NVImage: {
+    createNiftiArray: vi.fn(() => new Uint8Array(352)),
+  },
   Niivue: vi.fn().mockImplementation(() => {
     const instance = {
       opts: { backColor: [0.07, 0.07, 0.07, 1], crosshairWidth: 0.5 },
@@ -19,23 +33,37 @@ vi.mock("@niivue/niivue", () => ({
       scene: { crosshairPos: [0.5, 0.5, 0.5] },
       attachToCanvas: vi.fn(),
       loadVolumes: vi.fn().mockImplementation(async (options: Array<Record<string, unknown>>) => {
-        instance.volumes = options.map((option, index) => ({
-          id: `volume-${index}`,
-          img: new Float32Array([-4, -2, 0, 1, 2, 4, 8, 12]),
-          cal_min: -4,
-          cal_max: 12,
-          dims: [3, 64, 64, 40],
-          pixDims: [1, 3, 3, 3],
-          matRAS: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-          permRAS: [1, 2, 3],
-          ...option,
-        }));
+        instance.volumes = options.map((option, index) => {
+          // Match NiiVue 0.56's NVImage.loadFromUrl behavior: colormapLabel is
+          // accepted in imageOptions but not forwarded to the loaded NVImage.
+          const { colormapLabel: _droppedLabelLut, ...loadedOption } = option;
+          const configured = mocks.volumeData.get(String(option.url));
+          const img = configured?.img ?? new Float32Array([-4, -2, 0, 1, 2, 4, 8, 12]);
+          const slope = configured?.slope ?? 1;
+          const inter = configured?.inter ?? 0;
+          return {
+            id: `volume-${index}`,
+            img,
+            hdr: { scl_slope: slope, scl_inter: inter, dims: [4, 64, 64, 40, configured?.frames ?? 1], pixDims: [1, 3, 3, 3, 2], datatypeCode: 16, qform_code: 1, sform_code: 1 },
+            nFrame4D: configured?.frames ?? 1,
+            intensityRaw2Scaled: (raw: number) => raw * slope + inter,
+            cal_min: -4,
+            cal_max: 12,
+            dims: [3, 64, 64, 40],
+            pixDims: [1, 3, 3, 3],
+            matRAS: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            permRAS: [1, 2, 3],
+            ...loadedOption,
+          };
+        });
       }),
       setOpacity: vi.fn(),
       setColormap: vi.fn(),
       setColormapNegative: vi.fn(),
       setGamma: vi.fn(),
       setInterpolation: vi.fn(),
+      setAtlasOutline: vi.fn(),
+      setFrame4D: vi.fn(),
       setCrosshairColor: vi.fn(),
       setCrosshairWidth: vi.fn(),
       setSliceType: vi.fn(),
@@ -64,6 +92,8 @@ function latest() {
     setColormapNegative: ReturnType<typeof vi.fn>;
     setGamma: ReturnType<typeof vi.fn>;
     setInterpolation: ReturnType<typeof vi.fn>;
+    setAtlasOutline: ReturnType<typeof vi.fn>;
+    setFrame4D: ReturnType<typeof vi.fn>;
     setCrosshairWidth: ReturnType<typeof vi.fn>;
     setPan2Dxyzmm: ReturnType<typeof vi.fn>;
     setRadiologicalConvention: ReturnType<typeof vi.fn>;
@@ -77,6 +107,7 @@ function latest() {
 
 beforeEach(() => {
   mocks.instances.length = 0;
+  mocks.volumeData.clear();
   vi.clearAllMocks();
 });
 
@@ -95,6 +126,39 @@ describe("shared NIfTI visualization semantics", () => {
     expect(histogram.p2).toBeCloseTo(2);
     expect(histogram.p98).toBeCloseTo(98);
     expect(histogram.bins.reduce((sum, count) => sum + count, 0)).toBe(51);
+  });
+
+  it("samples Run #4-style scaled int16 voxels in display-intensity space", () => {
+    const slope = 1258 / 65535;
+    const inter = 32768 * slope;
+    const raw = new Int16Array([-32768, -32768, -20000, 0, 16384, 32767]);
+    const scaled = finiteScaledSamples(raw, (value) => value * slope + inter);
+
+    expect(scaled[0]).toBeCloseTo(0, 5);
+    expect(scaled[scaled.length - 1]).toBeCloseTo(1258, 5);
+    const statistics = computeDisplayStatistics(scaled, DISPLAY_PROFILES.structural);
+    expect(statistics.displayMin).toBeGreaterThanOrEqual(0);
+    expect(statistics.displayMax).toBeLessThanOrEqual(1258);
+  });
+
+  it("extracts a scaled voxel time series in frame-major storage order", () => {
+    const values = new Int16Array([
+      1, 2, 3, 4,
+      11, 12, 13, 14,
+      21, 22, 23, 24,
+    ]);
+    expect(extractVoxelTimeSeries(values, [2, 2, 1], [1, 0, 0], 3, (value) => value * 2)).toEqual([4, 24, 44]);
+    expect(extractVoxelTimeSeries(values, [2, 2, 1], [9, 0, 0], 3)).toEqual([]);
+  });
+
+  it("applies slope/intercept while preserving signed values and filtering non-finite samples", () => {
+    expect(finiteScaledSamples(new Int16Array([-10, 0, 10]), (value) => value * 2 + 5)).toEqual([-15, 5, 25]);
+    const signed = finiteScaledSamples(new Float32Array([-8, -2, 0, 3, 9]));
+    const statistics = computeDisplayStatistics(signed, DISPLAY_PROFILES["signed-continuous"]);
+    expect(statistics.displayMin).toBe(-statistics.displayMax);
+    expect(statistics.displayMin).toBeLessThan(0);
+    expect(finiteScaledSamples([0, Number.NaN, Number.POSITIVE_INFINITY, 0])).toEqual([0, 0]);
+    expect(computeDisplayStatistics([0, 0], DISPLAY_PROFILES.structural).displayMax).toBe(1);
   });
 });
 
@@ -131,11 +195,79 @@ describe("shared NIfTI viewer UI", () => {
     expect(nv.setPan2Dxyzmm).toHaveBeenCalledWith([0, 0, 0, 1]);
   });
 
+  it("resets window state when a second volume with a different range loads", async () => {
+    const firstUrl = "/api/runs/4/files/defaced.nii.gz";
+    const secondUrl = "/api/datasets/1/files/sub-01/anat/sub-01_T1w.nii.gz";
+    const slope = 1258 / 65535;
+    mocks.volumeData.set(firstUrl, {
+      img: new Int16Array([-32768, -20000, 0, 16384, 32767]),
+      slope,
+      inter: 32768 * slope,
+    });
+    mocks.volumeData.set(secondUrl, {
+      img: new Int16Array([0, 100, 200, 300, 400]),
+      slope: 1,
+      inter: 0,
+    });
+
+    const view = render(<NeuroImageViewer layers={[{ url: firstUrl, name: "defaced.nii.gz" }]} label="Defaced" modal />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
+    await waitFor(() => expect(Number((screen.getByLabelText("Manual maximum") as HTMLInputElement).value)).toBeGreaterThan(1000));
+
+    view.rerender(<NeuroImageViewer layers={[{ url: secondUrl, name: "sub-01_T1w.nii.gz" }]} label="Input T1w" modal />);
+    await waitFor(() => expect(screen.getByLabelText("Manual maximum")).toHaveValue(394));
+    expect(latest().loadVolumes).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ url: secondUrl }),
+    ]));
+  });
+
   it("uses nearest-neighbor interpolation automatically for label maps", async () => {
     render(<NeuroImageViewer layers={[{ ...structural[0], isSegmentation: true }]} label="Labels" mapType="segmentation" modal />);
     await waitFor(() => expect(latest().setInterpolation).toHaveBeenCalledWith(true));
+    const labelVolume = (mocks.instances[0].volumes as Array<Record<string, unknown>>)[0];
+    expect(labelVolume.colormapLabel).toBeTruthy();
+    expect(latest().setColormap).not.toHaveBeenCalledWith("volume-0", "roi_i256");
     fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
     expect(screen.getByLabelText("Colormap")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    expect(latest().setAtlasOutline).toHaveBeenCalledWith(1);
+  });
+
+  it("uses stable FreeSurfer names and explicit numeric fallbacks", () => {
+    expect(freeSurferLabelName(17)).toBe("Left-Hippocampus");
+    expect(freeSurferLabelName(251)).toBe("CC-Posterior");
+    expect(freeSurferLabelName(9999)).toBe("FreeSurfer label 9999");
+  });
+
+  it("normalizes current NiiVue location objects and legacy numeric values", () => {
+    expect(viewerLocationValue({ values: [{ value: 17 }] }, 0)).toBe(17);
+    expect(viewerLocationValue({ values: [42] }, 0)).toBe(42);
+    expect(viewerLocationValue({ values: [{ value: Number.NaN }] }, 0)).toBeNull();
+  });
+
+  it("exposes 4D volume navigation, playback controls, and header metadata", async () => {
+    const url = "/api/runs/5/files/sub-01/func/sub-01_task-rest_desc-preproc_bold.nii.gz";
+    mocks.volumeData.set(url, { img: new Float32Array([0, 1, 2, 3, 4, 5]), slope: 1, inter: 0, frames: 12 });
+    render(<NeuroImageViewer layers={[{ url, name: "sub-01_task-rest_desc-preproc_bold.nii.gz", artifactType: "fmriprep_bold" }]} label="Preprocessed BOLD" modal />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
+    expect(screen.getByTestId("four-d-controls")).toHaveTextContent("frame 1 / 12 · 0.0 s");
+    fireEvent.change(screen.getByLabelText("4D volume"), { target: { value: "7" } });
+    expect(latest().setFrame4D).toHaveBeenCalledWith("volume-0", 7);
+    fireEvent.click(screen.getByRole("button", { name: "Last frame" }));
+    expect(latest().setFrame4D).toHaveBeenCalledWith("volume-0", 11);
+    fireEvent.click(screen.getByText("Volume metadata"));
+    expect(screen.getByText("64 × 64 × 40 × 12")).toBeInTheDocument();
+    expect(screen.getByText("NIfTI code 16")).toBeInTheDocument();
+  });
+
+  it("provides a continuous probability threshold without label-map coercion", async () => {
+    render(<NeuroImageViewer layers={[{ url: "/probseg.nii.gz", name: "sub-01_label-GM_probseg.nii.gz", artifactType: "fmriprep_probseg" }]} label="GM probability" modal />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visualization ▾" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Visualization ▾" }));
+    expect(screen.getByLabelText("Probability threshold")).toBeInTheDocument();
+    expect(screen.getByLabelText("Colormap")).not.toBeDisabled();
   });
 
   it("uses symmetric dual-tail rendering and transparent zero for signed maps", async () => {

@@ -32,6 +32,7 @@ services:
       # Tell the backend what host prefix maps to /host-data so it can
       # transparently translate paths the user pastes from their Mac.
       HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
+      BACKEND_DATASETS_MOUNT: /host-data
       # Real host user identity, resolved by Docker Compose from the calling shell
       # at compose-up time. The backend container runs as root (no USER in
       # Dockerfile), so os.getuid() always returns 0. Pipelines that set
@@ -47,7 +48,10 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "3000:3000"
     depends_on:

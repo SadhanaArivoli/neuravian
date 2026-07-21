@@ -47,6 +47,14 @@ describe("smart display ranges", () => {
     expect(stats.backgroundZeroCount).toBe(1000);
   });
 
+  it("excludes zero background from structural robust windowing", () => {
+    const values = [...Array(1000).fill(0), 100, 200, 300, 600, 1258];
+    const stats = computeDisplayStatistics(values, DISPLAY_PROFILES.structural);
+    expect(stats.displayMin).toBeGreaterThan(0);
+    expect(stats.displayMax).toBeLessThanOrEqual(1258);
+    expect(stats.backgroundZeroCount).toBe(1000);
+  });
+
   it("makes asymmetric signed tails symmetric around zero", () => {
     const values = [...Array(1000).fill(0), -12, -6, -3, -1, 0.5, 1, 2, 4];
     const stats = computeDisplayStatistics(values, DISPLAY_PROFILES["signed-continuous"]);

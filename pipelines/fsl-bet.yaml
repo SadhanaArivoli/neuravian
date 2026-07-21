@@ -1,0 +1,302 @@
+id: fsl-bet
+display_name: FSL BET
+description: >
+  FSL Brain Extraction Tool (BET) removes non-brain tissue from structural MRI
+  images using a deformable surface model that evolves to match the brain surface.
+  Starting from an estimated brain centre, BET fits a tessellated mesh to the T1w
+  volume and outputs a skull-stripped brain and a binary brain mask. It runs in
+  under 60 seconds on CPU with no GPU requirement, making it the fastest
+  skull-stripping option in NeuroForge. BET works well on standard 1mm isotropic
+  T1w scans; for unusual contrasts, pathological anatomy, or very high-resolution
+  scans, consider SynthStrip (learning-based, contrast-agnostic).
+  Requires the NeuroForge FSL BET wrapper image — build it once with
+  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7
+  docker/fsl-bet/" before submitting a run.
+homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/brain_extraction/index
+category: segmentation
+input_type: nifti
+
+# BET is fast enough to run under Rosetta 2 emulation on Apple Silicon.
+# Verified: <60 seconds on M-series via Docker Desktop (run 2026-07-19).
+# FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
+# Wrapper image: ghcr.io/neuroforge/fsl-bet:6.0.7
+# Wrapper image digest: sha256:94b78195f01c0aecf85b306a41976a690d76b194af30099a3c0d3a4bd02f2f77
+compute_profile: local-ok
+
+preflight:
+  empirical_status: verified
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: false
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 1
+    recommended_ram_gb: 4
+    min_cpu_count: 1
+    recommended_cpu_count: 2
+    min_disk_free_gb: 1
+    working_space_gb: 0
+    output_space_gb: 1
+
+container:
+  # NeuroForge wrapper image built from docker/fsl-bet/Dockerfile.
+  # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
+  # /usr/local/bin/neuroforge-bet wrapper script that translates --input and
+  # --output-base flags into BET's positional argument convention.
+  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7 docker/fsl-bet/
+  image: ghcr.io/neuroforge/fsl-bet
+  tag: "6.0.7"
+  engine: docker
+
+# BET takes a single NIfTI file, not a BIDS dataset directory.
+# The input file is mounted via the mount: true param below;
+# /data is not mounted and the /data /out positional prefix is not emitted.
+dataset_positional: false
+
+inputs:
+  - structural_nifti
+
+outputs:
+  - skull_stripped_nifti
+  - brain_mask
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────────────
+  - name: input
+    cli_flag: "--input"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to the structural NIfTI file to skull-strip (.nii or .nii.gz).
+      BET works best on T1-weighted images but also handles T2w, FLAIR, and PD
+      contrasts with appropriate -f threshold tuning. Point it at a single file,
+      e.g. /path/to/data/derivatives/dcm2niix/26/anat-T1w.nii.gz.
+      The file is mounted read-only into the container.
+
+  # ── Output control ────────────────────────────────────────────────────────────
+  - name: output-base
+    cli_flag: "--output-base"
+    type: string
+    required: false
+    default: /out/brain
+    help: >
+      Container-internal path prefix for the BET outputs. BET appends .nii.gz
+      to produce the skull-stripped brain, and _mask.nii.gz for the binary mask.
+      The default /out/brain writes brain.nii.gz and brain_mask.nii.gz to the
+      run's output directory. Do not change this unless you need a custom name
+      inside the container — the run output directory is always /out.
+
+  # ── Core options ──────────────────────────────────────────────────────────────
+  - name: mask
+    cli_flag: "-m"
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Generate a binary brain mask alongside the skull-stripped image.
+      Enabled by default. The mask file is named {output-base}_mask.nii.gz
+      (e.g. brain_mask.nii.gz). The mask is required for most downstream
+      pipelines including registration, segmentation, and connectivity analysis.
+      Disable only if you explicitly do not need the mask file.
+
+  - name: fractional-threshold
+    cli_flag: "-f"
+    type: float
+    required: false
+    default: 0.5
+    help: >
+      Fractional intensity threshold controlling where BET places the brain
+      boundary (range 0–1, default 0.5). Lower values include more tissue
+      (larger brain outline); higher values exclude more tissue (tighter mask).
+      If the mask clips brain tissue, try lowering to 0.3–0.4. If it includes
+      too much non-brain tissue (dura, skull, neck), try raising to 0.55–0.7.
+      For T2w or FLAIR images, 0.3 often works better than the default.
+
+  # ── Robustness variants ────────────────────────────────────────────────────────
+  - name: robust
+    cli_flag: "-R"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Robust brain centre estimation. BET iterates the extraction several times
+      with updated centre-of-gravity estimates to recover from miscentring on
+      images with large field-of-view artifacts, unusual head positions, or very
+      bright neck tissue. Increases runtime by roughly 3–5×. Enable when the
+      default extraction fails or produces a displaced mask.
+
+  - name: eye-cleanup
+    cli_flag: "-S"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Eye and optic nerve cleanup. Removes eye tissue and optic nerves that BET
+      sometimes includes in the brain mask. Useful when preparing data for
+      longitudinal studies (SIENA) where spurious eye tissue would affect
+      atrophy estimates. Enabling this flag disables the brain surface overlay
+      (-o) option. Adds a few seconds to runtime.
+
+  - name: neck-cleanup
+    cli_flag: "-B"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Bias field and neck cleanup. Applies an additional pass to remove neck
+      tissue and reduce bias field effects on the brain boundary. Recommended
+      when the input image has strong B1 inhomogeneity, a large neck extent,
+      or images from 7T scanners. Used together with eye-cleanup (-S) in the
+      SIENA longitudinal atrophy pipeline.
+
+  - name: small-z
+    cli_flag: "-Z"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Small Z field-of-view correction. Pads the top and bottom slices before
+      running BET, then removes the padding from the output. Prevents BET from
+      placing the initial sphere centre outside the image when the brain is
+      cut off in the Z direction (e.g. datasets with very few axial slices,
+      or images cropped to just the brain region). Not needed for full-FOV
+      anatomical scans.
+
+  - name: fmri
+    cli_flag: "-F"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Apply BET to 4D fMRI data. Averages over time, runs BET with a
+      fractional threshold of 0.3, and slightly dilates the resulting mask to
+      account for the coarser spatial resolution typical of BOLD EPI images.
+      Use this flag when extracting a brain mask from a functional run rather
+      than a structural T1w. Do not use together with a custom -f value.
+
+  - name: verbose
+    cli_flag: "-v"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Enable verbose output. BET prints diagnostic messages including the
+      estimated brain centre of gravity, the initial sphere radius, and the
+      mesh iteration count. Useful for debugging cases where the mask appears
+      misplaced — the reported COG coordinates indicate whether BET found the
+      right brain centre.
+
+accepts:
+  - type: nifti_raw
+    param: input
+    label: "Raw NIfTI"
+    description: "Unprocessed structural NIfTI; typically from dcm2niix"
+
+  - type: nifti_defaced
+    param: input
+    label: "Defaced NIfTI"
+    description: "De-identified structural NIfTI; skull-strip after defacing"
+
+  - type: nifti_skull_stripped
+    param: input
+    label: "Pre-stripped NIfTI"
+    description: "Already skull-stripped; re-run BET with different -f threshold"
+
+produces:
+  - type: nifti_skull_stripped
+    path_hint: "brain.nii.gz"
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from BET; non-brain voxels zeroed (brain.nii.gz)"
+
+  - type: brain_mask
+    path_hint: "brain_mask.nii.gz"
+    label: "Brain Mask"
+    description: "Binary brain mask from BET (0=background, 1=brain) generated by -m flag"
+
+max_runtime_hours: 0.5
+
+# ── Manual testing reference ──────────────────────────────────────────────────────
+# Test dataset: data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
+# Verified: 2026-07-19, macOS 15 Sequoia, Apple Silicon M-series via Docker Desktop
+# Wrapper image: ghcr.io/neuroforge/fsl-bet:6.0.7 (local build from docker/fsl-bet/)
+# Base image:    brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43
+# FSL version:   6.0.7.22
+#
+# CLI verified manually:
+#   docker run --rm --platform linux/amd64 \
+#     -v <host_t1w>:/inputs/input/input.nii.gz:ro \
+#     -v <out_dir>:/out:rw \
+#     ghcr.io/neuroforge/fsl-bet:6.0.7 \
+#     --input /inputs/input/input.nii.gz \
+#     --output-base /out/brain \
+#     -m -f 0.5
+#
+# Runtime: <60 seconds on Apple Silicon via Rosetta 2 emulation
+# Exit code: 0
+# Outputs: brain.nii.gz (6.0 MB) + brain_mask.nii.gz (272 KB)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "Error, input file does not exist|Cannot open volume|error loading volume"
+    explanation: >
+      BET could not open the input NIfTI file. The path you specified does not
+      point to a readable .nii or .nii.gz file, or the file was moved after the
+      run was created.
+    fix_hint: >
+      Verify that the "input" path points to an existing .nii or .nii.gz file
+      on your machine. Use an absolute path. The file is mounted read-only at
+      /inputs/input/<filename> inside the container — if the host path is wrong,
+      the container receives an empty bind mount and BET cannot find the file.
+
+  - pattern: "neuroforge-bet: error: --input is required"
+    explanation: >
+      The BET run was submitted without an input file path. This should not
+      happen in normal operation — the NeuroForge pipeline form marks this field
+      as required.
+    fix_hint: >
+      Open the pipeline form and fill in the "input" field with the full path
+      to your structural NIfTI file, then resubmit.
+
+  - pattern: "Killed|MemoryError|Cannot allocate memory"
+    explanation: >
+      BET was killed by the operating system, likely due to insufficient memory.
+      This is uncommon since BET requires only ~500 MB–1 GB of RAM for standard
+      T1w inputs, but can occur with very large (> 400 slice) or double-precision
+      images under Docker Desktop with a low memory limit.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources → Memory, increase the limit to
+      at least 4 GB and retry. If the image is unusually large, try resampling
+      it to 1 mm isotropic resolution with FSL's flirt -applyisoxfm before
+      running BET.
+
+  - pattern: "Run stopped automatically after.*maximum runtime"
+    explanation: >
+      The NeuroForge watchdog stopped this BET run after it exceeded the
+      30-minute maximum. BET should complete in under 60 seconds on any
+      platform including Apple Silicon via Rosetta 2 emulation. An unusually
+      long runtime indicates the container may have stalled during image pull
+      or volume mount setup.
+    fix_hint: >
+      Check that Docker Desktop is running and has internet access for the
+      initial image pull. Confirm the input file exists on disk. Try resubmitting
+      — the image is now cached locally and subsequent runs start immediately.
+
+  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-bet|manifest unknown"
+    explanation: >
+      Docker could not find the NeuroForge FSL BET wrapper image locally or on
+      any registry. This image is built from the NeuroForge repository and is not
+      published to a public registry — it must be built locally before first use.
+    fix_hint: >
+      From the NeuroForge project root, run:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7 docker/fsl-bet/
+      This takes ~30 seconds and only needs to be done once per machine.
+      After the build completes, resubmit the run.

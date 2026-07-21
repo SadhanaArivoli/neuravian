@@ -20,7 +20,7 @@
   },
   "transfer": {
     "file_count": 6,
-    "total_bytes": 52914200,
+    "total_bytes": 52914199,
     "estimated_megabytes_decimal": 52.915
   },
   "files": [
@@ -31,8 +31,8 @@
     },
     {
       "path": "participants.tsv",
-      "bytes": 216,
-      "sha256": "f6619b8eb543c1ee9fba25a776e68ec68f28cb83c9d9f7379491214fea6fce1e"
+      "bytes": 215,
+      "sha256": "8edfb1190ecb9bcca7cdd3146266165c280c02651cf28a0798bd1fa72d60bd28"
     },
     {
       "path": "task-balloonanalogrisktask_bold.json",

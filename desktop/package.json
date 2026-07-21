@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "npm run build && electron .",
-    "dist:mac": "npm run build && electron-builder --mac dir --arm64 --config electron-builder.yml"
+    "dist:mac": "node scripts/build-full.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

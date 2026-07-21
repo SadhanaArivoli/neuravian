@@ -17,10 +17,9 @@ from app.schemas.dataset import (
     ValidationIssues,
 )
 from app.services.bids_patterns import run_pattern_checks
+from app.services.dataset_paths import DatasetPathResolver
 
 logger = logging.getLogger(__name__)
-
-_CONTAINER_DATASETS_PATH = Path("/host-data")
 
 # Suffixes to ignore when reporting invalid BIDS filenames (not every file needs to be BIDS)
 _NON_BIDS_SUFFIXES = {".json", ".tsv", ".txt", ".md", ".bvec", ".bval", ".gz"}
@@ -43,19 +42,13 @@ def _compute_manifest_hash(root: Path) -> str:
 
 
 def _translate_host_path(path: Path) -> Path:
-    """
-    If HOST_DATASETS_MOUNT is set and the given path starts with that prefix,
-    rewrite it to the container-side /host-data equivalent so users can paste
-    their normal Mac paths without knowing about Docker volume mounts.
-    """
+    """Return the canonical backend-visible form of a dataset path."""
     if not settings.host_datasets_mount:
         return path
-    host_mount = Path(settings.host_datasets_mount)
-    try:
-        relative = path.relative_to(host_mount)
-        return _CONTAINER_DATASETS_PATH / relative
-    except ValueError:
-        return path
+    return DatasetPathResolver(
+        settings.host_datasets_mount,
+        settings.backend_datasets_mount,
+    ).resolve(path).backend
 
 
 def _validate_with_bids_validator(root: Path) -> list[str]:

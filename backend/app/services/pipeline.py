@@ -49,6 +49,10 @@ def _load_manifest(path: Path, schema: dict[str, Any]) -> dict[str, Any]:
         raise ManifestError(f"{path.name}: must have either 'container' or 'execution' block")
     if has_container and has_execution:
         raise ManifestError(f"{path.name}: cannot have both 'container' and 'execution' blocks")
+    if data.get("run_as_host_user") and data.get("run_as_user") is not None:
+        raise ManifestError(
+            f"{path.name}: run_as_host_user and run_as_user are mutually exclusive"
+        )
     _validate_chaining_fields(path.name, data)
     return data
 

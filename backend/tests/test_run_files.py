@@ -5,6 +5,7 @@ Functional focus: results discovery returns correct file lists; missing
 output dirs are handled gracefully for both success and failed runs.
 """
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -68,7 +69,10 @@ def run_with_output(db_session, tmp_path):
 
     # Realistic MRIQC output structure
     html_report = output_dir / "sub-01_T1w.html"
-    html_report.write_text("<html><body>MRIQC report</body></html>")
+    html_report.write_text('<html><body>MRIQC report<object data="./sub-01/figures/sub-01_dseg.svg"></object></body></html>')
+    reportlet_dir = output_dir / "sub-01" / "figures"
+    reportlet_dir.mkdir(parents=True)
+    (reportlet_dir / "sub-01_dseg.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><text>segmentation</text></svg>')
 
     iqm_dir = output_dir / "sub-01" / "anat"
     iqm_dir.mkdir(parents=True)
@@ -131,6 +135,10 @@ def test_results_returns_html_and_json(api_client, run_with_output):
     assert body["reports"][0]["path"] == "sub-01_T1w.html"
     assert len(body["metrics"]) == 1
     assert body["metrics"][0]["path"] == "sub-01/anat/sub-01_T1w.json"
+    inventory = {item["path"]: item["size"] for item in body["files"]}
+    assert inventory["sub-01_T1w.html"] > 0
+    assert inventory["sub-01/figures/sub-01_dseg.svg"] > 0
+    assert all(not path.startswith("/") for path in inventory)
 
 
 def test_results_empty_for_failed_run_no_files(api_client, run_without_output):
@@ -156,6 +164,18 @@ def test_serve_html_report(api_client, run_with_output):
     resp = api_client.get(f"/api/runs/{run.id}/files/sub-01_T1w.html")
     assert resp.status_code == 200
     assert b"MRIQC report" in resp.content
+    assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert resp.headers["content-security-policy"] == "frame-ancestors 'self'"
+
+
+def test_serve_relative_svg_reportlet_with_scoped_frame_policy(api_client, run_with_output):
+    run, _ = run_with_output
+    resp = api_client.get(f"/api/runs/{run.id}/files/sub-01/figures/sub-01_dseg.svg")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert b"segmentation" in resp.content
+    assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert resp.headers["content-security-policy"] == "frame-ancestors 'self'"
 
 
 def test_serve_iqm_json(api_client, run_with_output):
@@ -164,6 +184,7 @@ def test_serve_iqm_json(api_client, run_with_output):
     assert resp.status_code == 200
     data = resp.json()
     assert data["snr_total"] == pytest.approx(4.73)
+    assert "x-frame-options" not in resp.headers
 
 
 def test_serve_missing_file_returns_404(api_client, run_with_output):
@@ -265,14 +286,21 @@ def test_results_includes_connectivity_outputs(api_client, db_session, tmp_path)
 
 
 def test_serve_nifti_derivative(api_client, run_with_output):
-    """Serving a NIfTI derivative returns 200 with binary content."""
-    run, _ = run_with_output
+    """Serving a gzip NIfTI preserves every byte and supports byte ranges."""
+    run, output_dir = run_with_output
+    expected = (output_dir / "sub-01" / "anat" / "sub-01_desc-preproc_T1w.nii.gz").read_bytes()
+    url = f"/api/runs/{run.id}/files/sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
     resp = api_client.get(
-        f"/api/runs/{run.id}/files/sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+        url
     )
     assert resp.status_code == 200
-    # gzip magic bytes
+    assert resp.content == expected
     assert resp.content[:2] == b"\x1f\x8b"
+
+    partial = api_client.get(url, headers={"Range": "bytes=0-3"})
+    assert partial.status_code == 206
+    assert partial.content == expected[:4]
+    assert partial.headers["content-range"] == f"bytes 0-3/{len(expected)}"
 
 
 def test_path_traversal_via_nifti_path_rejected(api_client, run_with_output):
@@ -312,3 +340,46 @@ def test_cross_run_access_rejected(api_client, run_with_output, db_session, tmp_
     assert resp.status_code in (403, 404), (
         f"Cross-run access should be rejected, got {resp.status_code}"
     )
+
+
+def test_sync_manifest_has_checksums_and_no_host_paths(api_client, run_with_output):
+    run, output_dir = run_with_output
+    import nibabel as nib
+    import numpy as np
+    volume_path = output_dir / "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+    nib.save(nib.Nifti1Image(np.zeros((2, 3, 4), dtype=np.float32), np.eye(4)), volume_path)
+    mgz_path = output_dir / "sub-01/mri/orig_nu.mgz"
+    mgz_path.parent.mkdir(parents=True)
+    nib.save(nib.MGHImage(np.zeros((2, 3, 4), dtype=np.float32), np.eye(4)), mgz_path)
+    stats_mgz_path = output_dir / "sub-01/stats/aseg.auto.mgz"
+    stats_mgz_path.parent.mkdir(parents=True)
+    stats_mgz_path.write_text("# statistics, not an MGH volume\n")
+    response = api_client.get(f"/api/runs/{run.id}/sync-manifest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runId"] == run.id
+    artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"
+    )
+    expected = (output_dir / artifact["relativePath"]).read_bytes()
+    assert artifact["sha256"] == hashlib.sha256(expected).hexdigest()
+    assert artifact["sizeBytes"] == len(expected)
+    assert artifact["url"].startswith(f"/api/runs/{run.id}/files/")
+    assert artifact["geometry"] is not None
+    assert set(artifact["geometry"]) == {"shape", "voxelSize", "orientation", "affine"}
+    mgz_artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/mri/orig_nu.mgz"
+    )
+    assert all(type(value) is int for value in mgz_artifact["geometry"]["shape"])
+    assert all(type(value) is str for value in mgz_artifact["geometry"]["orientation"])
+    stats_artifact = next(
+        item for item in payload["artifacts"]
+        if item["relativePath"] == "sub-01/stats/aseg.auto.mgz"
+    )
+    assert stats_artifact["geometry"] is None
+    rendered = json.dumps(payload)
+    assert str(output_dir) not in rendered
+    assert "/host-data" not in rendered

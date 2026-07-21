@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
@@ -25,22 +25,27 @@ import Welcome from "./pages/Welcome";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
 import WorkflowLibrary from "./pages/WorkflowLibrary";
 import WizardDcm2bids from "./pages/WizardDcm2bids";
+import Workspaces from "./pages/Workspaces";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 
 export default function App() {
   return (
     <OnboardingProvider>
-      <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
-        <Sidebar />
-        <main className="min-h-0 flex-1 overflow-y-auto">
+      <WorkspaceProvider>
+        <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
+          <Sidebar />
+          <main className="min-h-0 flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<Welcome />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/datasets/:id" element={<DatasetDetail />} />
             <Route path="/pipelines" element={<Pipelines />} />
             <Route path="/runs" element={<Runs />} />
             <Route path="/runs/:id" element={<RunDetail />} />
+            <Route path="/workflows" element={<Navigate to="/workflows/library" replace />} />
             <Route path="/workflows/new" element={<WorkflowBuilder />} />
             <Route path="/workflows/library" element={<WorkflowLibrary />} />
             <Route path="/wizard/dcm2bids" element={<WizardDcm2bids />} />
@@ -64,9 +69,10 @@ export default function App() {
               </div>
             } />
           </Routes>
-        </main>
-      </div>
-      <OnboardingOverlay />
+          </main>
+        </div>
+      </WorkspaceProvider>
+      {!window.neuroforgeDesktop && <OnboardingOverlay />}
     </OnboardingProvider>
   );
 }

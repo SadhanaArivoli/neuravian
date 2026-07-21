@@ -13,6 +13,8 @@ from app.api.reports import router as reports_router
 from app.api.runs import router as runs_router
 from app.api.wizard import router as wizard_router
 from app.api.workflows import router as workflows_router
+from app.api.replication import router as replication_router
+from app.api.workspace import router as workspace_router
 from app.core.config import settings
 from app.core.database import SessionLocal
 
@@ -20,7 +22,7 @@ from app.core.database import SessionLocal
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.plugin_loader import load_all_plugins
-    from app.services.run import recover_interrupted_runs, seed_pipeline_registry
+    from app.services.run import recover_interrupted_runs, recover_queued_runs, seed_pipeline_registry
     from app.services.execution_queue import start_processor
     # Plugins must be discovered before the pipeline registry is built
     # so plugin pipelines and artifact types are merged in.
@@ -28,6 +30,7 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         seed_pipeline_registry(db)
         await recover_interrupted_runs(db)
+        await recover_queued_runs(db)
     start_processor()
     yield
 
@@ -51,4 +54,6 @@ app.include_router(reports_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
 app.include_router(wizard_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
+app.include_router(workspace_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
+app.include_router(replication_router, prefix="/api")

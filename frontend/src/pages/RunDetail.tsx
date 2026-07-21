@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
-import RunProvenance from "../components/domain/RunProvenance";
 import RunResults from "../components/domain/RunResults";
-import { useRun } from "../hooks/useRuns";
+import { SharedRunDetail, type SharedRunDetailModel } from "../components/domain/SharedRunDetail";
+import { useRun, useRunProvenance, useRunResults } from "../hooks/useRuns";
 import type { RunProgress } from "../api/client";
 
 function parseUtc(iso: string): Date {
@@ -60,38 +60,14 @@ function ProgressPanel({ progress }: { progress: RunProgress }) {
   );
 }
 
-function RunStatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    pending:     "bg-yellow-500/15 text-yellow-300 border-yellow-500/20",
-    queued:      "bg-gray-500/15 text-gray-300 border-gray-500/20",
-    running:     "bg-blue-500/15 text-blue-300 border-blue-500/20",
-    success:     "bg-green-500/15 text-green-300 border-green-500/20",
-    failed:      "bg-red-500/15 text-red-300 border-red-500/20",
-    cancelled:   "bg-orange-500/15 text-orange-300 border-orange-500/20",
-    interrupted: "bg-amber-500/15 text-amber-300 border-amber-500/20",
-  };
-  const dotColors: Record<string, string> = {
-    running: "bg-blue-400 animate-pulse",
-    queued:  "bg-gray-400",
-  };
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-        styles[status] ?? "bg-white/10 text-gray-300 border-white/10"
-      }`}
-    >
-      {dotColors[status] && (
-        <span className={`h-1.5 w-1.5 rounded-full ${dotColors[status]}`} />
-      )}
-      {status}
-    </span>
-  );
-}
-
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const runId = Number(id);
   const { data: run, refetch } = useRun(runId);
+  const { data: runProvenance } = useRunProvenance(runId);
+  const isTerminal = run?.status === "success" || run?.status === "failed" || run?.status === "cancelled";
+  const { data: runResults } = useRunResults(runId, isTerminal);
 
   const [logLines, setLogLines] = useState<string[]>([]);
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "closed">(
@@ -165,44 +141,42 @@ export default function RunDetail() {
   }
 
   const isActive = run.status === "pending" || run.status === "running" || run.status === "queued";
+  const metadata = runResults?.metadata;
+  const sharedModel: SharedRunDetailModel = {
+    id: run.id,
+    pipelineId: run.pipeline_manifest_id,
+    pipelineName: metadata?.pipeline_display_name,
+    pipelineVersion: run.pipeline_version,
+    executionLocation: run.remote_host_id ? "Cluster" : "Local",
+    executionTarget: run.remote_host_id ? `Remote host ${run.remote_host_id}` : "This machine",
+    status: run.status,
+    createdAt: run.created_at,
+    startedAt: run.started_at,
+    finishedAt: run.finished_at,
+    command: run.command_preview ?? metadata?.command_preview,
+    containerImage: metadata?.container_image,
+    containerDigest: runProvenance?.container_digest,
+    parameters: run.params ?? metadata?.params,
+    dataset: { id: run.dataset_id, name: metadata?.dataset_name, path: metadata?.dataset_path },
+    outputDir: run.output_dir ?? metadata?.output_dir,
+    metadata,
+    provenance: runProvenance,
+    artifactCount: runResults?.artifacts?.length,
+    reportCount: runResults?.reports?.length,
+  };
+
+  function duplicateRun() {
+    navigate("/pipelines", { state: {
+      selectPipeline: sharedModel.pipelineId,
+      paramsOverride: { ...(sharedModel.parameters ?? {}) },
+      datasetOverride: sharedModel.dataset?.id ?? null,
+    } });
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-5 sm:p-8">
-      {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Link to="/runs" className="text-sm text-gray-400 hover:text-gray-200 transition-colors">
-          ← All runs
-        </Link>
-        <span className="text-gray-600">/</span>
-        <h1 className="text-xl font-semibold text-gray-100">
-          Run #{run.id} — {run.pipeline_manifest_id}
-        </h1>
-        <RunStatusBadge status={run.status} />
-      </div>
-
-      {/* Meta */}
-      <div className="mb-6 grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-surface-raised p-4 text-sm shadow-xl shadow-black/10 sm:grid-cols-2">
-        <div>
-          <span className="text-gray-500 text-xs uppercase tracking-wide">Pipeline</span>
-          <p className="mt-0.5 font-medium text-gray-200">{run.pipeline_manifest_id} {run.pipeline_version}</p>
-        </div>
-        <div>
-          <span className="text-gray-500 text-xs uppercase tracking-wide">Dataset</span>
-          <p className="mt-0.5 font-medium text-gray-200 text-xs font-mono break-all">{run.output_dir ?? "—"}</p>
-        </div>
-        {run.started_at && (
-          <div>
-            <span className="text-gray-500 text-xs uppercase tracking-wide">Started</span>
-            <p className="mt-0.5 font-medium text-gray-200">{parseUtc(run.started_at).toLocaleString()}</p>
-          </div>
-        )}
-        {run.finished_at && (
-          <div>
-            <span className="text-gray-500 text-xs uppercase tracking-wide">Finished</span>
-            <p className="mt-0.5 font-medium text-gray-200">{parseUtc(run.finished_at).toLocaleString()}</p>
-          </div>
-        )}
-      </div>
+      <div className="mb-4"><Link to="/runs" className="text-sm text-gray-400 transition-colors hover:text-gray-200">← All runs</Link></div>
+      <SharedRunDetail model={sharedModel} onDuplicate={duplicateRun}>
 
       {/* Resource warnings */}
       {run.resource_warnings?.length > 0 && (
@@ -265,14 +239,6 @@ export default function RunDetail() {
         </details>
       )}
 
-      {/* Provenance panel */}
-      <details className="mb-4">
-        <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none transition-colors">
-          Provenance record
-        </summary>
-        <RunProvenance runId={run.id} />
-      </details>
-
       {/* Successful runs lead with scientific results; logs remain available as diagnostics. */}
       {run.status === "success" && <RunResults runId={run.id} />}
 
@@ -328,6 +294,7 @@ export default function RunDetail() {
           <div ref={logEndRef} />
         </div>
       </details>
+      </SharedRunDetail>
     </div>
   );
 }

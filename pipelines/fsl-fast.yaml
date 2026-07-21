@@ -1,0 +1,306 @@
+id: fsl-fast
+display_name: FSL FAST
+description: >
+  FSL FAST (FMRIB's Automated Segmentation Tool) performs brain tissue-type
+  segmentation of MRI images, classifying each voxel as one of three tissue
+  classes: cerebrospinal fluid (CSF), grey matter (GM), or white matter (WM).
+  FAST operates on skull-stripped T1w volumes and outputs a hard segmentation
+  map, partial-volume estimates for each tissue class, and optionally an
+  estimated bias field and bias-corrected (restored) image. FAST is the
+  standard FSL tool for structural tissue segmentation and is a prerequisite
+  for voxel-based morphometry (VBM), lesion segmentation, and atlas
+  registration workflows.
+  Requires a skull-stripped input — run FSL BET first if your image is not
+  already skull-stripped.
+  Requires the NeuroForge FSL FAST wrapper image — build it once with
+  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fast:6.0.7
+  docker/fsl-fast/" before submitting a run.
+homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/structural/fast
+category: segmentation
+input_type: nifti
+
+# FAST is CPU-intensive and takes 3-5 minutes on native x86_64.
+# Under Rosetta 2 emulation on Apple Silicon, expect 15-40 minutes.
+# Classified as local-slow to trigger the preflight warning dialog.
+# FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
+# Wrapper image: ghcr.io/neuroforge/fsl-fast:6.0.7
+compute_profile: local-slow
+
+preflight:
+  empirical_status: verified
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: false
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 2
+    recommended_ram_gb: 8
+    min_cpu_count: 1
+    recommended_cpu_count: 4
+    min_disk_free_gb: 1
+    working_space_gb: 0
+    output_space_gb: 2
+
+container:
+  # NeuroForge wrapper image built from docker/fsl-fast/Dockerfile.
+  # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
+  # /usr/local/bin/neuroforge-fast wrapper script that translates --input and
+  # --output-base flags into FAST's convention.
+  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fast:6.0.7 docker/fsl-fast/
+  image: ghcr.io/neuroforge/fsl-fast
+  tag: "6.0.7"
+  engine: docker
+
+# FAST takes a single NIfTI file, not a BIDS dataset directory.
+dataset_positional: false
+
+inputs:
+  - skull_stripped_nifti
+
+outputs:
+  - tissue_segmentation
+  - tissue_partial_volumes
+  - bias_field
+  - restored_image
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────────────
+  - name: input
+    cli_flag: "--input"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to a skull-stripped structural NIfTI file (.nii or .nii.gz).
+      FAST requires brain-extracted input — run FSL BET first if the image
+      still contains skull or neck tissue. Point it at the brain.nii.gz
+      produced by a BET run, e.g. /path/to/data/derivatives/fsl-bet/113/brain.nii.gz.
+      The file is mounted read-only into the container.
+
+  # ── Output control ────────────────────────────────────────────────────────────
+  - name: output-base
+    cli_flag: "--output-base"
+    type: string
+    required: false
+    default: /out/result
+    help: >
+      Container-internal path prefix for all FAST outputs. FAST appends
+      _seg.nii.gz (hard segmentation), _pve_0.nii.gz (CSF), _pve_1.nii.gz (GM),
+      _pve_2.nii.gz (WM), and optionally _bias.nii.gz and _restore.nii.gz.
+      The default /out/result writes all files to the run's output directory.
+
+  # ── Core options ──────────────────────────────────────────────────────────────
+  - name: image-type
+    cli_flag: "-t"
+    type: integer
+    required: false
+    default: 1
+    help: >
+      Type of image being segmented: 1=T1w (default), 2=T2w, 3=PD (proton density).
+      Setting the correct image type ensures FAST uses appropriate tissue priors.
+      Use 2 for T2-weighted images (e.g. FLAIR-based segmentation). Use 3 for
+      proton density images. Almost all structural neuroimaging workflows use 1 (T1w).
+
+  - name: n-classes
+    cli_flag: "-n"
+    type: integer
+    required: false
+    default: 3
+    help: >
+      Number of tissue classes to segment (default 3: CSF, GM, WM). Increase to 4
+      for lesion detection workflows or to separate sub-cortical structures.
+      Most structural neuroimaging workflows use the default 3 classes.
+      Partial-volume files are numbered 0 through n-1 (pve_0 = class 0, etc.).
+
+  - name: bias-field
+    cli_flag: "-b"
+    type: boolean
+    required: false
+    default: true
+    help: >
+      Output the estimated MRI bias field as result_bias.nii.gz.
+      Enabled by default. The bias field image captures low-frequency intensity
+      inhomogeneity across the image and is useful for visual QC and for applying
+      the same bias correction to additional images from the same session.
+      Disable to reduce output file count.
+
+  - name: restored
+    cli_flag: "-B"
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Output the bias-corrected (restored) image as result_restore.nii.gz.
+      Disabled by default. The restored image has the estimated bias field
+      divided out, producing more uniform tissue intensities. Useful as input
+      for downstream registration or VBM analysis pipelines that are sensitive
+      to intensity inhomogeneity.
+
+  # ── Advanced options ──────────────────────────────────────────────────────────
+  - name: iterations-bias
+    cli_flag: "-I"
+    type: integer
+    required: false
+    default: 4
+    advanced: true
+    help: >
+      Number of iterations for the main FAST estimation loop (default 4).
+      Increasing to 6–8 can improve segmentation quality on images with
+      severe inhomogeneity or unusual intensity distributions at the cost of
+      longer runtime. Rarely needs adjustment for standard 1mm T1w data.
+
+  - name: lowpass
+    cli_flag: "-l"
+    type: float
+    required: false
+    default: 20.0
+    advanced: true
+    help: >
+      Spatial smoothness of the MRF prior in mm (default 20.0). Controls the
+      degree of spatial regularization imposed on the tissue class assignment.
+      Lower values produce less spatially smooth segmentations; higher values
+      produce smoother maps at the risk of over-smoothing small structures.
+      The default of 20 mm is appropriate for standard T1w brain segmentation.
+
+  - name: verbose
+    cli_flag: "-v"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Enable verbose output. FAST prints iteration-by-iteration convergence
+      statistics, tissue class mean intensities, and bias field update norms.
+      Useful for diagnosing non-convergence or unexpected segmentation results.
+
+accepts:
+  - type: nifti_skull_stripped
+    param: input
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from BET or similar; the recommended input for FAST"
+
+  - type: nifti_raw
+    param: input
+    label: "Raw NIfTI"
+    description: "Unprocessed structural NIfTI; FAST may struggle without skull stripping"
+
+  - type: nifti_defaced
+    param: input
+    label: "Defaced NIfTI"
+    description: "De-identified NIfTI; skull-strip before FAST for best results"
+
+produces:
+  - type: tissue_class_map
+    path_hint: "result_seg.nii.gz"
+    label: "Tissue Segmentation"
+    description: "Hard tissue classification map: 0=background, 1=CSF, 2=GM, 3=WM"
+
+  - type: tissue_pve_csf
+    path_hint: "result_pve_0.nii.gz"
+    label: "CSF Partial Volume"
+    description: "Voxelwise CSF partial-volume estimate (0–1) from FAST"
+
+  - type: tissue_pve_gm
+    path_hint: "result_pve_1.nii.gz"
+    label: "GM Partial Volume"
+    description: "Voxelwise grey matter partial-volume estimate (0–1) from FAST"
+
+  - type: tissue_pve_wm
+    path_hint: "result_pve_2.nii.gz"
+    label: "WM Partial Volume"
+    description: "Voxelwise white matter partial-volume estimate (0–1) from FAST"
+
+  - type: bias_field
+    path_hint: "result_bias.nii.gz"
+    label: "Estimated Bias Field"
+    description: "Estimated MRI B1 inhomogeneity field from FAST (produced when bias-field=true)"
+
+  - type: restored_image
+    path_hint: "result_restore.nii.gz"
+    label: "Bias-Corrected Image"
+    description: "Bias-corrected (restored) structural image from FAST (produced when restored=true)"
+
+max_runtime_hours: 2
+
+# ── Manual testing reference ──────────────────────────────────────────────────────
+# Input: skull-stripped brain from FSL BET run (brain.nii.gz)
+# Build: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fast:6.0.7 docker/fsl-fast/
+# CLI verified:
+#   docker run --rm --platform linux/amd64 \
+#     -v <skull_stripped.nii.gz>:/inputs/input/brain.nii.gz:ro \
+#     -v <out_dir>:/out:rw \
+#     ghcr.io/neuroforge/fsl-fast:6.0.7 \
+#     --input /inputs/input/brain.nii.gz \
+#     --output-base /out/result \
+#     -t 1 -n 3 -b
+#
+# Expected outputs: result_seg.nii.gz, result_pve_0.nii.gz, result_pve_1.nii.gz,
+#                   result_pve_2.nii.gz, result_bias.nii.gz
+# ─────────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "Error, input file does not exist|Cannot open volume|error loading volume"
+    explanation: >
+      FAST could not open the input NIfTI file. The path you specified does not
+      point to a readable .nii or .nii.gz file, or the file was moved after the
+      run was created.
+    fix_hint: >
+      Verify that the "input" path points to an existing skull-stripped .nii or
+      .nii.gz file. Use an absolute path. Run FSL BET first if you have not already
+      skull-stripped the image — FAST requires brain-extracted input for reliable
+      segmentation.
+
+  - pattern: "neuroforge-fast: error: --input is required"
+    explanation: >
+      The FAST run was submitted without an input file path. This should not
+      happen in normal operation — the NeuroForge pipeline form marks this field
+      as required.
+    fix_hint: >
+      Open the pipeline form and fill in the "input" field with the full path
+      to your skull-stripped structural NIfTI file, then resubmit.
+
+  - pattern: "Killed|MemoryError|Cannot allocate memory|bad_alloc"
+    explanation: >
+      FAST was killed by the operating system due to insufficient memory. FAST
+      requires approximately 2–4 GB of RAM for a standard 1mm T1w volume. Running
+      under Docker Desktop with a low memory limit can trigger this.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources → Memory, increase the limit to
+      at least 8 GB and retry. For very large images (sub-mm isotropic), FAST
+      may require 16+ GB.
+
+  - pattern: "Run stopped automatically after.*maximum runtime"
+    explanation: >
+      The NeuroForge watchdog stopped this FAST run after it exceeded the
+      2-hour maximum. FAST should complete in 3-5 minutes on native x86_64 and
+      15-40 minutes under Rosetta 2 on Apple Silicon. An unusually long runtime
+      suggests the container stalled or the image is abnormally large.
+    fix_hint: >
+      Check that Docker Desktop is running and has at least 8 GB RAM allocated.
+      Confirm the input skull-stripped image is a standard 1mm T1w volume.
+      For very large images, consider downsampling to 1mm isotropic with FSL
+      flirt -applyisoxfm before running FAST.
+
+  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-fast|manifest unknown"
+    explanation: >
+      Docker could not find the NeuroForge FSL FAST wrapper image locally or on
+      any registry. This image must be built locally from the NeuroForge repository
+      before first use.
+    fix_hint: >
+      From the NeuroForge project root, run:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fast:6.0.7 docker/fsl-fast/
+      This takes ~30 seconds and only needs to be done once per machine.
+      After the build completes, resubmit the run.
+
+  - pattern: "Floating point exception|FAST crashed|segmentation fault"
+    explanation: >
+      FAST crashed internally, usually due to a corrupt or empty input image,
+      an all-zero brain mask, or an image with only a single slice.
+    fix_hint: >
+      Inspect the input image with the NIfTI Inspector pipeline to check for
+      corrupt headers or unusual voxel distributions. Ensure the input is a
+      proper skull-stripped 3D structural volume with sufficient brain coverage
+      (at least 20 axial slices). Re-run BET if the skull-stripped image looks
+      abnormal.

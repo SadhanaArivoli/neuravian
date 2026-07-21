@@ -131,9 +131,9 @@ function initMappings(series: WizardDiscoveredSeries[]): MappingMap {
 // ── Confidence badge ──────────────────────────────────────────────────────────
 
 const CONFIDENCE: Record<string, { label: string; className: string }> = {
-  high:   { label: "High confidence",   className: "bg-green-100 text-green-700 border border-green-200" },
-  medium: { label: "Medium confidence", className: "bg-amber-100 text-amber-700 border border-amber-200" },
-  low:    { label: "Low confidence",    className: "bg-red-100 text-red-700 border border-red-200" },
+  high:   { label: "High confidence",   className: "bg-green-500/10 text-green-300 border border-green-500/20" },
+  medium: { label: "Medium confidence", className: "bg-amber-500/10 text-amber-300 border border-amber-500/20" },
+  low:    { label: "Low confidence",    className: "bg-red-500/10 text-red-300 border border-red-500/20" },
 };
 
 // ── Modality icon ─────────────────────────────────────────────────────────────
@@ -451,17 +451,17 @@ function SummaryBar({
       </span>
       <div className="flex gap-2">
         {counts.high != null && (
-          <span className="rounded-full bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 text-xs font-medium">
+          <span className="rounded-full bg-green-500/10 text-green-300 border border-green-500/20 px-2 py-0.5 text-xs font-medium">
             {counts.high} high
           </span>
         )}
         {counts.medium != null && (
-          <span className="rounded-full bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 text-xs font-medium">
+          <span className="rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 text-xs font-medium">
             {counts.medium} medium
           </span>
         )}
         {counts.low != null && (
-          <span className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 text-xs font-medium">
+          <span className="rounded-full bg-red-500/10 text-red-300 border border-red-500/20 px-2 py-0.5 text-xs font-medium">
             {counts.low} low / unknown
           </span>
         )}

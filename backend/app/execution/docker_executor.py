@@ -17,9 +17,17 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from app.execution.executor import Executor, ResourceWarning, RunContext
+from app.execution.output_permissions import prepare_output_directory
+from app.core.config import settings
+from app.services.dataset_paths import (
+    DatasetPathConfigurationError,
+    dataset_translation_configured,
+    to_host_dataset_path,
+    try_resolve_dataset_path,
+)
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +107,17 @@ def to_host_path(container_path: str) -> str:
     return container_path
 
 
+def _dataset_bind_source(path: str) -> str:
+    """Return an absolute host bind source for a canonical dataset path."""
+    if dataset_translation_configured():
+        return str(to_host_dataset_path(path))
+    if _is_running_in_docker():
+        raise DatasetPathConfigurationError(
+            "HOST_DATASETS_MOUNT is required to launch dataset pipelines."
+        )
+    return path
+
+
 def from_host_path(host_path: str) -> str:
     """
     Translate a host filesystem path to the equivalent backend-container-internal
@@ -141,12 +160,12 @@ class _SdkParams:
 class DockerExecutor(Executor):
     """Runs pipeline containers via the Docker SDK for Python."""
 
-    def _build_sdk_params(self, ctx: RunContext) -> _SdkParams:
+    def _build_sdk_params(self, ctx: RunContext, *, validate_mounts: bool = True) -> _SdkParams:
         manifest = ctx.manifest
         params = ctx.params
         container = manifest["container"]
 
-        dataset_host = to_host_path(ctx.dataset_path)
+        dataset_host = _dataset_bind_source(ctx.dataset_path)
         output_host = to_host_path(ctx.output_dir)
 
         # dataset_positional: true (default) → BIDS-style pipelines that take
@@ -195,8 +214,60 @@ class DockerExecutor(Executor):
             # while browsing their dataset.
             if not Path(raw).is_absolute():
                 raw = str(Path(ctx.dataset_path) / raw)
-            host_path = to_host_path(raw)
-            basename = Path(raw).name
+            resolved_dataset_path = (
+                try_resolve_dataset_path(raw)
+                if dataset_translation_configured()
+                else None
+            )
+            host_path = (
+                str(resolved_dataset_path.host)
+                if resolved_dataset_path is not None
+                else to_host_path(raw)
+            )
+            basename = (
+                resolved_dataset_path.backend.name
+                if resolved_dataset_path is not None
+                else Path(raw).name
+            )
+            # Verify the source is accessible in the backend's filesystem before
+            # passing it to Docker. Modern Docker silently creates missing bind
+            # sources as directories, which causes containers to start but fail
+            # internally with an opaque error. Catching this here gives a clear
+            # failure message and prevents a false-success status.
+            #
+            # Validation is skipped when validate_mounts=False (e.g. build_command
+            # is called for command-preview display — no need to verify at that point).
+            #
+            # We can only validate a path when we can actually see it from here:
+            #   - The path was resolved via dataset-path translation → backend copy is accessible
+            #   - We are not inside a Docker container → raw filesystem is accessible
+            # When running inside Docker with an untranslated path (e.g. a FreeSurfer
+            # license file that lives outside the datasets mount), we cannot verify
+            # the source — the Docker daemon sees the host filesystem directly. Skip
+            # validation in that case; if the path is genuinely missing Docker will
+            # surface a clear bind-mount error.
+            expected_dir = p.get("type") == "directory_path"
+            if validate_mounts:
+                if resolved_dataset_path is not None:
+                    backend_path = resolved_dataset_path.backend
+                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    if not backend_ok:
+                        kind = "directory" if expected_dir else "file"
+                        raise RuntimeError(
+                            f"Mount validation failed for parameter '{name}': "
+                            f"{kind} not found at '{raw}'. "
+                            "The file may have been moved or deleted after the run was submitted."
+                        )
+                elif not _is_running_in_docker():
+                    backend_path = Path(raw)
+                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    if not backend_ok:
+                        kind = "directory" if expected_dir else "file"
+                        raise RuntimeError(
+                            f"Mount validation failed for parameter '{name}': "
+                            f"{kind} not found at '{raw}'. "
+                            "The file may have been moved or deleted after the run was submitted."
+                        )
             container_path = f"/inputs/{name}/{basename}"
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
             _mounted_paths[name] = container_path
@@ -301,7 +372,10 @@ class DockerExecutor(Executor):
         # HOST_UID/HOST_GID, which docker-compose.yml injects from the calling
         # shell at compose-up time (${HOST_UID} / ${HOST_GID}).
         user: str | None = None
-        if manifest.get("run_as_host_user"):
+        explicit_user = manifest.get("run_as_user")
+        if explicit_user:
+            user = f"{explicit_user['uid']}:{explicit_user['gid']}"
+        elif manifest.get("run_as_host_user"):
             import os
             host_uid = os.environ.get("HOST_UID", "").strip()
             host_gid = os.environ.get("HOST_GID", "").strip()
@@ -327,7 +401,7 @@ class DockerExecutor(Executor):
 
     def build_command(self, ctx: RunContext) -> list[str]:
         """Full CLI representation — used for command_preview display."""
-        sdk = self._build_sdk_params(ctx)
+        sdk = self._build_sdk_params(ctx, validate_mounts=False)
         cli = ["docker", "run", "--rm"]
         if sdk.user is not None:
             cli += ["-u", sdk.user]
@@ -347,6 +421,17 @@ class DockerExecutor(Executor):
 
         sdk = self._build_sdk_params(ctx)
         client = docker.from_env()
+
+        # Root/image-default pipelines keep their established ownership model.
+        # A numeric runtime identity requires the bind source to be owned by that
+        # identity before Docker starts the child container.
+        if sdk.user is not None:
+            preparation = prepare_output_directory(
+                ctx.output_dir,
+                allowed_root=Path(settings.data_dir).resolve() / "derivatives",
+                runtime_user=sdk.user,
+            )
+            log_callback(preparation.log_line())
 
         loop = asyncio.get_event_loop()
         exit_code = 1

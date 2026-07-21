@@ -147,10 +147,26 @@ def resolve_run_artifacts(
             if param_val:
                 candidates = [str(param_val)]
                 try:
-                    from app.execution.docker_executor import from_host_path
-                    translated = from_host_path(str(param_val))
-                    if translated != str(param_val):
-                        candidates.append(translated)
+                    from app.services.dataset_paths import (
+                        dataset_translation_configured,
+                        try_resolve_dataset_path,
+                    )
+
+                    resolved = (
+                        try_resolve_dataset_path(str(param_val))
+                        if dataset_translation_configured()
+                        else None
+                    )
+                    if resolved is not None:
+                        backend_path = str(resolved.backend)
+                        if backend_path not in candidates:
+                            candidates.append(backend_path)
+                    elif not Path(str(param_val)).exists():
+                        from app.execution.docker_executor import from_host_path
+
+                        translated = from_host_path(str(param_val))
+                        if translated not in candidates:
+                            candidates.append(translated)
                 except Exception:
                     pass
 

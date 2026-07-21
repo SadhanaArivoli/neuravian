@@ -12,7 +12,7 @@ import json
 import logging
 import shutil
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Any
 
@@ -22,13 +22,23 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.execution.progress_parser import parse_tqdm_line
-from app.execution.docker_executor import DockerExecutor, _is_running_in_docker, from_host_path, to_host_path, translate_errors
+from app.execution.docker_executor import (
+    DockerExecutor,
+    _is_running_in_docker,
+    from_host_path,
+    to_host_path,  # compatibility import for existing test/mocking integrations
+    translate_errors,
+)
 from app.execution.native_executor import NativeExecutor
 from app.execution.executor import Executor, RunContext
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
 from app.models.run import ProvenanceEvent, Run, RunLog
 from app.schemas.run import ResourceWarningSchema, RunCreate, RunRead, RunSummary
+from app.services.dataset_paths import (
+    dataset_translation_configured,
+    try_resolve_dataset_path,
+)
 from app.services.pipeline import get_registry
 
 log = logging.getLogger(__name__)
@@ -193,6 +203,81 @@ async def recover_interrupted_runs(db: Session) -> None:
                 "Use Retry to re-run with the same parameters."
             )
     db.commit()
+
+
+async def recover_queued_runs(db: Session) -> None:
+    """Called at startup. Finds Run rows still marked 'queued' from before the
+    last process exit and re-adds them to the in-memory execution queue so
+    pending work survives a backend restart. Preserves created_at ordering."""
+    from app.services.execution_queue import enqueue
+
+    try:
+        queued = db.query(Run).filter_by(status="queued").order_by(Run.created_at).all()
+    except OperationalError as exc:
+        log.warning("Skipping queued run recovery: %s", exc)
+        return
+
+    if not queued:
+        return
+
+    registry = get_registry()
+    recovered = 0
+
+    for run in queued:
+        try:
+            pipeline_row = db.get(Pipeline, run.pipeline_id)
+            if not pipeline_row:
+                log.warning("Queued run %d: pipeline id %d not found — skipping", run.id, run.pipeline_id)
+                continue
+
+            manifest = registry.get(pipeline_row.name)
+            if manifest is None:
+                log.warning("Queued run %d: manifest '%s' not in registry — skipping", run.id, pipeline_row.name)
+                continue
+
+            dataset = db.get(Dataset, run.dataset_id)
+            if not dataset:
+                log.warning("Queued run %d: dataset %d not found — skipping", run.id, run.dataset_id)
+                continue
+
+            params = json.loads(run.params_json or "{}")
+
+            remote_host_cfg: dict | None = None
+            if run.remote_host_id is not None:
+                from app.models.remote_host import RemoteHost
+                rh = db.get(RemoteHost, run.remote_host_id)
+                if rh and rh.enabled:
+                    remote_host_cfg = {
+                        "hostname": rh.hostname,
+                        "ssh_port": rh.ssh_port,
+                        "username": rh.username,
+                        "key_path": rh.key_path,
+                        "remote_work_root": rh.remote_work_root,
+                        "docker_host": rh.docker_host,
+                    }
+
+            output_dir = run.output_dir or str(
+                Path(settings.data_dir).resolve() / "derivatives" / pipeline_row.name / str(run.id)
+            )
+
+            ctx = RunContext(
+                run_id=run.id,
+                manifest=manifest,
+                params=params,
+                dataset_path=dataset.path,
+                output_dir=output_dir,
+                remote_host_cfg=remote_host_cfg,
+            )
+
+            enqueue(run.id, ctx)
+            recovered += 1
+            log.info("Startup: re-queued run %d (%s)", run.id, pipeline_row.name)
+
+        except Exception:
+            log.exception("Failed to recover queued run %d", run.id)
+
+    if recovered:
+        log.info("Startup: recovered %d queued run(s) into execution queue", recovered)
 
 
 async def _reattach_run(run_id: int, container_id: str) -> None:
@@ -385,6 +470,33 @@ def _seed_output_from_lineage(source: Path | None, output_dir: Path) -> None:
     shutil.copy2(source, output_dir / source.name)
 
 
+def _read_declared_output_log(ctx: RunContext) -> list[str]:
+    """Read a safely scoped ``/out`` file when a tool emits no stdout."""
+    raw_outfile = str(ctx.params.get("outfile") or "").strip()
+    if not raw_outfile:
+        return []
+    container_path = PurePosixPath(raw_outfile)
+    try:
+        relative = container_path.relative_to(PurePosixPath("/out"))
+    except ValueError:
+        return []
+    if relative == PurePosixPath(".") or ".." in relative.parts:
+        return []
+
+    output_root = Path(ctx.output_dir).resolve()
+    report_path = (output_root / Path(*relative.parts)).resolve()
+    try:
+        report_path.relative_to(output_root)
+    except ValueError:
+        return []
+    if not report_path.is_file():
+        return []
+    try:
+        return report_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+
 async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     """
     Runs the pipeline in the background. Opens its own DB session
@@ -468,6 +580,12 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     except Exception as exc:
         log.exception("Executor raised during run %d", run_id)
         _log_and_collect(f"[neuroforge] Executor error: {exc}")
+
+    # Some tools write exclusively to an explicitly declared /out file. Keep
+    # their report available in the execution log without duplicating stdout.
+    if not log_lines:
+        for line in _read_declared_output_log(ctx):
+            _log_and_collect(line)
 
     # Close the incrementally-written log file.
     log_file_path: str | None = str(lf_path)
@@ -677,20 +795,36 @@ class RunService:
                         f"Parameter '{name}' is required for {manifest['display_name']}."
                     )
                 continue  # optional mounted param with no value — skip
-            translated = to_host_path(val)
-            # Only check existence when the path is reachable from inside the
-            # container. to_host_path() returns the input unchanged when no
-            # mount covers it (e.g. ~/freesurfer/license.txt when only
-            # ~/Documents is mounted). In that case the container can't see the
-            # file, but the Docker daemon on the host can — so we skip the check
-            # and let Docker fail with "bind source path does not exist" if the
-            # path is genuinely wrong.
-            #
-            # path_is_reachable is True when either:
-            #   - to_host_path() translated the path (file is under a known mount), OR
-            #   - we're not inside Docker at all (local dev / test environment)
-            path_is_reachable = (translated != val) or not _is_running_in_docker()
-            if path_is_reachable and not Path(translated).exists():
+            candidate_value = val
+            if not Path(candidate_value).is_absolute():
+                candidate_value = str(Path(dataset.path) / candidate_value)
+            resolved_dataset_path = (
+                try_resolve_dataset_path(candidate_value)
+                if dataset_translation_configured()
+                else None
+            )
+            # Existence is checked only in the backend namespace. The Docker
+            # daemon receives the equivalent host path later, when the bind is
+            # constructed by DockerExecutor.
+            candidate: Path | None = (
+                resolved_dataset_path.backend
+                if resolved_dataset_path is not None
+                else None
+            )
+            if candidate is None and not _is_running_in_docker():
+                # When not in Docker, the backend can access the raw path directly.
+                # Inside Docker, paths outside the dataset mounts (e.g. a FreeSurfer
+                # license file on the host) are invisible to the backend container —
+                # defer to the executor, which passes the path to the Docker daemon.
+                candidate = Path(candidate_value).expanduser().resolve()
+            expected_directory = p.get("type") == "directory_path"
+            if candidate is None:
+                available = True
+            elif expected_directory:
+                available = candidate.is_dir()
+            else:
+                available = candidate.is_file()
+            if not available:
                 raise ValueError(
                     f"Parameter '{name}': path not found: '{val}'. "
                     "Check that the file exists and the path is correct."
@@ -763,7 +897,7 @@ class RunService:
             )
 
         # Validate source_run_id if lineage was provided
-        if body.lineage:
+        if body.lineage and not body.lineage.external:
             src = self.db.get(Run, body.lineage.upstream_run_id)
             if src is None:
                 raise ValueError(f"Source run {body.lineage.upstream_run_id} not found")
@@ -796,7 +930,7 @@ class RunService:
             pipeline_version=(manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command", "native"),
             params_json=json.dumps(effective_params),
             status="queued",
-            source_run_id=body.lineage.upstream_run_id if body.lineage else None,
+            source_run_id=body.lineage.upstream_run_id if body.lineage and not body.lineage.external else None,
             source_artifacts_json=json.dumps(body.lineage.model_dump()) if body.lineage else None,
             remote_host_id=body.remote_host_id,
         )

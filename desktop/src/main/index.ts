@@ -1,6 +1,35 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
-import { writeFile } from "node:fs/promises";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } from "electron";
+import {
+  VIEWER_CHANNELS,
+  type DefaultViewerSceneRequest,
+  type ReadArtifactRequest,
+} from "../preload/viewer-api-contract.js";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+// ── viewer settings helpers ────────────────────────────────────────────────────
+
+interface ViewerSettings { configured: Partial<Record<string, string>> }
+
+async function loadViewerSettings(userData: string): Promise<Partial<Record<string, string>>> {
+  try {
+    const raw = JSON.parse(await readFile(path.join(userData, "viewer-settings.json"), "utf-8")) as ViewerSettings;
+    return raw.configured ?? {};
+  } catch { return {}; }
+}
+
+async function saveViewerSetting(userData: string, viewerId: string, executablePath: string | null): Promise<void> {
+  const file = path.join(userData, "viewer-settings.json");
+  let current: ViewerSettings = { configured: {} };
+  try { current = JSON.parse(await readFile(file, "utf-8")) as ViewerSettings; } catch { /* first write */ }
+  if (executablePath === null) {
+    delete current.configured[viewerId];
+  } else {
+    current.configured[viewerId] = executablePath;
+  }
+  await writeFile(file, JSON.stringify(current, null, 2));
+}
+
 import { queryActiveRuns } from "./activity.js";
 import { DesktopCompose } from "./compose.js";
 import { formatDiagnostics } from "./diagnostics.js";
@@ -14,6 +43,23 @@ import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 import { DesktopLogger, type StartupTrace } from "./logger.js";
 import { StartupStateStore } from "./state-store.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
+import { detectLegacyRunCaches, type SyncManifest } from "./run-cache.js";
+import {
+  commandForLocalPreset, commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
+  type DesktopPlatform, type ExternalViewerId, type LocalViewerLaunchRequest, type ViewerLaunchRequest,
+} from "./viewer-manager.js";
+import { ConnectionProfileStore } from "./connection-profiles.js";
+import { WorkspaceMetadataCache } from "./workspace-cache.js";
+import { WorkspaceClient, resolveEc2State, startEc2Instance, stopEc2Instance } from "./workspace-client.js";
+import { WorkspaceReplicationEngine } from "./workspace-replication.js";
+import { ExecutionEnvironmentManager } from "./environment-manager.js";
+import { startCloudStream, stopCloudStream, stopAllCloudStreams } from "./cloud-event-stream.js";
+import type { WorkspaceProfile } from "./workspace-types.js";
+import { WorkspaceSessionStore } from "./workspace-session-store.js";
+import { RunHistoryStore } from "./workspace-run-history.js";
+import type { SessionRunHistoryEntry } from "./workspace-types.js";
+import { LocalWorkspaceStore } from "./local-workspace.js";
+import { rmdir, rm } from "node:fs/promises";
 
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
@@ -25,6 +71,13 @@ let applicationLoaded = false;
 let applicationLoadStarted = false;
 let logger: DesktopLogger | null = null;
 let rendererReadyTimer: NodeJS.Timeout | undefined;
+let profileStore: ConnectionProfileStore | null = null;
+let workspaceClient: WorkspaceClient | null = null;
+let workspaceWre: WorkspaceReplicationEngine | null = null;
+let workspaceEnvManager: ExecutionEnvironmentManager | null = null;
+let workspaceSessionStore: WorkspaceSessionStore | null = null;
+let workspaceRunHistoryStore: RunHistoryStore | null = null;
+let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
 const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
 const captureState = process.env.NEUROFORGE_CAPTURE_STATE;
@@ -41,6 +94,77 @@ function assetPath(fileName: string): string {
 
 function diagnosticsText(): string {
   return formatDiagnostics({ update: startupState.get(), facts: startup?.facts, error: startup?.lastError });
+}
+
+function workspaceServices(): {
+  profiles: ConnectionProfileStore;
+  client: WorkspaceClient;
+  wre: WorkspaceReplicationEngine;
+  envManager: ExecutionEnvironmentManager;
+  sessionStore: WorkspaceSessionStore;
+  runHistory: RunHistoryStore;
+} {
+  if (!profileStore || !workspaceClient || !workspaceWre || !workspaceEnvManager
+      || !workspaceSessionStore || !workspaceRunHistoryStore) {
+    const userData = app.getPath("userData");
+    profileStore = new ConnectionProfileStore(path.join(userData, "workspaces"), {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (value) => safeStorage.encryptString(value),
+      decrypt: (value) => safeStorage.decryptString(value),
+    });
+    workspaceClient = new WorkspaceClient(
+      new WorkspaceMetadataCache(path.join(userData, "workspace-metadata")),
+      path.join(userData, "run-cache"),
+    );
+    workspaceWre = new WorkspaceReplicationEngine({
+      artifactCacheRoot: path.join(userData, "run-cache"),
+      client: workspaceClient,
+    });
+    workspaceEnvManager = new ExecutionEnvironmentManager(profileStore, workspaceWre);
+    workspaceSessionStore = new WorkspaceSessionStore(path.join(userData, "workspace-sessions"));
+    workspaceRunHistoryStore = new RunHistoryStore(path.join(userData, "workspace-run-history"));
+  }
+  return {
+    profiles: profileStore,
+    client: workspaceClient,
+    wre: workspaceWre,
+    envManager: workspaceEnvManager,
+    sessionStore: workspaceSessionStore,
+    runHistory: workspaceRunHistoryStore,
+  };
+}
+
+function localWorkspace(): LocalWorkspaceStore {
+  if (!localWorkspaceStore) {
+    localWorkspaceStore = new LocalWorkspaceStore(path.join(app.getPath("userData"), "workspaces"));
+  }
+  return localWorkspaceStore;
+}
+
+async function inspectWorkspaceCache(workspaceId: string): Promise<{
+  cacheSizeBytes: number;
+  cachedRuns: number;
+  cacheEntries: number;
+}> {
+  if (!/^[a-f0-9-]{36}$/i.test(workspaceId)) throw new Error("Invalid workspace identity.");
+  const root = path.join(app.getPath("userData"), "run-cache", workspaceId);
+  let cacheSizeBytes = 0;
+  let cacheEntries = 0;
+  const runIds = new Set<string>();
+  async function walk(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (/^run-\d+$/.test(entry.name)) runIds.add(entry.name);
+        await walk(target);
+      } else if (entry.isFile()) {
+        cacheEntries += 1;
+        cacheSizeBytes += (await stat(target)).size;
+      }
+    }
+  }
+  await walk(root);
+  return { cacheSizeBytes, cachedRuns: runIds.size, cacheEntries };
 }
 
 function publish(update: StartupUpdate): void {
@@ -75,8 +199,32 @@ async function loadMainApplication(): Promise<void> {
   if (rendererReadyTimer) clearTimeout(rendererReadyTimer);
   const attemptId = startupState.get().attemptId;
   const startedAt = Date.now();
+  const mainApplicationUrl = new URL("/", FRONTEND_URL);
+  mainApplicationUrl.searchParams.set("desktop-launch", attemptId ?? "startup");
+  let restoredEntryLoad: Promise<void> | null = null;
+  const enforceDesktopHome = (
+    _event: Electron.Event,
+    url: string,
+    isMainFrame: boolean,
+  ) => {
+    if (!mainWindow || !isMainFrame || restoredEntryLoad) return;
+    const navigated = new URL(url);
+    if (navigated.origin !== mainApplicationUrl.origin || navigated.pathname === "/") return;
+    restoredEntryLoad = withTimeout(
+      mainWindow.loadURL(mainApplicationUrl.toString()),
+      "Renderer home restoration",
+      STARTUP_TIMEOUTS.rendererLoadMs,
+    ).then(() => { mainWindow?.webContents.navigationHistory.clear(); });
+  };
+  mainWindow.webContents.on("did-navigate-in-page", enforceDesktopHome);
   try {
-    await withTimeout(mainWindow.loadURL(FRONTEND_URL), "Renderer load", STARTUP_TIMEOUTS.rendererLoadMs);
+    await withTimeout(mainWindow.loadURL(mainApplicationUrl.toString()), "Renderer load", STARTUP_TIMEOUTS.rendererLoadMs);
+    mainWindow.webContents.navigationHistory.clear();
+    // Chromium can restore an in-page history entry several seconds after the
+    // root document finishes loading. Observe only the startup window, restore
+    // Home once if needed, then remove the listener before normal navigation.
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    if (restoredEntryLoad) await restoredEntryLoad;
     applicationLoaded = true;
     trace({ attemptId, stage: 19, name: "app URL loaded into main window", detail: FRONTEND_URL, elapsedMs: Date.now() - startedAt });
     trace({ attemptId, stage: 20, name: "startup shell removed", elapsedMs: Date.now() - startedAt });
@@ -93,6 +241,8 @@ async function loadMainApplication(): Promise<void> {
       stage: "main application load", elapsedMs: Date.now() - startedAt,
       recoverable: true, browserAvailable: true,
     });
+  } finally {
+    mainWindow?.webContents.off("did-navigate-in-page", enforceDesktopHome);
   }
 }
 
@@ -314,6 +464,692 @@ ipcMain.handle("logs:open", async () => { await openDesktopLogs(); return true; 
 ipcMain.handle("frontend:open-browser", async () => { await shell.openExternal(FRONTEND_URL); return true; });
 ipcMain.handle("docker:open-desktop", async () => await shell.openPath("/Applications/Docker.app"));
 ipcMain.handle("docker:install", async () => { await shell.openExternal(DOCKER_INSTALL_URL); return true; });
+ipcMain.handle("viewers:detect", async (_event, overrides: Partial<Record<ExternalViewerId, string>> = {}) => {
+  if (!["darwin", "win32", "linux"].includes(process.platform)) return [];
+  const platform = process.platform as DesktopPlatform;
+  const saved = await loadViewerSettings(app.getPath("userData"));
+  return await Promise.all((["freeview", "mricrogl"] as const).map(
+    (viewerId) => detectViewer(viewerId, platform, overrides[viewerId] ?? saved[viewerId]),
+  ));
+});
+ipcMain.handle("viewers:browse-for-executable", async (_event, viewerId: string) => {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined!, {
+    title: `Locate ${viewerId === "mricrogl" ? "MRIcroGL" : viewerId} executable`,
+    properties: ["openFile"],
+    filters: process.platform === "win32" ? [{ name: "Executables", extensions: ["exe"] }] : [],
+  });
+  return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+ipcMain.handle("viewers:save-configured", async (
+  _event,
+  input: { viewerId: string; executablePath: string | null },
+) => {
+  await saveViewerSetting(app.getPath("userData"), input.viewerId, input.executablePath);
+  return true;
+});
+ipcMain.handle(VIEWER_CHANNELS.readArtifact, async (
+  _event,
+  input: ReadArtifactRequest,
+) => {
+  const { workspaceId, runId, relativePath } = input;
+  if (typeof workspaceId !== "string" || /[/\\]/.test(workspaceId) || !workspaceId) {
+    throw new Error("Invalid workspaceId.");
+  }
+  if (!Number.isInteger(runId) || runId < 1) throw new Error("Invalid runId.");
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..") || normalized.includes("\0")) {
+    throw new Error("Unsafe artifact path rejected.");
+  }
+  const root = path.resolve(app.getPath("userData"), "run-cache", workspaceId, `run-${runId}`, "artifacts");
+  const file = path.resolve(root, normalized);
+  if (!file.startsWith(`${root}${path.sep}`)) throw new Error("Artifact path escaped cache root.");
+  return await readFile(file);
+});
+ipcMain.handle(VIEWER_CHANNELS.assertDefaultScene, async (
+  _event,
+  request: DefaultViewerSceneRequest,
+) => {
+  if (request.files.length !== 1 || request.files[0]?.intendedRole !== "base image") {
+    throw new Error("Invalid viewer payload: a default launch requires exactly one semantic base image.");
+  }
+  const metadataPath = path.join(
+    app.getPath("userData"), "run-cache", request.workspaceId, `run-${request.runId}`, "run-metadata.json",
+  );
+  const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
+    artifacts: Array<{ relativePath: string }>;
+  };
+  if (!metadata.artifacts.some((artifact) => artifact.relativePath === request.files[0].relativePath)) {
+    throw new Error("Invalid viewer payload: the selected base image is not present in the synchronized run cache.");
+  }
+  return true;
+});
+ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
+ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
+ipcMain.handle("workspaces:save", async (
+  _event,
+  input: {
+    id?: string; name: string; serverUrl: string; username?: string; password?: string;
+    connectionMode?: "url" | "instance-id"; instanceId?: string | null; awsRegion?: string | null;
+  },
+) => await workspaceServices().profiles.save(input));
+ipcMain.handle("workspaces:remove", async (_event, profileId: string) => {
+  await workspaceServices().profiles.remove(profileId);
+  return true;
+});
+ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
+  const { profiles, wre, sessionStore, runHistory } = workspaceServices();
+  let profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(profileId);
+
+  // For EC2 instance-id workspaces, resolve state before attempting any connection.
+  let ec2Health: import("./workspace-types.js").Ec2ConnectionHealth | null = null;
+  if (profile.connectionMode === "instance-id") {
+    ec2Health = await resolveEc2State(profile);
+
+    if (ec2Health.resolvedServerUrl && ec2Health.resolvedServerUrl !== profile.serverUrl) {
+      // IP changed — update the stored URL so subsequent syncs use the new address.
+      profile = { ...profile, serverUrl: ec2Health.resolvedServerUrl, serverIdentity: null };
+      await profiles.update(profile);
+    }
+
+    // If the instance is stopped or pending we cannot connect — return cached snapshot.
+    if (ec2Health.instanceState === "stopped" || ec2Health.instanceState === "stopping"
+      || ec2Health.instanceState === "pending" || !ec2Health.publicIp) {
+      const { WorkspaceMetadataCache } = await import("./workspace-cache.js");
+      const cached = await new WorkspaceMetadataCache(
+        path.join(app.getPath("userData"), "workspace-metadata"),
+      ).read(profileId);
+      // Re-read to avoid clobbering concurrent user saves (same fix as the non-early-exit path).
+      const freshProfile = (await profiles.list()).find((item) => item.id === profileId) ?? profile;
+      const updated: WorkspaceProfile = { ...freshProfile, connectionState: "offline" };
+      await profiles.update(updated);
+      return {
+        online: false,
+        profile: updated,
+        ec2Health,
+        snapshot: cached ?? {
+          schemaVersion: 1 as const,
+          workspaceId: profile.serverIdentity ?? "",
+          profileId,
+          serverUrl: profile.serverUrl,
+          synchronizedAt: profile.lastSync ?? new Date().toISOString(),
+          projects: [], datasets: [], workflows: [], runs: [], reports: [],
+        },
+      };
+    }
+  }
+
+  const result = await wre.synchronize({ ...profile, connectionState: "syncing" }, credential);
+  // Re-read from disk before writing so we don't overwrite concurrent settings changes
+  // (e.g. user changing region in the Connection tab while a sync is in flight).
+  // We only own: serverIdentity, lastSync, connectionState.
+  const freshProfile = (await profiles.list()).find((item) => item.id === profileId) ?? profile;
+  const updated: WorkspaceProfile = {
+    ...freshProfile,
+    serverUrl: profile.serverUrl, // keep the resolved URL from this sync run
+    serverIdentity: result.snapshot.workspaceId,
+    lastSync: result.snapshot.synchronizedAt,
+    connectionState: result.online ? "connected" : "offline",
+  };
+  await profiles.update(updated);
+
+  // Build run history entries from this sync's snapshot.
+  const incomingEntries: SessionRunHistoryEntry[] = result.snapshot.runs.map((r) => ({
+    runId: r.id,
+    remoteKey: r.remoteKey,
+    pipelineId: r.pipeline_manifest_id,
+    pipelineName: r.pipeline_manifest_id,
+    datasetId: r.dataset_id,
+    status: r.status,
+    launchedAt: r.created_at,
+    finishedAt: r.finished_at ?? null,
+    cacheState: r.cacheState,
+    artifactCount: r.artifacts.length,
+    fenceComplete: false,
+  }));
+
+  // Persist to the durable run history index (append-only, never trimmed).
+  // Persist to the session (recentRunHistory = last 50, display cache only).
+  // Both awaited: the sync response is not returned until local persistence is complete.
+  const recentHistory = await runHistory
+    .append(profileId, incomingEntries)
+    .then(() => runHistory.loadRecent(profileId, 50))
+    .catch((err) => {
+      console.error("[sync] Run history save failed:", err);
+      return incomingEntries.slice(-50);  // degrade to in-memory slice on failure
+    });
+
+  await sessionStore
+    .updateFromSnapshot(profileId, result.snapshot, result.online, recentHistory)
+    .catch((err) => console.error("[sync] Session save failed:", err));
+
+  return { ...result, profile: updated, ec2Health };
+});
+
+ipcMain.handle("workspaces:run-history", async (
+  _event,
+  input: { profileId: string; page?: number; pageSize?: number },
+) => {
+  const { runHistory } = workspaceServices();
+  return runHistory.loadPage(input.profileId, input.page ?? 0, input.pageSize ?? 100);
+});
+
+ipcMain.handle("workspaces:load-session", async (_event, profileId: string) => {
+  const { sessionStore } = workspaceServices();
+  // Load both in parallel — both are fast local reads (< 10 ms each).
+  const userData = app.getPath("userData");
+  const [session, cachedSnapshot] = await Promise.all([
+    sessionStore.load(profileId),
+    new WorkspaceMetadataCache(path.join(userData, "workspace-metadata")).read(profileId),
+  ]);
+  return { session, cachedSnapshot: cachedSnapshot ?? null };
+});
+
+ipcMain.handle("workspaces:save-ui-state", async (
+  _event,
+  input: { profileId: string; uiState: unknown },
+) => {
+  const { sessionStore } = workspaceServices();
+  await sessionStore.saveUiState(
+    input.profileId,
+    input.uiState as import("./workspace-types.js").SessionUIState,
+  );
+  return { ok: true };
+});
+
+ipcMain.handle("workspaces:test", async (_event, profileId: string) => {
+  const { profiles, client } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return await client.testConnection(profile, await profiles.credential(profile.id));
+});
+ipcMain.handle("workspaces:inspect", async (
+  _event,
+  input: { profileId: string; workspaceId: string },
+) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  const userData = app.getPath("userData");
+  const configured = await loadViewerSettings(userData);
+  const [cache, viewers] = await Promise.all([
+    inspectWorkspaceCache(input.workspaceId),
+    Promise.all((["freeview", "mricrogl"] as const).map(
+      (viewerId) => detectViewer(viewerId, process.platform as DesktopPlatform, configured[viewerId]),
+    )),
+  ]);
+  const legacyCacheEntries = await detectLegacyRunCaches(path.join(app.getPath("userData"), "run-cache"));
+  return { ...cache, viewers, legacyCacheEntries };
+});
+ipcMain.handle("workspaces:open-run", async (
+  _event,
+  input: { profileId: string; runId: number },
+) => {
+  if (!Number.isInteger(input.runId) || input.runId < 1) throw new Error("Invalid run ID.");
+  const profile = (await workspaceServices().profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  await shell.openExternal(new URL(`/runs/${input.runId}`, `${profile.serverUrl}/`).toString());
+  return true;
+});
+ipcMain.handle("workspaces:sync-artifacts", async (
+  _event,
+  input: { profileId: string; workspaceId: string; runId: number; relativePaths: string[] },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  return await wre.syncArtifacts(
+    profile,
+    await profiles.credential(profile.id),
+    input.workspaceId,
+    input.runId,
+    input.relativePaths,
+  );
+});
+ipcMain.handle("workspaces:sync-all-run-artifacts", async (
+  _event,
+  input: { profileId: string; workspaceId: string; runId: number },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.serverIdentity && profile.serverIdentity !== input.workspaceId) {
+    throw new Error("Workspace identity mismatch.");
+  }
+  return await wre.syncAllRunArtifacts(
+    profile,
+    await profiles.credential(input.profileId),
+    input.workspaceId,
+    input.runId,
+  );
+});
+
+ipcMain.handle("workspaces:sync-workflow-inputs", async (
+  _event,
+  input: { profileId: string; executionUuid: string; upstreamRunId: number; artifactType: string },
+) => {
+  if (!/^[0-9a-f-]{36}$/i.test(input.executionUuid)) throw new Error("Invalid workflow execution UUID.");
+  if (!Number.isInteger(input.upstreamRunId) || input.upstreamRunId < 1) throw new Error("Invalid upstream run ID.");
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(input.artifactType)) throw new Error("Invalid artifact type.");
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return await wre.syncWorkflowInputs(
+    profile,
+    await profiles.credential(input.profileId),
+    input.executionUuid,
+    input.upstreamRunId,
+    input.artifactType,
+  );
+});
+
+ipcMain.handle("workspaces:prepare-workflow-handoff", async (
+  _event,
+  input: {
+    profileId: string; workflowId: number; executionUuid: string; idempotencyKey: string;
+    upstreamRunId: number; artifactType: string; state: Record<string, unknown>;
+  },
+) => {
+  const { profiles, envManager, wre } = workspaceServices();
+  let profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  if (profile.connectionMode === "instance-id") {
+    const launched = await envManager.launch(input.profileId, credential);
+    profile = launched.profile;
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers.Authorization = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const createExecution = (workflowId: number) => fetch(new URL(`/api/workflows/${workflowId}/executions`, `${profile.serverUrl}/`).toString(), {
+    method: "POST", headers,
+    body: JSON.stringify({
+      execution_uuid: input.executionUuid,
+      idempotency_key: input.idempotencyKey,
+      remote_profile_id: input.profileId,
+      state: input.state,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  let cloudWorkflowId = input.workflowId;
+  let response = await createExecution(cloudWorkflowId);
+  if (response.status === 404) {
+    const workflowResponse = await fetch(new URL("/api/workflows", `${profile.serverUrl}/`).toString(), {
+      method: "POST", headers,
+      body: JSON.stringify({ name: "Mixed-location workflow", state: input.state }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!workflowResponse.ok) throw new Error(`Cloud workflow registration failed: HTTP ${workflowResponse.status}`);
+    const cloudWorkflow = await workflowResponse.json() as { id: number };
+    cloudWorkflowId = cloudWorkflow.id;
+    response = await createExecution(cloudWorkflowId);
+  }
+  if (!response.ok) throw new Error(`Cloud workflow handoff failed: HTTP ${response.status}`);
+  const execution = await response.json() as Record<string, unknown>;
+  const persistedExecutionUuid = String(execution.execution_uuid ?? input.executionUuid);
+  const sync = await wre.syncWorkflowInputs(
+    profile, credential, persistedExecutionUuid, input.upstreamRunId, input.artifactType,
+  );
+  return { execution, executionUuid: persistedExecutionUuid, cloudWorkflowId, ...sync };
+});
+
+ipcMain.handle("workspaces:update-workflow-execution", async (
+  _event,
+  input: {
+    profileId: string; executionUuid: string; expectedRevision: number; status: string;
+    currentNodeId?: string | null; returnSyncComplete?: boolean; state: Record<string, unknown>;
+  },
+) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers.Authorization = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const response = await fetch(new URL(`/api/workflow-executions/${input.executionUuid}`, `${profile.serverUrl}/`).toString(), {
+    method: "PATCH", headers,
+    body: JSON.stringify({
+      expected_revision: input.expectedRevision, status: input.status,
+      current_node_id: input.currentNodeId ?? null, remote_profile_id: input.profileId,
+      return_sync_complete: input.returnSyncComplete ?? false, state: input.state,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Workflow state update failed: HTTP ${response.status}`);
+  return await response.json() as Record<string, unknown>;
+});
+
+ipcMain.handle("workspaces:push-project", async (
+  _event,
+  input: {
+    profileId: string;
+    // objectId and revision are optional for backward compatibility with callers
+    // that pre-date WRE. When absent, WRE generates a deterministic objectId from
+    // the project's server id so the same project always maps to the same object.
+    objectId?: string;
+    revision?: number;
+    project: Record<string, unknown>;
+    timestamps?: { createdAt?: string; modifiedAt?: string };
+  },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const { randomUUID } = await import("node:crypto");
+  const objectId = input.objectId ?? randomUUID();
+  const revision  = input.revision ?? 1;
+  const obj = wre.buildObject(objectId, "project", revision, input.project, input.timestamps);
+  return await wre.pushObjects(profile, credential, [obj]);
+});
+ipcMain.handle("workspaces:push-workflow", async (
+  _event,
+  input: {
+    profileId: string;
+    objectId?: string;
+    revision?: number;
+    workflow: Record<string, unknown>;
+    timestamps?: { createdAt?: string; modifiedAt?: string };
+  },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const { randomUUID } = await import("node:crypto");
+  const objectId = input.objectId ?? randomUUID();
+  const revision  = input.revision ?? 1;
+  const obj = wre.buildObject(objectId, "workflow", revision, input.workflow, input.timestamps);
+  return await wre.pushObjects(profile, credential, [obj]);
+});
+ipcMain.handle("workspaces:replicate-objects", async (
+  _event,
+  input: { profileId: string; objects: unknown[] },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const { isNeuroForgeObject } = await import("./workspace-types.js");
+  const valid = input.objects.filter(isNeuroForgeObject);
+  if (valid.length !== input.objects.length) throw new Error("One or more objects failed NeuroForgeObject validation.");
+  return await wre.pushObjects(profile, credential, valid);
+});
+ipcMain.handle("workspaces:launch-pipeline", async (
+  _event,
+  input: {
+    profileId: string;
+    pipelineId: string;
+    datasetId: number;
+    lineage?: {
+      upstream_run_id: number;
+      upstream_pipeline_id: string;
+      upstream_pipeline_display_name?: string;
+      artifact_type: string;
+      artifact_label: string;
+      injected_param?: string;
+      injected_path?: string;
+      external?: boolean;
+      upstream_workspace_id?: string;
+      workflow_execution_uuid?: string;
+    };
+    params?: Record<string, unknown>;
+    autoStart?: boolean;
+  },
+) => {
+  const { profiles, envManager } = workspaceServices();
+  let profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+
+  // Resolve the current public address even when EC2 is already running.
+  // A stop/start can change its IP while leaving a stale saved gateway URL.
+  if (profile.connectionMode === "instance-id") {
+    const { resolveEc2State: getState } = await import("./workspace-client.js");
+    const health = await getState(profile);
+    if (input.autoStart && health.instanceState !== "running") {
+      const launched = await envManager.launch(input.profileId, credential);
+      profile = launched.profile;
+    } else if (health.resolvedServerUrl && health.resolvedServerUrl !== profile.serverUrl) {
+      profile = { ...profile, serverUrl: health.resolvedServerUrl, serverIdentity: null };
+      await profiles.update(profile);
+    }
+  }
+
+  // POST to the cloud VM's /api/runs
+  const authHeader = credential
+    ? `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`
+    : null;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authHeader) headers["Authorization"] = authHeader;
+
+  const runsUrl = new URL("/api/runs", `${profile.serverUrl}/`).toString();
+  const response = await fetch(runsUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      pipeline_id: input.pipelineId,
+      dataset_id: input.datasetId,
+      lineage: input.lineage,
+      params: input.params ?? {},
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Cloud VM returned HTTP ${response.status} when creating run: ${text}`);
+  }
+  const run = await response.json() as { id: number; status: string };
+
+  // Start the SSE event stream so live progress flows to the renderer.
+  startCloudStream(
+    input.profileId,
+    profile.serverUrl,
+    authHeader,
+    () => mainWindow,
+  );
+
+  // Auto-stop: if enabled, subscribe to WRE events and stop the environment
+  // automatically when the run finishes (success or failure).
+  if (profile.autoStopAfterRun && profile.connectionMode === "instance-id") {
+    const { wre } = workspaceServices();
+    const unsubscribe = wre.on(async (event) => {
+      if (event.type !== "run:status-changed") return;
+      if (event.status !== "success" && event.status !== "failed") return;
+      unsubscribe();
+      stopCloudStream(input.profileId);
+      try {
+        const freshProfile = (await profiles.list()).find((p) => p.id === input.profileId);
+        if (!freshProfile) return;
+        const freshCredential = await profiles.credential(input.profileId);
+        const workspaceId = profile.serverIdentity ?? null;
+        await envManager.stop(input.profileId, freshCredential, workspaceId);
+        // Notify renderer that the environment is now offline.
+        mainWindow?.webContents.send("cloud:event", {
+          profileId: input.profileId,
+          type: "vm:stopped-auto",
+          runId: run.id,
+        });
+      } catch (err) {
+        // Log but do not rethrow — run already finished, this is cleanup.
+        console.error("[auto-stop] failed:", err);
+      }
+    });
+  }
+
+  return { runId: run.id, status: run.status, profileId: input.profileId };
+});
+
+ipcMain.handle("workspaces:set-auto-stop", async (
+  _event,
+  input: { profileId: string; enabled: boolean },
+) => {
+  const profiles = workspaceServices().profiles;
+  const all = await profiles.list();
+  const profile = all.find((p) => p.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const updated = { ...profile, autoStopAfterRun: input.enabled };
+  await profiles.update(updated);
+  return updated;
+});
+
+ipcMain.handle("workspaces:shutdown-fence", async (
+  _event,
+  input: { profileId: string; workspaceId: string },
+) => {
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  return await wre.shutdownFence(profile, credential, input.workspaceId);
+});
+ipcMain.handle("workspaces:duplicate", async (_event, profileId: string) => {
+  return await workspaceServices().profiles.duplicate(profileId);
+});
+ipcMain.handle("workspaces:export", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return profiles.exportProfile(profile);
+});
+ipcMain.handle("workspaces:import", async (
+  _event,
+  input: { name?: string; serverUrl: string; username?: string; password?: string; connectionMode?: "url" | "instance-id"; instanceId?: string | null; awsRegion?: string | null },
+) => {
+  return await workspaceServices().profiles.save({
+    name: input.name ?? "Imported Workspace",
+    serverUrl: input.serverUrl,
+    username: input.username,
+    password: input.password,
+    connectionMode: input.connectionMode,
+    instanceId: input.instanceId,
+    awsRegion: input.awsRegion,
+  });
+});
+ipcMain.handle("workspaces:reset-cache", async (_event, workspaceId: string) => {
+  if (!workspaceId || /[/\\]/.test(workspaceId)) throw new Error("Invalid workspaceId.");
+  const cacheDir = path.join(app.getPath("userData"), "run-cache", workspaceId);
+  try { await rm(cacheDir, { recursive: true, force: true }); } catch { /* already empty */ }
+  return true;
+});
+ipcMain.handle("workspaces:clear-credentials", async (_event, profileId: string) => {
+  await workspaceServices().profiles.clearCredential(profileId);
+  return true;
+});
+ipcMain.handle("workspaces:resolve-instance-url", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const health = await resolveEc2State(profile);
+  if (!health.resolvedServerUrl) return null;
+  const updated = { ...profile, serverUrl: health.resolvedServerUrl, serverIdentity: null };
+  await profiles.update(updated);
+  return updated;
+});
+ipcMain.handle("workspaces:get-ec2-state", async (_event, profileId: string) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.connectionMode !== "instance-id") {
+    return null; // Not an EC2-managed workspace.
+  }
+  return await resolveEc2State(profile);
+});
+ipcMain.handle("workspaces:launch-environment", async (_event, input: { profileId: string }) => {
+  const { profiles, envManager } = workspaceServices();
+  const credential = await profiles.credential(input.profileId);
+  const result = await envManager.launch(input.profileId, credential);
+  return result;
+});
+
+ipcMain.handle("workspaces:start-environment", async (_event, profileId: string) => {
+  // Thin alias: just issues start-instances and returns. Does not wait for healthy.
+  // Use workspaces:launch-environment for the full orchestrated startup.
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  if (profile.connectionMode !== "instance-id") {
+    throw new Error("Start environment is only available for EC2 instance-id workspaces.");
+  }
+  await startEc2Instance(profile);
+  return { started: true };
+});
+
+ipcMain.handle("workspaces:stop-environment", async (_event, input: { profileId: string; workspaceId?: string; runFence?: boolean }) => {
+  const { envManager, profiles } = workspaceServices();
+  const credential = await profiles.credential(input.profileId);
+  stopCloudStream(input.profileId);
+  return await envManager.stop(input.profileId, credential, input.workspaceId ?? null);
+});
+
+ipcMain.handle("workspaces:pull-to-local", async (
+  _event,
+  input: { type: "project" | "workflow"; data: Record<string, unknown> },
+) => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const route = input.type === "project" ? "/api/projects" : "/api/workflows";
+  const response = await fetch(`http://127.0.0.1:8000${route}`, {
+    method: "POST", headers, body: JSON.stringify(input.data),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Local NeuroForge returned HTTP ${response.status}: ${text}`);
+  }
+  return response.json();
+});
+
+ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunchRequest) => {
+  const identity = await localWorkspace().get();
+  if (request.workspaceId !== identity.workspaceId) throw new Error("Local workspace identity mismatch.");
+  const [runResponse, manifestResponse] = await Promise.all([
+    fetch(`http://127.0.0.1:8000/api/runs/${request.runId}`),
+    fetch(`http://127.0.0.1:8000/api/runs/${request.runId}/sync-manifest`),
+  ]);
+  if (!runResponse.ok || !manifestResponse.ok) throw new Error("Local run metadata is unavailable.");
+  const run = await runResponse.json() as { output_dir?: string | null };
+  const manifest = await manifestResponse.json() as SyncManifest;
+  const requested = new Set(request.files.map((file) => file.relativePath));
+  if ([...requested].some((relative) => !manifest.artifacts.some((artifact) => artifact.relativePath === relative))) {
+    throw new Error("Local viewer launch requested an unregistered artifact.");
+  }
+  validateVolumeGeometry([...requested], manifest.artifacts);
+  const containerPrefix = "/app/data/";
+  const outputRoot = run.output_dir?.startsWith(containerPrefix)
+    ? path.join(repositoryRoot, "data", run.output_dir.slice(containerPrefix.length))
+    : path.resolve(run.output_dir ?? "");
+  const derivativesRoot = path.join(repositoryRoot, "data", "derivatives");
+  if (!outputRoot.startsWith(`${derivativesRoot}${path.sep}`)) throw new Error("Local run output is outside NeuroForge derivatives.");
+  const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
+  if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
+  const command = commandForLocalPreset(request, detection.executable, outputRoot);
+  await launchViewer(command, outputRoot);
+  return true;
+});
+ipcMain.handle(VIEWER_CHANNELS.launch, async (_event, request: ViewerLaunchRequest) => {
+  if ((request.launchMode ?? "default") === "default" &&
+      (request.files.length !== 1 || request.files[0]?.intendedRole !== "base image")) {
+    throw new Error("Invalid viewer payload: a default launch requires exactly one semantic base image.");
+  }
+  if (!["darwin", "win32", "linux"].includes(process.platform)) throw new Error("External viewers are unavailable on this platform.");
+  const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
+  if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
+  const cacheRoot = request.workspaceId
+    ? path.join(app.getPath("userData"), "run-cache", request.workspaceId)
+    : path.join(app.getPath("userData"), "run-cache");
+  const metadata = JSON.parse(await readFile(
+    path.join(cacheRoot, `run-${request.runId}`, "run-metadata.json"), "utf8",
+  )) as { artifacts: Array<{ relativePath: string; geometry?: unknown }> };
+  validateVolumeGeometry(request.files.map((file) => file.relativePath), metadata.artifacts);
+  const command = commandForPreset(request, detection.executable, cacheRoot);
+  await launchViewer(command, cacheRoot);
+  return true;
+});
 
 app.whenReady().then(async () => {
   app.setAppLogsPath();

@@ -139,8 +139,8 @@ export default function Plugins() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="shrink-0 border-b border-white/10 px-6 py-4">
-        <h1 className="text-lg font-semibold text-gray-100">Plugins</h1>
+      <div className="shrink-0 border-b border-white/10 p-6 sm:p-8">
+        <h1 className="text-xl font-semibold text-gray-100">Plugins</h1>
         <p className="text-xs text-gray-500 mt-0.5">
           Extend NeuroForge with additional pipelines by adding a plugin directory to{" "}
           <code className="font-mono text-gray-400">plugins/</code>.
@@ -148,9 +148,9 @@ export default function Plugins() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8">
         {isLoading && (
-          <p className="text-sm text-gray-500">Loading plugins…</p>
+          <p className="text-sm text-gray-500 animate-pulse">Loading plugins…</p>
         )}
 
         {error && (
@@ -162,10 +162,10 @@ export default function Plugins() {
         {!isLoading && !error && plugins?.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
             <p className="text-sm text-gray-400">No plugins installed.</p>
-            <p className="text-xs text-gray-600 max-w-sm">
-              Drop a plugin directory into <code className="font-mono text-gray-500">plugins/</code> at
+            <p className="text-xs text-gray-500 max-w-sm">
+              Drop a plugin directory into <code className="font-mono text-gray-400">plugins/</code> at
               the NeuroForge project root. Each plugin must contain a{" "}
-              <code className="font-mono text-gray-500">plugin.yaml</code> file.
+              <code className="font-mono text-gray-400">plugin.yaml</code> file.
             </p>
           </div>
         )}

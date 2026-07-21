@@ -8,7 +8,7 @@ description: >
 homepage: https://fmriprep.org/en/stable/
 compute_profile: local-unsafe
 preflight:
-  empirical_status: pending-x86_64
+  empirical_status: verified
   required_os: Linux
   required_architecture: x86_64
   architecture_mismatch: fail
@@ -17,7 +17,8 @@ preflight:
   ports: []
   known_local_unsafe: >
     ANTs normalization in the amd64 image has stalled under Apple Silicon
-    emulation. Run only on native Linux x86_64 until empirically verified.
+    emulation. Verified to complete successfully on native Linux x86_64 (AWS
+    m7i.2xlarge, us-east-1, run 5 on 2026-07-10).
   resources:
     min_ram_gb: 16
     recommended_ram_gb: 32

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -292,7 +293,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
-            "niftis": [], "artifacts": [],
+            "niftis": [], "files": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -303,7 +304,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "connectivity_matrices": [], "timeseries": [], "connectivity_metadata": [],
             "roi_statistics": [], "roi_extraction": [], "graph_analysis": [],
             "group_summary": None,
-            "niftis": [], "artifacts": [],
+            "niftis": [], "files": [], "artifacts": [],
             "metadata": _build_run_metadata(run, svc),
         }
 
@@ -377,9 +378,16 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     # serving as application/octet-stream is correct for all three.
     _VOL_EXTS = (".nii.gz", ".nii", ".mgz")
     niftis = [
-        {"name": f.name, "path": f.relative_to(output_root).as_posix()}
+        {"name": f.name, "path": f.relative_to(output_root).as_posix(), "size": f.stat().st_size}
         for f in sorted(output_root.rglob("*"))
         if any(f.name.endswith(ext) for ext in _VOL_EXTS)
+    ]
+    # Complete run-scoped inventory for scientific output browsers. Paths are
+    # always relative to output_root; host paths are never exposed.
+    files = [
+        {"name": f.name, "path": f.relative_to(output_root).as_posix(), "size": f.stat().st_size}
+        for f in sorted(output_root.rglob("*"))
+        if f.is_file()
     ]
     # Resolved artifact types from the manifest's produces[] declarations.
     # Used by the frontend to query compatible downstream pipelines.
@@ -425,6 +433,7 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
         "cluster_files": cluster_files,
         "group_summary": group_summary,
         "niftis": niftis,
+        "files": files,
         "artifacts": artifacts,
         "metadata": _build_run_metadata(run, svc),
     }
@@ -468,6 +477,111 @@ def download_run_results(run_id: int, svc: RunService = Depends(_svc)) -> Respon
     )
 
 
+@router.get("/runs/{run_id}/sync-manifest")
+def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
+    """Return a host-path-free, checksum-addressed manifest for NeuroForge Desktop."""
+    try:
+        run = svc.get_by_id(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.status != "success" or not run.output_dir:
+        raise HTTPException(status_code=409, detail="Only successful runs with outputs can be synchronized")
+    output_root = Path(run.output_dir).resolve()
+    if not output_root.is_dir():
+        raise HTTPException(status_code=404, detail="Output directory not found on disk")
+
+    def checksum(file_path: Path) -> str:
+        digest = hashlib.sha256()
+        with file_path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def volume_geometry(file_path: Path) -> dict | None:
+        if not file_path.name.lower().endswith((".nii", ".nii.gz", ".mgz", ".mgh")):
+            return None
+        try:
+            import nibabel as nib
+            image = nib.load(str(file_path))
+            return {
+                "shape": [int(value) for value in image.shape[:3]],
+                "voxelSize": [round(float(value), 6) for value in image.header.get_zooms()[:3]],
+                "orientation": [str(value) for value in nib.aff2axcodes(image.affine)],
+                "affine": [[round(float(value), 6) for value in row] for row in image.affine.tolist()],
+            }
+        except Exception:
+            log.exception("Could not inspect synchronized volume geometry for run %d: %s", run_id, file_path.name)
+            return None
+
+    def safe_metadata(value, key: str = ""):
+        if any(term in key.lower() for term in ("password", "secret", "token", "credential", "license")):
+            return "<redacted>"
+        if isinstance(value, dict):
+            return {name: safe_metadata(item, name) for name, item in value.items()}
+        if isinstance(value, list):
+            return [safe_metadata(item, key) for item in value]
+        if isinstance(value, str) and (value.startswith("/") or value.startswith("\\\\") or ":\\" in value):
+            return "<redacted-path>"
+        return value
+
+    artifacts = []
+    for index, file_path in enumerate(sorted(path for path in output_root.rglob("*") if path.is_file())):
+        relative = file_path.relative_to(output_root).as_posix()
+        artifacts.append({
+            "artifactId": f"run-{run_id}-file-{index}",
+            "relativePath": relative,
+            "url": f"/api/runs/{run_id}/files/{relative}",
+            "sha256": checksum(file_path),
+            "sizeBytes": file_path.stat().st_size,
+            "geometry": volume_geometry(file_path),
+        })
+    results = get_run_results(run_id, svc)
+    provenance = _build_run_metadata(run, svc)
+    provenance.pop("dataset_path", None)
+    provenance.pop("output_dir", None)
+    provenance.pop("command_preview", None)
+    return {
+        "runId": run_id,
+        "provenance": safe_metadata(provenance),
+        "methods": {
+            "pipelineId": run.pipeline_manifest_id,
+            "pipelineVersion": run.pipeline_version,
+            "params": safe_metadata(run.params),
+        },
+        "reports": results.get("reports", []),
+        "artifacts": artifacts,
+    }
+
+
+@router.get("/runs/{run_id}/handoff-manifest")
+def get_run_handoff_manifest(run_id: int, artifact_type: str, svc: RunService = Depends(_svc)) -> dict:
+    """Return only registered files required by a downstream workflow node."""
+    manifest = get_run_sync_manifest(run_id, svc)
+    results = get_run_results(run_id, svc)
+    requested = [
+        artifact for artifact in results.get("artifacts", [])
+        if artifact.get("resolved") and artifact.get("type") == artifact_type
+    ]
+    if not requested:
+        raise HTTPException(status_code=404, detail=f"Run does not expose artifact type '{artifact_type}'")
+    run = svc.get_by_id(run_id)
+    # Result artifacts are normalized to host paths so desktop handoff can read
+    # them. Compare against the same host-form output root; otherwise a Docker
+    # path such as /app/data/... rejects its valid /host/... counterpart.
+    output_root = Path(to_host_path(run.output_dir or "")).resolve()
+    allowed: set[str] = set()
+    for artifact in requested:
+        for raw in artifact.get("paths", []):
+            accessible_candidate = Path(raw).resolve()
+            host_candidate = Path(to_host_path(raw)).resolve()
+            if host_candidate.is_relative_to(output_root) and accessible_candidate.is_file():
+                allowed.add(host_candidate.relative_to(output_root).as_posix())
+    files = [item for item in manifest["artifacts"] if item["relativePath"] in allowed]
+    if not files:
+        raise HTTPException(status_code=409, detail="Required artifact is outside the registered run output")
+    return {"runId": run_id, "artifactType": artifact_type, "artifacts": files}
+
+
 @router.get("/runs/{run_id}/files/{file_path:path}")
 def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc)) -> FileResponse:
     """Serve a file from the run's output directory.
@@ -495,7 +609,15 @@ def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc))
     if not requested.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    return FileResponse(str(requested))
+    headers: dict[str, str] = {}
+    if requested.suffix.lower() in {".html", ".svg"}:
+        # Official tool reports are embeddable only by NeuroForge on the same
+        # origin. The public gateway mirrors this narrow policy.
+        headers = {
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": "frame-ancestors 'self'",
+        }
+    return FileResponse(str(requested), headers=headers)
 
 
 @router.websocket("/runs/{run_id}/logs/stream")

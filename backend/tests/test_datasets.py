@@ -26,6 +26,7 @@ from app.services.bids_patterns import (
     check_subject_label_mismatch,
 )
 from app.services.dataset import DatasetService, _translate_host_path
+from app.services.dataset_paths import DatasetPathOutsideRootError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 VALID_BIDS = FIXTURES / "valid_bids"
@@ -75,6 +76,7 @@ def test_translate_host_path_rewrites_mac_path():
     """The exact real-world case: paste a Mac path, get a /host-data path."""
     with patch("app.services.dataset.settings") as mock_settings:
         mock_settings.host_datasets_mount = "/Users/testuser/Documents"
+        mock_settings.backend_datasets_mount = "/host-data"
         result = _translate_host_path(
             Path("/Users/testuser/Documents/bids-examples/ds001")
         )
@@ -85,6 +87,7 @@ def test_translate_host_path_leaves_container_path_unchanged():
     """A path already inside /host-data should pass through unchanged."""
     with patch("app.services.dataset.settings") as mock_settings:
         mock_settings.host_datasets_mount = "/Users/testuser/Documents"
+        mock_settings.backend_datasets_mount = "/host-data"
         result = _translate_host_path(Path("/host-data/bids-examples/ds001"))
     # /host-data doesn't start with the host mount prefix, so no rewrite
     assert result == Path("/host-data/bids-examples/ds001")
@@ -98,12 +101,13 @@ def test_translate_host_path_no_op_when_mount_unset():
     assert result == Path("/Users/alice/Documents/my-study")
 
 
-def test_translate_host_path_no_op_when_outside_mount():
-    """A path that doesn't start with the mount prefix is returned unchanged."""
+def test_translate_host_path_rejects_path_outside_mount():
+    """Configured cloud imports cannot escape the mounted dataset root."""
     with patch("app.services.dataset.settings") as mock_settings:
         mock_settings.host_datasets_mount = "/Users/alice/Documents"
-        result = _translate_host_path(Path("/Volumes/ExternalDrive/my-study"))
-    assert result == Path("/Volumes/ExternalDrive/my-study")
+        mock_settings.backend_datasets_mount = "/host-data"
+        with pytest.raises(DatasetPathOutsideRootError):
+            _translate_host_path(Path("/Volumes/ExternalDrive/my-study"))
 
 
 # ------------------------------------------------------------------ #

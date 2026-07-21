@@ -101,7 +101,7 @@ function DatasetsTab({ projectId }: { projectId: number }) {
       {/* Assign */}
       <div className="flex gap-2">
         <select
-          className="flex-1 rounded-md border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
+          className="flex-1 rounded-md border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
           value={selectedId}
           onChange={e => setSelectedId(Number(e.target.value) || "")}
         >
@@ -182,13 +182,13 @@ function NotesTab({ projectId }: { projectId: number }) {
       {showNew && (
         <div className="rounded-lg border border-white/10 bg-surface p-4 space-y-3">
           <input
-            className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60"
+            className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60"
             placeholder="Note title"
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
           />
           <textarea
-            className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60 resize-y font-mono"
+            className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60 resize-y font-mono"
             rows={6}
             placeholder="Markdown content…"
             value={newContent}
@@ -214,12 +214,12 @@ function NotesTab({ projectId }: { projectId: number }) {
             {editing?.id === note.id ? (
               <>
                 <input
-                  className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
+                  className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
                   value={editing.title}
                   onChange={e => setEditing(ed => ed ? { ...ed, title: e.target.value } : null)}
                 />
                 <textarea
-                  className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60 resize-y font-mono"
+                  className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60 resize-y font-mono"
                   rows={6}
                   value={editing.content_md}
                   onChange={e => setEditing(ed => ed ? { ...ed, content_md: e.target.value } : null)}
@@ -303,7 +303,7 @@ function PublicationTab({ projectId }: { projectId: number }) {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="rounded border border-white/12 px-3 py-1.5 text-xs text-gray-300 hover:text-white transition-colors disabled:opacity-40"
+            className="rounded border border-white/15 px-3 py-1.5 text-xs text-gray-300 hover:text-white transition-colors disabled:opacity-40"
           >
             {isFetching ? "Generating…" : "Generate"}
           </button>
@@ -338,7 +338,7 @@ function SearchTab({ projectId }: { projectId: number }) {
         className="flex gap-2"
       >
         <input
-          className="flex-1 rounded-md border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60"
+          className="flex-1 rounded-md border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/60"
           placeholder="Search datasets, runs, notes, reports…"
           value={q}
           onChange={e => setQ(e.target.value)}
@@ -433,7 +433,7 @@ function EditProjectPanel({ project, onClose }: {
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1">{label}</label>
         <input
-          className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
+          className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
           value={form[key]}
           onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
         />
@@ -450,7 +450,7 @@ function EditProjectPanel({ project, onClose }: {
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
         <textarea
-          className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60 resize-none"
+          className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60 resize-none"
           rows={3}
           value={form.description}
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -461,7 +461,7 @@ function EditProjectPanel({ project, onClose }: {
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
         <select
-          className="w-full rounded border border-white/12 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
+          className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
           value={form.status}
           onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
         >
@@ -521,11 +521,11 @@ export default function ProjectDetail() {
           )}
           {project.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {project.tags.map(t => <span key={t} className="rounded bg-white/6 px-1.5 py-0.5 text-[10px] text-gray-500">{t}</span>)}
+              {project.tags.map(t => <span key={t} className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-gray-500">{t}</span>)}
             </div>
           )}
         </div>
-        <button onClick={() => setEditing(v => !v)} className="shrink-0 rounded border border-white/12 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
+        <button onClick={() => setEditing(v => !v)} className="shrink-0 rounded border border-white/15 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
           {editing ? "Cancel" : "Edit"}
         </button>
       </div>

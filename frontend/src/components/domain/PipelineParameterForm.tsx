@@ -12,10 +12,13 @@ import { useDatasets } from "../../hooks/useDatasets";
 import { useRemoteHosts } from "../../hooks/useRemoteHosts";
 import { useCreateRun, useRuns } from "../../hooks/useRuns";
 import { PipelinePreflightPanel } from "./PipelinePreflightPanel";
+import { PipelineLaunchReview } from "./PipelineLaunchReview";
 
 interface Props {
   pipeline: Pipeline;
   prefill?: PrefillContext | null;
+  paramsOverride?: Record<string, unknown> | null;
+  datasetOverride?: number | null;
 }
 
 type FormValues = Record<string, string | boolean | string[]>;
@@ -165,7 +168,7 @@ function ParameterField({
   onChange: (val: string | boolean | string[]) => void;
 }) {
   const baseInput =
-    "w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 placeholder:text-gray-500 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25";
+    "w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 placeholder:text-gray-500 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25";
 
   // Special case: multi-run selector for group FC input
   if (param.name === "input-run-ids") {
@@ -226,7 +229,7 @@ function ParameterField({
                 className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm cursor-pointer transition-colors select-none ${
                   checked
                     ? "border-accent/60 bg-accent/15 font-medium text-violet-200"
-                    : "border-white/12 bg-white/[0.035] text-gray-400 hover:border-white/25 hover:bg-white/[0.06]"
+                    : "border-white/15 bg-white/[0.035] text-gray-400 hover:border-white/25 hover:bg-white/[0.06]"
                 }`}
               >
                 <input
@@ -407,7 +410,7 @@ function buildDefaults(params: PipelineParameter[]): FormValues {
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
-export default function PipelineParameterForm({ pipeline, prefill }: Props) {
+export default function PipelineParameterForm({ pipeline, prefill, paramsOverride, datasetOverride }: Props) {
   const navigate = useNavigate();
   const { data: datasets } = useDatasets();
   const createRun = useCreateRun();
@@ -428,13 +431,21 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   const { data: remoteHosts = [] } = useRemoteHosts();
   const enabledHosts = remoteHosts.filter((h) => h.enabled);
 
-  const [selectedDatasetId, setSelectedDatasetId] = useState<number | "">("");
+  const [selectedDatasetId, setSelectedDatasetId] = useState<number | "">(datasetOverride ?? "");
   const [remoteHostId, setRemoteHostId] = useState<number | null>(null);
   const [values, setValues] = useState<FormValues>(() => {
     const defaults = buildDefaults(pipeline.parameters);
     // Pre-populate the prefilled parameter from the upstream run artifact.
     if (prefill?.param && prefill.path) {
       defaults[prefill.param] = prefill.path;
+    }
+    // Duplicate Run: override all params from a prior run.
+    if (paramsOverride) {
+      for (const [k, v] of Object.entries(paramsOverride)) {
+        if (v !== null && v !== undefined) {
+          defaults[k] = v as string | boolean | string[];
+        }
+      }
     }
     return defaults;
   });
@@ -445,6 +456,8 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
   const [preflightError, setPreflightError] = useState<string | null>(null);
   // Track whether the user has edited a prefilled field away from its prefilled value.
   const [prefillOverridden, setPrefillOverridden] = useState(false);
+  // Review step
+  const [showReview, setShowReview] = useState(false);
 
   const set = (name: string, val: string | boolean | string[]) => {
     setValues((prev) => ({ ...prev, [name]: val }));
@@ -545,12 +558,46 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       return;
     }
 
+    // Show review page — let the user confirm before launching.
+    setShowReview(true);
+  }
+
+  async function handleLaunchFromReview() {
+    setSubmitError(null);
     if (!remoteHostId && preflight && !preflight.can_launch) {
       setSubmitError("Resolve the blocking preflight checks before starting this run.");
       return;
     }
+    await doSubmit();
+  }
 
-    void doSubmit();
+  // Count existing runs for this pipeline + dataset combination
+  const { data: allRuns } = useRuns();
+  const existingRunCount = (allRuns ?? []).filter(
+    (r) =>
+      r.pipeline_manifest_id === pipeline.id &&
+      r.dataset_id === selectedDatasetId &&
+      (r.status === "success" || r.status === "running"),
+  ).length;
+
+  const remoteHost = enabledHosts.find((h) => h.id === remoteHostId);
+
+  if (showReview && selectedDataset) {
+    return (
+      <PipelineLaunchReview
+        pipeline={pipeline}
+        dataset={selectedDataset}
+        subjects={String(values["participant-label"] ?? "")}
+        remoteHostName={remoteHost?.display_name ?? null}
+        preflight={preflight}
+        existingRunCount={existingRunCount}
+        launching={createRun.isPending}
+        launchError={submitError}
+        onBack={() => { setShowReview(false); setSubmitError(null); }}
+        onLaunch={() => void handleLaunchFromReview()}
+        paramsSnapshot={buildParams()}
+      />
+    );
   }
 
   return (
@@ -568,7 +615,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           onChange={(e) =>
             setSelectedDatasetId(e.target.value ? Number(e.target.value) : "")
           }
-          className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
+          className="w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           required
         >
           <option value="">— choose a dataset —</option>
@@ -608,7 +655,7 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
           <select
             value={remoteHostId ?? ""}
             onChange={(e) => setRemoteHostId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full rounded-md border border-white/12 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-md border border-white/15 bg-surface-overlay px-3 py-2 text-sm text-gray-100 shadow-inner shadow-black/10 focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
           >
             <option value="">Local (this machine)</option>
             {enabledHosts.map((h) => (
@@ -738,14 +785,10 @@ export default function PipelineParameterForm({ pipeline, prefill }: Props) {
       <div className="pt-1">
         <button
           type="submit"
-          disabled={
-            createRun.isPending ||
-            preflightLoading ||
-            (!remoteHostId && preflight?.can_launch === false)
-          }
+          disabled={createRun.isPending || preflightLoading}
           className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-accent/15 transition-all hover:-translate-y-px hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {createRun.isPending ? "Starting…" : "Start run"}
+          Review & Launch →
         </button>
       </div>
 

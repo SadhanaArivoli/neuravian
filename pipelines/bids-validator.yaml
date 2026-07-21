@@ -159,6 +159,10 @@ produces:
     source_param: bids-dir
     label: "Validated BIDS Dataset"
     description: "The input dataset, confirmed BIDS-compliant — safe to use as input to MRIQC or fMRIPrep"
+  - type: bids_validation_report
+    path_hint: validation-report.txt
+    label: "BIDS Validation Report"
+    description: "The complete report written by BIDS Validator"
 
 max_runtime_hours: 0.25
 

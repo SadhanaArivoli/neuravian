@@ -1,5 +1,10 @@
 # NeuroForge
 
+AWS deployment infrastructure is available as a review-first Terraform module
+under [`infra/terraform/aws-ec2/`](infra/terraform/aws-ec2/README.md). It deploys
+one SSH-tunneled EC2 workstation from an exact Git commit and does not authorize
+or perform `terraform apply` by itself.
+
 [![CI](https://github.com/SadhanaArivoli/neuroforge/actions/workflows/ci.yml/badge.svg)](https://github.com/SadhanaArivoli/neuroforge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)](CHANGELOG.md)

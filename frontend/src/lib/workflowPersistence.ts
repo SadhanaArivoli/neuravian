@@ -2,8 +2,9 @@
  * Workflow serialization, deserialization, and schema validation.
  *
  * The persisted state is an opaque JSON blob stored in saved_workflows.state_json.
- * It captures enough to restore the Workflow Builder canvas. Runtime-only fields
- * (status, runId, error, resolvedOutputs) are stripped on save and reset on load.
+ * It captures the canvas plus durable node status/run/location fields so an
+ * interrupted mixed-location execution can resume after an app restart. Large
+ * resolved artifact payloads remain runtime-only and are reconstructed from runs.
  *
  * Schema version: "neuroforge-workflow-v1"
  * Backward compat: only one version exists today. If the schema evolves, bump to
@@ -43,7 +44,10 @@ export interface SerializedNode {
   params: Record<string, unknown>;
   datasetId: number | "";
   edge: SerializedEdge;
-  // Runtime fields deliberately omitted: status, runId, error, resolvedOutputs
+  status?: "draft" | "ready" | "running" | "success" | "failed";
+  runId?: number;
+  executionLocation?: "Local" | "Cloud";
+  error?: string;
 }
 
 export interface WorkflowState {
@@ -116,9 +120,10 @@ export interface BuilderRuntimeNode {
   datasetId: number | "";
   edge: SerializedEdge;
   // Runtime fields present at builder time — stripped on save
-  status?: unknown;
-  runId?: unknown;
-  error?: unknown;
+  status?: "draft" | "ready" | "running" | "success" | "failed";
+  runId?: number;
+  error?: string;
+  executionLocation?: "Local" | "Cloud";
   resolvedOutputs?: unknown;
 }
 
@@ -141,6 +146,10 @@ export function serializeWorkflowState(
       params: n.params,
       datasetId: n.datasetId,
       edge: n.edge,
+      status: n.status,
+      runId: n.runId,
+      error: n.error,
+      executionLocation: n.executionLocation,
     })),
     activeTemplateId,
   };
