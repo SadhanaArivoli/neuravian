@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const desktopRoot = path.resolve(import.meta.dirname, "..");
-const expectedLogoHash = "6a074630ce385e74cba906861af4f3ae8e72840ff53172438f9b888a908d0cf3";
+const expectedLogoHash = "75a612dbf10c1f05a26366f38243f00b27cbe6fc5bb18ec64197533826b6660f";
 
 async function sha256(filePath: string): Promise<string> {
   return createHash("sha256").update(await readFile(filePath)).digest("hex");

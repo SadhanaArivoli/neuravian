@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import type { ArtifactSemanticRole } from "./workspace-types.js";
 
 export interface SyncArtifact {
   artifactId: string | number;
@@ -11,6 +12,8 @@ export interface SyncArtifact {
   url: string;
   sha256: string;
   sizeBytes: number;
+  /** Semantic role stamped at sync time. Absent on pre-Phase2 cached artifacts. */
+  semanticRole?: ArtifactSemanticRole;
   geometry?: {
     shape: number[];
     voxelSize: number[];
@@ -66,6 +69,19 @@ async function matches(file: string, artifact: SyncArtifact) {
     const details = await stat(file);
     return details.size === artifact.sizeBytes && await sha256(file) === artifact.sha256;
   } catch { return false; }
+}
+
+export async function readRunCacheReports(
+  cacheRoot: string,
+  runId: number,
+): Promise<unknown[] | null> {
+  try {
+    const metadataPath = path.join(path.resolve(cacheRoot), `run-${runId}`, "run-metadata.json");
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as { reports?: unknown };
+    return Array.isArray(metadata.reports) ? metadata.reports : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function inspectRunCache(
@@ -132,8 +148,8 @@ export async function syncRun(
     provenance: manifest.provenance,
     methods: manifest.methods,
     reports: manifest.reports,
-    artifacts: manifest.artifacts.map(({ artifactId, relativePath, sha256: checksum, sizeBytes, geometry }) => ({
-      artifactId, relativePath, sha256: checksum, sizeBytes, geometry,
+    artifacts: manifest.artifacts.map(({ artifactId, relativePath, sha256: checksum, sizeBytes, semanticRole, geometry }) => ({
+      artifactId, relativePath, sha256: checksum, sizeBytes, semanticRole, geometry,
     })),
   }, null, 2);
   const metadataPath = path.join(runRoot, "run-metadata.json");

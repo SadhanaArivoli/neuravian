@@ -16,6 +16,7 @@ from app.models.pipeline import Pipeline  # noqa: F401
 from app.models.run import Run, RunLog, ProvenanceEvent  # noqa: F401
 from app.models.report import Report  # noqa: F401
 from app.models.workflow import SavedWorkflow  # noqa: F401
+from app.models.workflow_execution import WorkflowExecution, WorkflowTransfer  # noqa: F401
 
 try:
     from app.models.remote_host import RemoteHost  # noqa: F401

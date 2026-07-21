@@ -70,6 +70,8 @@ describe("restored desktop shell", () => {
       syncAllRunArtifacts: vi.fn().mockResolvedValue({ runId: 0, downloaded: [], reused: [] }),
       launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
+      viewerRuntimeBuild: "2026-07-19-viewer-contract-v1",
+      assertDefaultViewerScene: vi.fn(async () => true),
       pushCloudProject: vi.fn(async () => ({})),
       pushCloudWorkflow: vi.fn(async () => ({})),
       browseForViewer: vi.fn(async () => null),
@@ -144,7 +146,7 @@ describe("restored desktop shell", () => {
 
   it("keeps the Workspace dashboard available at /workspaces", async () => {
     renderApp("/workspaces?scope=cloud%3Aaws");
-    expect(await screen.findByText("Workspace Home")).toBeInTheDocument();
+    expect(await screen.findByText("Workspace home")).toBeInTheDocument();
     expect(screen.getByText("workspace-a")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
   });

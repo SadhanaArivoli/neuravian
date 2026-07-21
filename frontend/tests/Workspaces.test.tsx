@@ -59,6 +59,8 @@ describe("unified desktop workspaces", () => {
       syncAllRunArtifacts: vi.fn().mockResolvedValue({ runId: 0, downloaded: [], reused: [] }),
       launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
+      viewerRuntimeBuild: "2026-07-19-viewer-contract-v1",
+      assertDefaultViewerScene: vi.fn(async () => true),
       pushCloudProject: vi.fn(async () => ({})),
       pushCloudWorkflow: vi.fn(async () => ({})),
       browseForViewer: vi.fn(async () => null),
@@ -88,10 +90,10 @@ describe("unified desktop workspaces", () => {
 
   it("shows cloud projects, workflow hierarchy, runs, and cache state automatically", async () => {
     renderWorkspace();
-    expect(await screen.findByText("Workspace Home")).toBeInTheDocument();
-    expect(screen.getByText("Workspace Inspector")).toBeInTheDocument();
+    expect(await screen.findByText("Workspace home")).toBeInTheDocument();
+    expect(screen.getByText("Cache and viewers")).toBeInTheDocument();
     expect(screen.getByText("workspace-a")).toBeInTheDocument();
-    expect(screen.getAllByText("Cloud Only").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cloud only").length).toBeGreaterThan(0);
   });
 
   it("shows server datasets and runs even when the server has no project records", async () => {
@@ -109,11 +111,13 @@ describe("unified desktop workspaces", () => {
     renderWorkspace("runs");
     fireEvent.click(await screen.findByText("Run #7"));
     fireEvent.click(await screen.findByRole("button", { name: /Open in FreeView/ }));
+    // selectDefaultViewerScene picks orig_nu.mgz (anatomical-intensity, priority 1)
+    // over aseg.auto.mgz (segmentation, excluded from auto-selection).
     await waitFor(() => expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).toHaveBeenCalledWith({
       profileId: "profile-1",
       workspaceId: "workspace-a",
       runId: 7,
-      relativePaths: ["sub-01/mri/orig_nu.mgz", "sub-01/mri/aseg.auto.mgz"],
+      relativePaths: ["sub-01/mri/orig_nu.mgz"],
     }));
     expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId: "workspace-a",
@@ -142,7 +146,9 @@ describe("unified desktop workspaces", () => {
 
     renderWorkspace("runs");
     fireEvent.click(await screen.findByText("Run #7"));
-    const button = await screen.findByRole("button", { name: /Open in FreeView/ });
+    // Both MGZ artifacts are cached, so NeuroForge Viewer is the primary action.
+    // FreeView appears as a secondary button (text "FreeView") and must still be enabled.
+    const button = await screen.findByRole("button", { name: /FreeView/ });
     expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() => expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalled());
@@ -157,7 +163,7 @@ describe("unified desktop workspaces", () => {
     const combined = combineWorkspaceRuns(local, "local-installation", snapshot);
     expect(combined.filter((run) => run.id === 7)).toEqual([
       expect.objectContaining({ key: "local-installation:run:7", workspace: "Local NeuroForge" }),
-      expect.objectContaining({ key: "workspace-a:run:7", workspace: "AWS NeuroForge" }),
+      expect.objectContaining({ key: "workspace-a:run:7", workspace: "Cloud" }),
     ]);
     expect(new Set(combined.map((run) => run.key)).size).toBe(combined.length);
   });

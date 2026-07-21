@@ -336,3 +336,69 @@ artifact_types:
     label: "Cluster Run Metadata"
     description: "Provenance record: input, threshold, direction, cluster count, image shape, library versions"
     extensions: [".json"]
+
+  # ── FSL FAST tissue segmentation ─────────────────────────────────────────────
+
+  tissue_class_map:
+    label: "Tissue Segmentation Map"
+    description: "Hard tissue classification: 0=background, 1=CSF, 2=GM, 3=WM (from FSL FAST _seg.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  tissue_pve_csf:
+    label: "CSF Partial Volume"
+    description: "Voxelwise CSF partial-volume estimate (0–1) from FSL FAST (_pve_0.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  tissue_pve_gm:
+    label: "GM Partial Volume"
+    description: "Voxelwise grey matter partial-volume estimate (0–1) from FSL FAST (_pve_1.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  tissue_pve_wm:
+    label: "WM Partial Volume"
+    description: "Voxelwise white matter partial-volume estimate (0–1) from FSL FAST (_pve_2.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  bias_field:
+    label: "Estimated Bias Field"
+    description: "MRI B1 inhomogeneity field estimated by FSL FAST (_bias.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  restored_image:
+    label: "Bias-Corrected Image"
+    description: "Structural image with estimated bias field removed by FSL FAST (_restore.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  # ── FSL FLIRT registration ────────────────────────────────────────────────────
+
+  registered_image:
+    label: "Registered Image"
+    description: "NIfTI image linearly registered to a reference space by FSL FLIRT"
+    extensions: [".nii", ".nii.gz"]
+
+  affine_matrix:
+    label: "Affine Matrix"
+    description: "FSL-format 4×4 affine transformation matrix from FLIRT (.mat, ASCII)"
+    extensions: [".mat"]
+
+  # ── FSL FNIRT nonlinear registration ─────────────────────────────────────────
+
+  nonlinear_registered_image:
+    label: "Nonlinearly Registered Image"
+    description: "NIfTI image resampled into reference space by FSL FNIRT (fnirt_result.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  coefficient_field:
+    label: "Warp Coefficient Field"
+    description: "B-spline warp coefficient field from FSL FNIRT; required for applywarp (fnirt_warpcoef.nii.gz)"
+    extensions: [".nii", ".nii.gz"]
+
+  warp_field:
+    label: "Displacement Field"
+    description: "Full voxelwise displacement field in mm from FSL FNIRT (fnirt_field.nii.gz); present only when output-field=true"
+    extensions: [".nii", ".nii.gz"]
+
+  jacobian_image:
+    label: "Jacobian Map"
+    description: "Jacobian determinant map encoding local volumetric change from FSL FNIRT (fnirt_jac.nii.gz); present only when output-jacobian=true"
+    extensions: [".nii", ".nii.gz"]

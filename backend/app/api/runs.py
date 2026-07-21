@@ -553,6 +553,35 @@ def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
     }
 
 
+@router.get("/runs/{run_id}/handoff-manifest")
+def get_run_handoff_manifest(run_id: int, artifact_type: str, svc: RunService = Depends(_svc)) -> dict:
+    """Return only registered files required by a downstream workflow node."""
+    manifest = get_run_sync_manifest(run_id, svc)
+    results = get_run_results(run_id, svc)
+    requested = [
+        artifact for artifact in results.get("artifacts", [])
+        if artifact.get("resolved") and artifact.get("type") == artifact_type
+    ]
+    if not requested:
+        raise HTTPException(status_code=404, detail=f"Run does not expose artifact type '{artifact_type}'")
+    run = svc.get_by_id(run_id)
+    # Result artifacts are normalized to host paths so desktop handoff can read
+    # them. Compare against the same host-form output root; otherwise a Docker
+    # path such as /app/data/... rejects its valid /host/... counterpart.
+    output_root = Path(to_host_path(run.output_dir or "")).resolve()
+    allowed: set[str] = set()
+    for artifact in requested:
+        for raw in artifact.get("paths", []):
+            accessible_candidate = Path(raw).resolve()
+            host_candidate = Path(to_host_path(raw)).resolve()
+            if host_candidate.is_relative_to(output_root) and accessible_candidate.is_file():
+                allowed.add(host_candidate.relative_to(output_root).as_posix())
+    files = [item for item in manifest["artifacts"] if item["relativePath"] in allowed]
+    if not files:
+        raise HTTPException(status_code=409, detail="Required artifact is outside the registered run output")
+    return {"runId": run_id, "artifactType": artifact_type, "artifacts": files}
+
+
 @router.get("/runs/{run_id}/files/{file_path:path}")
 def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc)) -> FileResponse:
     """Serve a file from the run's output directory.

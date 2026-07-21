@@ -14,6 +14,9 @@ class LineageCreate(BaseModel):
     artifact_label: str
     injected_param: str | None = None
     injected_path: str | None = None
+    external: bool = False
+    upstream_workspace_id: str | None = None
+    workflow_execution_uuid: str | None = None
 
 
 class RunCreate(BaseModel):

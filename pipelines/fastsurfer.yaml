@@ -10,7 +10,7 @@ description: >
 homepage: https://deep-mi.org/research/fastsurfer/
 compute_profile: local-slow
 preflight:
-  empirical_status: verified-x86_64
+  empirical_status: verified
   required_os: Linux
   required_architecture: x86_64
   architecture_mismatch: warning

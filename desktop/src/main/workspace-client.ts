@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { inspectRunCache, type SyncManifest } from "./run-cache.js";
+import { inspectRunCache, readRunCacheReports, type SyncManifest } from "./run-cache.js";
+import { classifyArtifactRole } from "./artifact-classifier.js";
 import {
   remoteIdentityKey,
   type Ec2ConnectionHealth,
@@ -24,11 +25,17 @@ function sslipHostname(ip: string): string {
  * Preserves the original protocol, port, and path.
  * Falls back to `https://<hostname>` if the existing serverUrl cannot be parsed.
  */
-function rebuildServerUrl(currentServerUrl: string, newHostname: string): string {
+export function rebuildServerUrl(currentServerUrl: string, newHostname: string): string {
   if (!currentServerUrl) return `https://${newHostname}`;
   try {
     const url = new URL(currentServerUrl);
     url.hostname = newHostname;
+    // Instance-managed workspaces expose the authenticated gateway on HTTPS.
+    // Legacy profiles may still contain the backend/frontend container ports,
+    // which are intentionally not public.
+    if (url.protocol === "https:" && (url.port === "8000" || url.port === "3000")) {
+      url.port = "";
+    }
     return url.toString().replace(/\/$/, "");
   } catch {
     return `https://${newHostname}`;
@@ -291,22 +298,36 @@ export class WorkspaceClient {
       )));
       const reports = reportsNested.flat().map((report) =>
         withRemoteKey(workspaceId, "report", report));
-      const runs = await Promise.all(runSummaries.map(async (summary): Promise<WorkspaceRun> => {
+      const runs: WorkspaceRun[] = [];
+      for (const summary of runSummaries) {
+        const hasFinalizedOutputs = ["success", "failed", "cancelled", "interrupted"].includes(summary.status);
         const [details, provenance, results, logs, manifest] = await Promise.all([
           settledOr(json<JsonRecord>(profile, `/api/runs/${summary.id}`, fetcher), summary),
-          settledOr(json<unknown>(profile, `/api/runs/${summary.id}/provenance`, fetcher), null),
-          settledOr(json<unknown>(profile, `/api/runs/${summary.id}/results`, fetcher), null),
-          settledOr(json<unknown>(profile, `/api/runs/${summary.id}/logs`, fetcher), null),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/provenance`, fetcher), null)
+            : Promise.resolve(null),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/results`, fetcher), null)
+            : Promise.resolve(null),
+          hasFinalizedOutputs
+            ? settledOr(json<unknown>(profile, `/api/runs/${summary.id}/logs`, fetcher), null)
+            : Promise.resolve(null),
           summary.status === "success"
             ? settledOr(json<SyncManifest>(profile, `/api/runs/${summary.id}/sync-manifest`, fetcher), null)
             : Promise.resolve(null),
         ]);
-        const artifacts = manifest?.artifacts ?? [];
+        // Stamp semanticRole once at registration. Priority:
+        //   1. Server-provided role (future: manifest declarations).
+        //   2. Filename inference fallback (classifyArtifactRole).
+        const artifacts = (manifest?.artifacts ?? []).map((a) => ({
+          ...a,
+          semanticRole: a.semanticRole ?? classifyArtifactRole(a),
+        }));
         const inspection = manifest
           ? await inspectRunCache(path.join(this.artifactCacheRoot, workspaceId), manifest)
           : { state: "cloud-only" as const, cachedPaths: [] };
 
-        return {
+        runs.push({
           ...summary,
           ...details,
           id: summary.id,
@@ -322,12 +343,22 @@ export class WorkspaceClient {
           provenance,
           results,
           logs,
-          reports: reports.filter((report) => Number(report.run_id) === summary.id),
+          // Run reports are execution artifacts returned by the run endpoints.
+          // Dataset reports are separate Study Report Studio snapshots and do
+          // not carry a run_id, so filtering them here always produced [].
+          reports: Array.isArray(manifest?.reports)
+            ? manifest.reports
+            : (
+              results && typeof results === "object" && "reports" in results
+                && Array.isArray((results as { reports?: unknown }).reports)
+                ? (results as { reports: unknown[] }).reports
+                : []
+            ),
           artifacts,
           cachedArtifacts: inspection.cachedPaths,
           cacheState: inspection.state,
-        };
-      }));
+        });
+      }
       const snapshot: WorkspaceSnapshot = {
         schemaVersion: 1,
         workspaceId,
@@ -345,16 +376,24 @@ export class WorkspaceClient {
     } catch (error) {
       const cached = await this.metadataCache.read(profile.id);
       if (!cached) throw error;
+      const runs = await Promise.all(cached.runs.map(async (run) => {
+        const cacheReports = await readRunCacheReports(
+          path.join(this.artifactCacheRoot, cached.workspaceId),
+          run.id,
+        );
+        return {
+          ...run,
+          reports: cacheReports ?? run.reports,
+          cacheState: run.cacheState === "fully-cached" || run.cacheState === "partially-cached"
+            ? "offline-cached" as const
+            : "server-unavailable" as const,
+        };
+      }));
       return {
         online: false,
         snapshot: {
           ...cached,
-          runs: cached.runs.map((run) => ({
-            ...run,
-            cacheState: run.cacheState === "fully-cached" || run.cacheState === "partially-cached"
-              ? "offline-cached"
-              : "server-unavailable",
-          })),
+          runs,
         },
       };
     }

@@ -48,7 +48,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:

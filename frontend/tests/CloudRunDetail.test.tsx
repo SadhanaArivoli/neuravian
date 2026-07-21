@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { CloudRunDetail } from "../src/components/domain/CloudRunDetail";
 
 const profile: WorkspaceProfile = {
@@ -23,12 +24,11 @@ function makeRun(overrides: Partial<WorkspaceRun> = {}): WorkspaceRun {
   };
 }
 
+type ViewerDetection = WorkspaceInspection["viewers"][number];
+
 const freeviewDetected: ViewerDetection = {
   viewerId: "freeview", displayName: "FreeView", installed: true,
   executable: "/Applications/Freeview.app/Contents/MacOS/freeview", reason: null,
-};
-const freeviewMissing: ViewerDetection = {
-  viewerId: "freeview", displayName: "FreeView", installed: false, executable: null, reason: "Not installed",
 };
 const mricroglDetected: ViewerDetection = {
   viewerId: "mricrogl", displayName: "MRIcroGL", installed: true,
@@ -41,14 +41,16 @@ const inspection = (viewers: ViewerDetection[]): WorkspaceInspection => ({
 
 function renderDetail(run: WorkspaceRun, insp: WorkspaceInspection, online = true) {
   return render(
-    <CloudRunDetail
-      run={run}
-      profile={profile}
-      workspaceId="workspace-a"
-      online={online}
-      inspection={insp}
-      onClose={vi.fn()}
-    />,
+    <MemoryRouter>
+      <CloudRunDetail
+        run={run}
+        profile={profile}
+        workspaceId="workspace-a"
+        online={online}
+        inspection={insp}
+        onClose={vi.fn()}
+      />
+    </MemoryRouter>,
   );
 }
 
@@ -66,6 +68,8 @@ describe("CloudRunDetail viewer priority", () => {
       syncAllRunArtifacts: vi.fn().mockResolvedValue({ runId: 0, downloaded: [], reused: [] }),
       launchLocalViewer: vi.fn(async () => true),
       launchViewer: vi.fn(async () => true),
+      viewerRuntimeBuild: "2026-07-19-viewer-contract-v1",
+      assertDefaultViewerScene: vi.fn(async () => true),
       pushCloudProject: vi.fn(async () => ({})),
       pushCloudWorkflow: vi.fn(async () => ({})),
       browseForViewer: vi.fn(async () => null),
@@ -102,6 +106,18 @@ describe("CloudRunDetail viewer priority", () => {
     expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
     // Primary reasoning should mention NeuroForge Viewer
     expect(screen.getByText(/Primary action: Open in NeuroForge Viewer/)).toBeInTheDocument();
+  });
+
+  it("renders synchronized cloud progress instead of dropping it", () => {
+    const run = makeRun({
+      status: "running",
+      started_at: "2026-07-19T00:01:00Z",
+      progress: { percent: 21, current: 54, total: 256, eta_seconds: 203 },
+    });
+    renderDetail(run, inspection([]));
+    expect(screen.getByText("Progress timeline")).toBeInTheDocument();
+    expect(screen.getByText("21% complete")).toBeInTheDocument();
+    expect(screen.getByText(/54 \/ 256 · ETA 4 min/)).toBeInTheDocument();
   });
 
   it("FreeView is accessible as secondary when NeuroForge Viewer is primary", () => {
@@ -171,5 +187,33 @@ describe("CloudRunDetail viewer priority", () => {
     });
     renderDetail(run, inspection([mricroglDetected]));
     expect(screen.queryByRole("button", { name: /Locate MRIcroGL/ })).not.toBeInTheDocument();
+  });
+
+  it("enables local viewers for a cached pydeface NIfTI", () => {
+    const run = makeRun({
+      pipeline_manifest_id: "pydeface",
+      cacheState: "fully-cached",
+      cachedArtifacts: ["defaced.nii.gz"],
+      artifacts: [{ artifactId: 1, relativePath: "defaced.nii.gz", url: "/defaced", sha256: "x", sizeBytes: 1 }],
+    });
+    renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
+    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
+  });
+
+  it("shows synchronized fMRIPrep reports and local viewer actions", () => {
+    const run = makeRun({
+      pipeline_manifest_id: "fmriprep",
+      cacheState: "fully-cached",
+      reports: [{ name: "sub-01", path: "sub-01.html" }],
+      cachedArtifacts: ["sub-01.html", "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz"],
+      artifacts: [
+        { artifactId: 1, relativePath: "sub-01.html", url: "/report", sha256: "r", sizeBytes: 1 },
+        { artifactId: 2, relativePath: "sub-01/anat/sub-01_desc-preproc_T1w.nii.gz", url: "/volume", sha256: "v", sizeBytes: 1 },
+      ],
+    });
+    renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
+    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "reports" }));
+    expect(screen.getByRole("button", { name: "Open sub-01" })).toBeInTheDocument();
   });
 });

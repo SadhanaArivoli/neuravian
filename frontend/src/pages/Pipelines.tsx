@@ -41,7 +41,7 @@ const CATEGORY_LABEL: Record<PipelineCategory, string> = {
 const INPUT_TYPE_LABEL: Record<PipelineInputType, { label: string; className: string }> = {
   dicom: {
     label: "DICOM",
-    className: "bg-blue-500/10 text-blue-300 border border-blue-500/20",
+    className: "bg-accent/10 text-accent border border-accent/20",
   },
   nifti: {
     label: "NIfTI",
@@ -49,7 +49,7 @@ const INPUT_TYPE_LABEL: Record<PipelineInputType, { label: string; className: st
   },
   bids_dataset: {
     label: "BIDS dataset",
-    className: "bg-teal-500/10 text-teal-300 border border-teal-500/20",
+    className: "bg-accent/10 text-accent border border-accent/20",
   },
   matrix: {
     label: "Matrix",
@@ -177,7 +177,17 @@ function PipelineCard({
 
 // ── Pipeline detail panel ─────────────────────────────────────────────────────
 
-function PipelineDetail({ pipelineId, prefill }: { pipelineId: string; prefill: PrefillContext | null }) {
+function PipelineDetail({
+  pipelineId,
+  prefill,
+  paramsOverride,
+  datasetOverride,
+}: {
+  pipelineId: string;
+  prefill: PrefillContext | null;
+  paramsOverride: Record<string, unknown> | null;
+  datasetOverride: number | null;
+}) {
   const { data, isLoading, error } = usePipeline(pipelineId);
 
   if (isLoading) {
@@ -200,7 +210,12 @@ function PipelineDetail({ pipelineId, prefill }: { pipelineId: string; prefill: 
     <div>
       <h2 className="text-xl font-semibold text-gray-100 mb-1">{data.display_name}</h2>
       <p className="text-sm text-gray-400 mb-6">{data.description}</p>
-      <PipelineParameterForm pipeline={data} prefill={prefill} />
+      <PipelineParameterForm
+        pipeline={data}
+        prefill={prefill}
+        paramsOverride={paramsOverride}
+        datasetOverride={datasetOverride}
+      />
     </div>
   );
 }
@@ -212,13 +227,20 @@ const ALL_INPUT_TYPES = Object.keys(INPUT_TYPE_LABEL) as PipelineInputType[];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type IncomingState = { selectPipeline?: string; prefill?: PrefillContext } | null;
+type IncomingState = {
+  selectPipeline?: string;
+  prefill?: PrefillContext;
+  paramsOverride?: Record<string, unknown>;
+  datasetOverride?: number | null;
+} | null;
 
 export default function Pipelines() {
   const { data: pipelines, isLoading, error } = usePipelines();
   const location = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activePrefill, setActivePrefill] = useState<PrefillContext | null>(null);
+  const [activeParamsOverride, setActiveParamsOverride] = useState<Record<string, unknown> | null>(null);
+  const [activeDatasetOverride, setActiveDatasetOverride] = useState<number | null>(null);
 
   // If navigated here from a "Configure →" button on a run results page,
   // auto-select the requested pipeline and store any prefill context.
@@ -227,6 +249,8 @@ export default function Pipelines() {
     if (state?.selectPipeline) {
       setSelectedId(state.selectPipeline);
       setActivePrefill(state.prefill ?? null);
+      setActiveParamsOverride(state.paramsOverride ?? null);
+      setActiveDatasetOverride(state.datasetOverride ?? null);
       window.history.replaceState({}, "");
     }
   }, [location.state]);
@@ -430,7 +454,12 @@ export default function Pipelines() {
       {/* Detail / parameter form panel */}
       <main className="flex-1 overflow-y-auto p-8">
         {selectedId ? (
-          <PipelineDetail pipelineId={selectedId} prefill={activePrefill} />
+          <PipelineDetail
+            pipelineId={selectedId}
+            prefill={activePrefill}
+            paramsOverride={activeParamsOverride}
+            datasetOverride={activeDatasetOverride}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-surface-raised text-accent shadow-xl shadow-black/20">

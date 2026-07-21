@@ -162,6 +162,16 @@ export interface PipelineSummary {
   input_type?: PipelineInputType;
 }
 
+export interface PipelineResources {
+  min_ram_gb?: number;
+  recommended_ram_gb?: number;
+  min_cpu_count?: number;
+  recommended_cpu_count?: number;
+  min_disk_free_gb?: number;
+  working_space_gb?: number;
+  output_space_gb?: number;
+}
+
 export interface Pipeline extends PipelineSummary {
   inputs: string[];
   outputs: string[];
@@ -170,6 +180,8 @@ export interface Pipeline extends PipelineSummary {
   parameters: PipelineParameter[];
   known_errors?: PipelineKnownError[];
   command_template?: string;
+  resources?: PipelineResources;
+  max_runtime_hours?: number;
 }
 
 export function fetchPipelines(): Promise<PipelineSummary[]> {
@@ -325,6 +337,9 @@ export interface RunLineage {
   artifact_label: string;
   injected_param: string | null;
   injected_path: string | null;
+  external?: boolean;
+  upstream_workspace_id?: string | null;
+  workflow_execution_uuid?: string | null;
 }
 
 export interface RunMetadata {

@@ -143,115 +143,555 @@ function parseTsv(text: string): GroupTableSummary | null {
   };
 }
 
-const PREFERRED_GROUP_COLUMNS = [
-  "bids_name",
-  "subject_id",
-  "modality",
-  "snr_total",
-  "cnr",
-  "cjv",
-  "efc",
-  "fber",
-  "fwhm_avg",
-];
 
-function MriqcGroupSummary({ runId, tablePath }: { runId: number; tablePath: string }) {
+function MriqcGroupSummary({ runId, tablePaths }: { runId: number; tablePaths: Array<{ name: string; path: string }> }) {
+  const navigate = useNavigate();
+  const [activeIdx, setActiveIdx] = useState(0);
   const [summary, setSummary] = useState<GroupTableSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState("bids_name");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+
+  const activeTable = tablePaths[activeIdx] ?? tablePaths[0];
+
+  // IQMs with direction: higher or lower is better
+  const IQM_COLS: Array<{ key: string; label: string; better: "higher" | "lower"; dec: number }> = [
+    { key: "snr_total", label: "SNR",      better: "higher", dec: 2 },
+    { key: "cnr",       label: "CNR",      better: "higher", dec: 2 },
+    { key: "cjv",       label: "CJV",      better: "lower",  dec: 3 },
+    { key: "efc",       label: "EFC",      better: "lower",  dec: 4 },
+    { key: "fber",      label: "FBER",     better: "higher", dec: 1 },
+    { key: "fwhm_avg",  label: "FWHM",     better: "lower",  dec: 2 },
+    { key: "fd_mean",   label: "FD mean",  better: "lower",  dec: 3 },
+    { key: "tsnr",      label: "tSNR",     better: "higher", dec: 1 },
+    { key: "dvars_std", label: "DVARS",    better: "lower",  dec: 3 },
+  ];
 
   useEffect(() => {
+    if (!activeTable) return;
     let cancelled = false;
     setSummary(null);
     setError(null);
-    fetchRunTextFile(runId, tablePath)
-      .then((text) => {
-        if (!cancelled) setSummary(parseTsv(text));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load group table.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runId, tablePath]);
+    fetchRunTextFile(runId, activeTable.path)
+      .then((text) => { if (!cancelled) setSummary(parseTsv(text)); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load group table."); });
+    return () => { cancelled = true; };
+  }, [runId, activeTable?.path]);
 
-  const columns = useMemo(() => {
+  const visibleIqmCols = useMemo(() => {
     if (!summary) return [];
-    const preferred = PREFERRED_GROUP_COLUMNS.filter((column) => summary.headers.includes(column));
-    return preferred.length > 0 ? preferred.slice(0, 7) : summary.headers.slice(0, 7);
+    return IQM_COLS.filter((col) => summary.headers.includes(col.key));
   }, [summary]);
+
+  const subjectKey = useMemo(() => {
+    if (!summary) return null;
+    return ["bids_name", "subject_id", "subject", "sub"].find((k) => summary.headers.includes(k)) ?? null;
+  }, [summary]);
+
+  const sortedRows = useMemo(() => {
+    if (!summary) return [];
+    return [...summary.rows].sort((a, b) => {
+      const av = a[sortCol] ?? "";
+      const bv = b[sortCol] ?? "";
+      const an = parseFloat(av);
+      const bn = parseFloat(bv);
+      const cmp = !isNaN(an) && !isNaN(bn) ? an - bn : av.localeCompare(bv);
+      return sortAsc ? cmp : -cmp;
+    });
+  }, [summary, sortCol, sortAsc]);
+
+  function extractSubId(row: Record<string, string>): string | null {
+    const name = subjectKey ? (row[subjectKey] ?? "") : "";
+    const m = /sub-([A-Za-z0-9]+)/.exec(name);
+    return m ? m[1] : null;
+  }
+
+  const allSubIds = useMemo(() => {
+    const ids = new Set<string>();
+    sortedRows.forEach((row) => { const id = extractSubId(row); if (id) ids.add(id); });
+    return ids;
+  }, [sortedRows]);
+
+  const includedIds = useMemo(
+    () => [...allSubIds].filter((id) => !excluded.has(id)),
+    [allSubIds, excluded],
+  );
+
+  function toggleSort(col: string) {
+    if (sortCol === col) setSortAsc((p) => !p);
+    else { setSortCol(col); setSortAsc(col === "bids_name"); }
+  }
+
+  function toggleExclude(subId: string) {
+    setExcluded((prev) => { const next = new Set(prev); next.has(subId) ? next.delete(subId) : next.add(subId); return next; });
+  }
+
+  function launchWith(pipelineId: string) {
+    navigate("/pipelines", {
+      state: {
+        selectPipeline: pipelineId,
+        prefill: {
+          runId,
+          sourcePipelineId: "mriqc",
+          sourceDisplayName: "MRIQC",
+          artifactType: "bids_dataset",
+          artifactLabel: "BIDS Dataset",
+          param: "participant-label",
+          path: includedIds.join(" "),
+          isDatasetSlot: false,
+        },
+      },
+    });
+  }
 
   if (error) {
     return (
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        MRIQC group table is available for download, but the preview could not be loaded: {error}
+      <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+        MRIQC group table could not be loaded: {error}
       </div>
     );
   }
 
   if (!summary) {
     return (
-      <div className="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
-        Loading MRIQC group table…
+      <div className="mb-4 rounded-lg border border-white/10 bg-surface-raised px-4 py-3 text-sm text-gray-500">
+        Loading MRIQC subject QC table…
       </div>
     );
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-surface-raised">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-white/[0.025] px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">MRIQC Group Summary</h3>
-          <p className="text-xs text-gray-500">Official aggregate IQM table preview.</p>
+          <h3 className="text-sm font-semibold text-gray-100">MRIQC Subject QC Review</h3>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Sort by any IQM · mark outliers to exclude before launching preprocessing
+          </p>
         </div>
-        <a
-          href={`/api/runs/${runId}/files/${tablePath}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:underline"
-        >
-          Open TSV
-        </a>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            <span className="font-semibold text-green-400">{includedIds.length} passing</span>
+            {excluded.size > 0 && (
+              <span className="ml-2 font-semibold text-red-400">{excluded.size} excluded</span>
+            )}
+          </span>
+          {excluded.size > 0 && (
+            <button
+              onClick={() => setExcluded(new Set())}
+              className="text-xs text-gray-500 underline hover:text-gray-300 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+          <a
+            href={`/api/runs/${runId}/files/${activeTable.path}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            ↓ TSV
+          </a>
+        </div>
       </div>
-      <div className="mb-3 grid grid-cols-4 gap-2">
-        <div className="rounded bg-gray-50 p-2">
-          <div className="text-xs text-gray-500">Rows</div>
-          <div className="font-mono text-sm font-semibold text-gray-900">{summary.rows.length}</div>
+
+      {/* Modality tabs (T1w / bold / etc.) */}
+      {tablePaths.length > 1 && (
+        <div className="flex border-b border-white/8 bg-white/[0.015]">
+          {tablePaths.map((t, i) => (
+            <button
+              key={t.path}
+              onClick={() => { setActiveIdx(i); setSummary(null); }}
+              className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
+                i === activeIdx
+                  ? "border-accent text-accent"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {t.name.replace(/^group_/, "").replace(/\.tsv$/, "")}
+            </button>
+          ))}
         </div>
-        <div className="rounded bg-gray-50 p-2">
-          <div className="text-xs text-gray-500">Subjects</div>
-          <div className="font-mono text-sm font-semibold text-gray-900">{summary.subjectCount}</div>
-        </div>
-        <div className="rounded bg-gray-50 p-2">
-          <div className="text-xs text-gray-500">Modalities</div>
-          <div className="font-mono text-sm font-semibold text-gray-900">{summary.modalityCount || "—"}</div>
-        </div>
-        <div className="rounded bg-gray-50 p-2">
-          <div className="text-xs text-gray-500">Missing values</div>
-          <div className="font-mono text-sm font-semibold text-gray-900">{summary.missingCount}</div>
-        </div>
+      )}
+
+      {/* Summary stat row */}
+      <div className="grid grid-cols-4 gap-px border-b border-white/8 bg-white/[0.015]">
+        {[
+          ["Scans", summary.rows.length],
+          ["Subjects", summary.subjectCount],
+          ["Modalities", summary.modalityCount || "—"],
+          ["Passing", includedIds.length],
+        ].map(([label, val]) => (
+          <div key={String(label)} className="bg-surface-raised px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+            <p className="font-mono text-sm font-semibold text-gray-200">{val}</p>
+          </div>
+        ))}
       </div>
-      <div className="overflow-x-auto rounded border border-gray-100">
-        <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
-          <thead className="bg-gray-50 text-gray-500">
+
+      {/* Table */}
+      <div className="max-h-[440px] overflow-auto">
+        <table className="min-w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-surface-raised border-b border-white/8">
             <tr>
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap px-3 py-2 font-medium">{column}</th>
+              <th className="px-3 py-2 text-left text-gray-500 font-medium whitespace-nowrap">Status</th>
+              <th
+                onClick={() => toggleSort("bids_name")}
+                className="cursor-pointer select-none px-3 py-2 text-left text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap"
+              >
+                Subject{sortCol === "bids_name" ? (sortAsc ? " ↑" : " ↓") : ""}
+              </th>
+              {summary.headers.includes("modality") && (
+                <th
+                  onClick={() => toggleSort("modality")}
+                  className="cursor-pointer select-none px-3 py-2 text-left text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap"
+                >
+                  Modality{sortCol === "modality" ? (sortAsc ? " ↑" : " ↓") : ""}
+                </th>
+              )}
+              {visibleIqmCols.map((col) => (
+                <th
+                  key={col.key}
+                  onClick={() => toggleSort(col.key)}
+                  title={col.better === "higher" ? "Higher is better" : "Lower is better"}
+                  className="cursor-pointer select-none px-3 py-2 text-right text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap"
+                >
+                  {col.label}
+                  <span className="ml-0.5 text-[9px] text-gray-600">{col.better === "higher" ? "↑" : "↓"}</span>
+                  {sortCol === col.key ? (sortAsc ? " ↑" : " ↓") : ""}
+                </th>
               ))}
+              <th className="px-3 py-2 text-center text-gray-500 font-medium whitespace-nowrap">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 text-gray-700">
-            {summary.rows.slice(0, 8).map((row, index) => (
-              <tr key={index}>
-                {columns.map((column) => (
-                  <td key={column} className="whitespace-nowrap px-3 py-2 font-mono">
-                    {row[column] || "—"}
+          <tbody>
+            {sortedRows.map((row, idx) => {
+              const subId = extractSubId(row);
+              const isExcluded = subId ? excluded.has(subId) : false;
+              const subjectName = subjectKey ? (row[subjectKey] ?? `row-${idx}`) : `row-${idx}`;
+              return (
+                <tr
+                  key={idx}
+                  className={`border-b border-white/5 transition-colors ${
+                    isExcluded ? "opacity-40" : "hover:bg-white/[0.025]"
+                  }`}
+                >
+                  <td className="px-3 py-1.5">
+                    <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                      isExcluded ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"
+                    }`}>
+                      {isExcluded ? "✕" : "✓"}
+                    </span>
                   </td>
-                ))}
-              </tr>
-            ))}
+                  <td className="px-3 py-1.5 font-mono text-gray-300 whitespace-nowrap">{subjectName}</td>
+                  {summary.headers.includes("modality") && (
+                    <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{row["modality"] ?? "—"}</td>
+                  )}
+                  {visibleIqmCols.map((col) => {
+                    const raw = row[col.key];
+                    const num = parseFloat(raw ?? "");
+                    return (
+                      <td key={col.key} className="px-3 py-1.5 text-right tabular-nums text-gray-300 whitespace-nowrap">
+                        {isNaN(num) ? (raw || "—") : num.toFixed(col.dec)}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-1.5 text-center">
+                    {subId && (
+                      <button
+                        onClick={() => toggleExclude(subId)}
+                        className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                          isExcluded
+                            ? "border border-green-500/30 text-green-400 hover:bg-green-500/10"
+                            : "border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                        }`}
+                      >
+                        {isExcluded ? "Include" : "Exclude"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+
+      {/* Launch bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 bg-white/[0.02] px-4 py-3">
+        <p className="text-xs text-gray-500">
+          Exclude outliers above, then launch preprocessing on the passing subjects.
+          Participant labels will be pre-filled automatically.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => launchWith("fastsurfer")}
+            disabled={includedIds.length === 0}
+            className="rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+          >
+            Launch FastSurfer → {includedIds.length} subject{includedIds.length !== 1 ? "s" : ""}
+          </button>
+          <button
+            onClick={() => launchWith("fmriprep")}
+            disabled={includedIds.length === 0}
+            className="rounded-md border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+          >
+            Launch fMRIPrep → {includedIds.length} subject{includedIds.length !== 1 ? "s" : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MRIQC per-subject QC panel (used when group_*.tsv doesn't exist) ──────────
+//
+// MRIQC participant mode writes per-subject JSON IQM files (sub-*/anat/sub-*_T1w.json)
+// but no group TSV. This component loads all those JSONs in parallel and builds
+// the same sortable/excludable QC table as MriqcGroupSummary.
+
+interface SubjectIqmRow {
+  subId: string;
+  modality: string;
+  path: string;
+  data: Record<string, number | string | null>;
+}
+
+const PARTICIPANT_IQM_COLS: Array<{ key: string; label: string; better: "higher" | "lower"; dec: number }> = [
+  { key: "snr_total", label: "SNR",      better: "higher", dec: 2 },
+  { key: "cnr",       label: "CNR",      better: "higher", dec: 2 },
+  { key: "cjv",       label: "CJV",      better: "lower",  dec: 3 },
+  { key: "efc",       label: "EFC",      better: "lower",  dec: 4 },
+  { key: "fber",      label: "FBER",     better: "higher", dec: 1 },
+  { key: "fwhm_avg",  label: "FWHM",     better: "lower",  dec: 2 },
+  { key: "fd_mean",   label: "FD mean",  better: "lower",  dec: 3 },
+  { key: "tsnr",      label: "tSNR",     better: "higher", dec: 1 },
+  { key: "dvars_std", label: "DVARS",    better: "lower",  dec: 3 },
+];
+
+function parseSubjectFromPath(path: string): { subId: string; modality: string } {
+  // Handles: "sub-01/anat/sub-01_T1w.json" or "sub-01_T1w.json"
+  const subMatch = /sub-([A-Za-z0-9]+)/.exec(path);
+  const subId = subMatch ? subMatch[1] : path;
+  // Extract suffix (T1w, bold, T2w, etc.) — last segment before .json
+  const stemMatch = /sub-[A-Za-z0-9]+(?:_ses-[A-Za-z0-9]+)?(?:_task-[A-Za-z0-9]+)?(?:_run-[A-Za-z0-9]+)?_([A-Za-z0-9]+)\.json$/.exec(path);
+  const modality = stemMatch ? stemMatch[1] : "unknown";
+  return { subId, modality };
+}
+
+function MriqcSubjectQcPanel({ runId, metricFiles }: { runId: number; metricFiles: Array<{ name: string; path: string }> }) {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<SubjectIqmRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sortCol, setSortCol] = useState("subId");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all(
+      metricFiles.map(async (f) => {
+        try {
+          const text = await fetchRunTextFile(runId, f.path);
+          const data = JSON.parse(text) as Record<string, unknown>;
+          const { subId, modality } = parseSubjectFromPath(f.path);
+          return { subId, modality, path: f.path, data: data as Record<string, number | string | null> };
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setRows(results.filter((r): r is SubjectIqmRow => r !== null));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [runId, metricFiles]);
+
+  const visibleCols = useMemo(() => {
+    if (rows.length === 0) return PARTICIPANT_IQM_COLS;
+    return PARTICIPANT_IQM_COLS.filter((col) =>
+      rows.some((r) => r.data[col.key] !== undefined && r.data[col.key] !== null),
+    );
+  }, [rows]);
+
+  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
+    let av: string | number = a[sortCol as "subId" | "modality"] ?? "";
+    let bv: string | number = b[sortCol as "subId" | "modality"] ?? "";
+    if (!(sortCol in a)) {
+      av = (a.data[sortCol] ?? "") as string | number;
+      bv = (b.data[sortCol] ?? "") as string | number;
+    }
+    const an = parseFloat(String(av));
+    const bn = parseFloat(String(bv));
+    const cmp = !isNaN(an) && !isNaN(bn) ? an - bn : String(av).localeCompare(String(bv));
+    return sortAsc ? cmp : -cmp;
+  }), [rows, sortCol, sortAsc]);
+
+  const allSubIds = useMemo(() => [...new Set(rows.map((r) => r.subId))], [rows]);
+  const includedIds = useMemo(() => allSubIds.filter((id) => !excluded.has(id)), [allSubIds, excluded]);
+
+  function toggleSort(col: string) {
+    if (sortCol === col) setSortAsc((p) => !p);
+    else { setSortCol(col); setSortAsc(col === "subId"); }
+  }
+
+  function toggleExclude(subId: string) {
+    setExcluded((prev) => { const next = new Set(prev); next.has(subId) ? next.delete(subId) : next.add(subId); return next; });
+  }
+
+  function launchWith(pipelineId: string) {
+    navigate("/pipelines", {
+      state: {
+        selectPipeline: pipelineId,
+        prefill: {
+          runId,
+          sourcePipelineId: "mriqc",
+          sourceDisplayName: "MRIQC",
+          artifactType: "bids_dataset",
+          artifactLabel: "BIDS Dataset",
+          param: "participant-label",
+          path: includedIds.join(" "),
+          isDatasetSlot: false,
+        },
+      },
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-4 rounded-xl border border-white/10 bg-surface-raised px-4 py-3 text-sm text-gray-500">
+        Loading MRIQC subject QC table…
+      </div>
+    );
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-surface-raised">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-white/[0.025] px-4 py-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-100">MRIQC Subject QC Review</h3>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Sort by any IQM · mark outliers to exclude before launching preprocessing
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            <span className="font-semibold text-green-400">{includedIds.length} passing</span>
+            {excluded.size > 0 && (
+              <span className="ml-2 font-semibold text-red-400">{excluded.size} excluded</span>
+            )}
+          </span>
+          {excluded.size > 0 && (
+            <button onClick={() => setExcluded(new Set())} className="text-xs text-gray-500 underline hover:text-gray-300 transition-colors">
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Summary stat row */}
+      <div className="grid grid-cols-3 gap-px border-b border-white/8 bg-white/[0.015]">
+        {[["Subjects", allSubIds.length], ["Scans", rows.length], ["Passing", includedIds.length]].map(([label, val]) => (
+          <div key={String(label)} className="bg-surface-raised px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+            <p className="font-mono text-sm font-semibold text-gray-200">{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="max-h-[440px] overflow-auto">
+        <table className="min-w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-surface-raised border-b border-white/8">
+            <tr>
+              <th className="px-3 py-2 text-left text-gray-500 font-medium whitespace-nowrap">Status</th>
+              <th onClick={() => toggleSort("subId")} className="cursor-pointer select-none px-3 py-2 text-left text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap">
+                Subject{sortCol === "subId" ? (sortAsc ? " ↑" : " ↓") : ""}
+              </th>
+              <th onClick={() => toggleSort("modality")} className="cursor-pointer select-none px-3 py-2 text-left text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap">
+                Modality{sortCol === "modality" ? (sortAsc ? " ↑" : " ↓") : ""}
+              </th>
+              {visibleCols.map((col) => (
+                <th key={col.key} onClick={() => toggleSort(col.key)}
+                  title={col.better === "higher" ? "Higher is better" : "Lower is better"}
+                  className="cursor-pointer select-none px-3 py-2 text-right text-gray-500 font-medium hover:text-gray-300 whitespace-nowrap"
+                >
+                  {col.label}
+                  <span className="ml-0.5 text-[9px] text-gray-600">{col.better === "higher" ? "↑" : "↓"}</span>
+                  {sortCol === col.key ? (sortAsc ? " ↑" : " ↓") : ""}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-center text-gray-500 font-medium whitespace-nowrap">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((row, idx) => {
+              const isExcluded = excluded.has(row.subId);
+              return (
+                <tr key={idx} className={`border-b border-white/5 transition-colors ${isExcluded ? "opacity-40" : "hover:bg-white/[0.025]"}`}>
+                  <td className="px-3 py-1.5">
+                    <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${isExcluded ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"}`}>
+                      {isExcluded ? "✕" : "✓"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 font-mono text-gray-300 whitespace-nowrap">sub-{row.subId}</td>
+                  <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">{row.modality}</td>
+                  {visibleCols.map((col) => {
+                    const val = row.data[col.key];
+                    const num = typeof val === "number" ? val : parseFloat(String(val ?? ""));
+                    return (
+                      <td key={col.key} className="px-3 py-1.5 text-right tabular-nums text-gray-300 whitespace-nowrap">
+                        {isNaN(num) ? (val ?? "—") : num.toFixed(col.dec)}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-1.5 text-center">
+                    <button
+                      onClick={() => toggleExclude(row.subId)}
+                      className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        isExcluded
+                          ? "border border-green-500/30 text-green-400 hover:bg-green-500/10"
+                          : "border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      }`}
+                    >
+                      {isExcluded ? "Include" : "Exclude"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Launch bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 bg-white/[0.02] px-4 py-3">
+        <p className="text-xs text-gray-500">
+          Exclude outliers above, then launch preprocessing on the passing subjects.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => launchWith("fastsurfer")}
+            disabled={includedIds.length === 0}
+            className="rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+          >
+            Launch FastSurfer → {includedIds.length} subject{includedIds.length !== 1 ? "s" : ""}
+          </button>
+          <button
+            onClick={() => launchWith("fmriprep")}
+            disabled={includedIds.length === 0}
+            className="rounded-md border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+          >
+            Launch fMRIPrep → {includedIds.length} subject{includedIds.length !== 1 ? "s" : ""}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2312,6 +2752,11 @@ export default function RunResults({ runId }: Props) {
   }
 
   const niftis: RunResultFile[] = (results as { niftis?: RunResultFile[] }).niftis ?? [];
+  const allFiles: RunResultFile[] = (results as { files?: RunResultFile[] }).files ?? [];
+  const _volExts = [".nii.gz", ".nii", ".mgz"];
+  const otherFiles = allFiles.filter(
+    (f) => !_volExts.some((ext) => f.name.endsWith(ext)) && !niftis.some((n) => n.path === f.path)
+  );
   const isFmriprep = results.metadata?.pipeline_id === "fmriprep";
   const isFastSurfer = results.metadata?.pipeline_id === "fastsurfer";
   const usesArtifactWorkspace = isFmriprep || isFastSurfer;
@@ -2333,7 +2778,8 @@ export default function RunResults({ runId }: Props) {
     timeseries.length > 0 ||
     roiStatistics.length > 0 ||
     clusterFiles.length > 0 ||
-    niftis.length > 0;
+    niftis.length > 0 ||
+    otherFiles.length > 0;
   // Show Download All when any surfaced file or resolved artifact exists.
   // Resolved artifacts may live in output_dir (e.g. bids-validator writes validation-report.txt)
   // even when they aren't classified as report/metric/nifti.
@@ -2544,9 +2990,14 @@ export default function RunResults({ runId }: Props) {
       {/* IQM summary card */}
       {!usesArtifactWorkspace && iqmData && <IqmCard data={iqmData} />}
 
-      {/* MRIQC group TSV summary */}
+      {/* MRIQC group TSV summary (group mode) */}
       {groupTables.length > 0 && (
-        <MriqcGroupSummary runId={runId} tablePath={groupTables[0].path} />
+        <MriqcGroupSummary runId={runId} tablePaths={groupTables} />
+      )}
+
+      {/* MRIQC per-subject QC (participant mode — no group TSV, use individual JSON IQMs) */}
+      {results.metadata?.pipeline_id === "mriqc" && groupTables.length === 0 && results.metrics.length > 0 && (
+        <MriqcSubjectQcPanel runId={runId} metricFiles={results.metrics} />
       )}
 
       {results.metadata?.pipeline_id === "statistical-map-explorer" ? (
@@ -2841,6 +3292,30 @@ export default function RunResults({ runId }: Props) {
           </div>
         );
       })()}
+
+      {/* Non-volumetric output files (e.g. affine .mat, CSV, JSON).
+          Surfaced generically so every pipeline's non-NIfTI outputs are downloadable. */}
+      {!usesArtifactWorkspace && otherFiles.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-gray-100 mb-2">
+            Other output files ({otherFiles.length})
+          </h3>
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {otherFiles.map((f) => (
+              <div key={f.path} className="flex items-center justify-between px-3 py-2 bg-white gap-3">
+                <span className="text-xs text-gray-700 font-mono truncate">{f.path}</span>
+                <a
+                  href={`/api/runs/${runId}/files/${f.path}`}
+                  download={f.name}
+                  className="shrink-0 rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Download
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* NiivueViewer modal */}
       {viewerLayers && (

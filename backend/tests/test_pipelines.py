@@ -1675,6 +1675,9 @@ def test_compute_profile_in_all_manifests():
         "bids-validator": "local-ok",
         "pydeface": "local-unsafe",
         "brainchop": "local-ok",
+        "fsl-bet": "local-ok",
+        "fsl-fast": "local-slow",
+        "fsl-flirt": "local-slow",
     }
     for fname, expected_profile in expected.items():
         manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
@@ -1698,8 +1701,11 @@ def test_category_and_input_type_in_all_manifests():
         "bids-validator":("validation",        "bids_dataset"),
         "pydeface":      ("deidentification",  "nifti"),
         "brainchop":     ("segmentation",      "nifti"),
+        "fsl-bet":       ("segmentation",      "nifti"),
+        "fsl-fast":      ("segmentation",      "nifti"),
+        "fsl-flirt":     ("registration",      "nifti"),
     }
-    valid_categories = {"conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity"}
+    valid_categories = {"conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity", "registration"}
     valid_input_types = {"dicom", "nifti", "bids_dataset"}
     for fname, (exp_cat, exp_in) in expected.items():
         manifest = _load_manifest(PIPELINES_DIR / f"{fname}.yaml", schema)
@@ -1760,23 +1766,27 @@ def test_bids_validator_cloud_path_uses_host_bind_and_child_command(tmp_path):
     """Cloud datasets bind from /srv while the tool receives only /inputs."""
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "bids-validator.yaml", schema)
+    # Use tmp_path as the backend datasets mount so the directory actually exists
+    # (executor mount-validation checks that translated paths exist in the backend).
+    bids_dir = tmp_path / "x86-minimal-bids"
+    bids_dir.mkdir()
     ctx = RunContext(
         run_id=99,
         manifest=manifest,
-        params={"bids-dir": "/host-data/x86-minimal-bids"},
-        dataset_path="/host-data/x86-minimal-bids",
+        params={"bids-dir": str(bids_dir)},
+        dataset_path=str(bids_dir),
         output_dir=str(tmp_path / "out"),
     )
 
     with patch.object(settings, "host_datasets_mount", "/srv/neuroforge/datasets"), \
-         patch.object(settings, "backend_datasets_mount", "/host-data"):
+         patch.object(settings, "backend_datasets_mount", str(tmp_path)):
         sdk = DockerExecutor()._build_sdk_params(ctx)
 
     source = "/srv/neuroforge/datasets/x86-minimal-bids"
     child = "/inputs/bids-dir/x86-minimal-bids"
     assert sdk.volumes[source] == {"bind": child, "mode": "ro"}
     assert sdk.command[-1] == child
-    assert "/host-data/x86-minimal-bids" not in sdk.command
+    assert str(bids_dir) not in sdk.command
 
 
 def test_bids_validator_report_is_ingested_and_captured_as_log(tmp_path):
@@ -2176,7 +2186,7 @@ def test_alff_maps_offer_all_compatible_run_next_tools(api_client, artifact_type
 def test_docker_manifests_have_container_not_execution():
     """All Docker-based manifests must have container block, not execution block."""
     schema = _load_schema()
-    docker_manifests = ["mriqc", "mriqc-group", "fmriprep", "fastsurfer", "dcm2niix", "bids-validator", "pydeface"]
+    docker_manifests = ["mriqc", "mriqc-group", "fmriprep", "fastsurfer", "dcm2niix", "bids-validator", "pydeface", "fsl-bet", "fsl-fast", "fsl-flirt"]
     for name in docker_manifests:
         manifest = _load_manifest(PIPELINES_DIR / f"{name}.yaml", schema)
         assert "container" in manifest, f"{name}.yaml missing container block"
@@ -2231,3 +2241,1083 @@ def test_pydeface_preflight_dialog_is_triggered():
     # The frontend PreflightDialog fires for local-slow and local-unsafe.
     # Confirm pydeface is in the set that triggers the dialog.
     assert manifest["compute_profile"] in {"local-slow", "local-unsafe"}
+
+
+# ------------------------------------------------------------------ #
+# FSL BET manifest tests                                               #
+# ------------------------------------------------------------------ #
+
+
+def test_fsl_bet_manifest_loads_without_error():
+    """fsl-bet.yaml must load and pass JSON Schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    assert manifest["id"] == "fsl-bet"
+    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-bet"
+    assert manifest["container"]["tag"] == "6.0.7"
+    assert manifest["container"]["engine"] == "docker"
+
+
+def test_fsl_bet_manifest_has_required_fields():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    assert manifest["display_name"] == "FSL BET"
+    assert manifest["description"]
+    assert isinstance(manifest["parameters"], list)
+    assert len(manifest["parameters"]) >= 5
+    assert isinstance(manifest["known_errors"], list)
+    assert len(manifest["known_errors"]) >= 4
+
+
+def test_fsl_bet_compute_profile_is_local_ok():
+    """BET completes in <60 s under Rosetta 2 emulation — qualifies as local-ok."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    assert manifest["compute_profile"] == "local-ok"
+
+
+def test_fsl_bet_dataset_positional_false():
+    """BET does not take a BIDS dataset directory — must use dataset_positional: false."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    assert manifest.get("dataset_positional") is False
+
+
+def test_fsl_bet_input_param_is_mounted_with_cli_flag():
+    """input param must be file_path, required, mount: true, cli_flag: --input."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "input" in params, "fsl-bet must have an 'input' parameter"
+    inp = params["input"]
+    assert inp["type"] == "file_path"
+    assert inp.get("required") is True
+    assert inp.get("mount") is True
+    assert inp.get("cli_flag") == "--input"
+
+
+def test_fsl_bet_output_base_defaults_to_out_brain():
+    """output-base default must write outputs to /out/brain inside the container."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "output-base" in params
+    assert params["output-base"]["default"] == "/out/brain"
+    assert params["output-base"].get("cli_flag") == "--output-base"
+
+
+def test_fsl_bet_mask_param_defaults_true():
+    """-m flag must be enabled by default so a brain_mask.nii.gz is always produced."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "mask" in params
+    assert params["mask"]["default"] is True
+    assert params["mask"].get("cli_flag") == "-m"
+
+
+def test_fsl_bet_produces_skull_stripped_and_mask():
+    """produces[] must declare nifti_skull_stripped and brain_mask artifact types."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    produced_types = {slot["type"] for slot in manifest.get("produces", [])}
+    assert "nifti_skull_stripped" in produced_types
+    assert "brain_mask" in produced_types
+
+
+def test_fsl_bet_produces_path_hints_match_default_output():
+    """path_hints must match what BET writes with the default /out/brain output-base."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    hints = {slot["type"]: slot.get("path_hint") for slot in manifest.get("produces", [])}
+    assert hints["nifti_skull_stripped"] == "brain.nii.gz"
+    assert hints["brain_mask"] == "brain_mask.nii.gz"
+
+
+def test_fsl_bet_accepts_nifti_raw_and_defaced():
+    """BET must accept nifti_raw (direct from scanner) and nifti_defaced (post-deface)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    accepted_types = {slot["type"] for slot in manifest.get("accepts", [])}
+    assert "nifti_raw" in accepted_types
+    assert "nifti_defaced" in accepted_types
+
+
+def test_fsl_bet_appears_in_pipeline_service():
+    """fsl-bet must appear in the registry after PipelineService is constructed."""
+    svc = PipelineService()
+    ids = [p["id"] for p in svc.list_all()]
+    assert "fsl-bet" in ids
+
+
+def test_fsl_bet_input_flag_uses_container_mount_path(tmp_path):
+    """--input CLI flag must receive the container-internal path, not the host path."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=300,
+        manifest=manifest,
+        params={"input": str(t1_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "--input" in cmd, "--input flag must appear in the built command"
+    input_idx = cmd.index("--input")
+    container_path = cmd[input_idx + 1]
+    assert container_path == f"/inputs/input/{t1_file.name}", (
+        f"--input must use container mount path; got {container_path!r}"
+    )
+    assert str(t1_file) not in container_path
+
+
+def test_fsl_bet_no_data_out_positional_prefix(tmp_path):
+    """BET command must not start with /data /out (dataset_positional: false)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    t1_file = tmp_path / "sub-01_T1w.nii.gz"
+    t1_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=301,
+        manifest=manifest,
+        params={"input": str(t1_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert "/data" not in sdk.command, (
+        f"BET command must not contain /data positional; command: {sdk.command}"
+    )
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/data" not in bound_targets, (
+        "BET must not mount anything at /data"
+    )
+
+
+def test_fsl_bet_mask_flag_emitted_as_single_dash_m(tmp_path):
+    """The mask parameter must emit -m (single dash), not --mask."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    t1_file = tmp_path / "input.nii.gz"
+    t1_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=302,
+        manifest=manifest,
+        params={"input": str(t1_file), "mask": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    cmd_str = " ".join(cmd)
+    assert "-m" in cmd, f"-m flag must appear in command; got: {cmd_str}"
+    assert "--mask" not in cmd_str, f"--mask (double-dash) must not appear; got: {cmd_str}"
+
+
+def test_fsl_bet_known_errors_include_image_not_found():
+    """A missing wrapper image must produce a clear fix hint to build it locally."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ghcr.io/neuroforge/fsl-bet" in p or "not found" in p for p in patterns), (
+        "At least one known_error pattern must match the 'image not found' case"
+    )
+
+
+# ------------------------------------------------------------------ #
+# FSL FAST manifest tests                                              #
+# ------------------------------------------------------------------ #
+
+
+def test_fsl_fast_manifest_loads_without_error():
+    """fsl-fast.yaml must load and pass JSON Schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    assert manifest["id"] == "fsl-fast"
+    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-fast"
+    assert manifest["container"]["tag"] == "6.0.7"
+    assert manifest["container"]["engine"] == "docker"
+
+
+def test_fsl_fast_manifest_has_required_fields():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    assert manifest["display_name"] == "FSL FAST"
+    assert manifest["description"]
+    assert isinstance(manifest["parameters"], list)
+    assert len(manifest["parameters"]) >= 5
+    assert isinstance(manifest["known_errors"], list)
+    assert len(manifest["known_errors"]) >= 4
+
+
+def test_fsl_fast_compute_profile_is_local_slow():
+    """FAST takes 15-40 min under Rosetta 2 emulation — must be local-slow."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    assert manifest["compute_profile"] == "local-slow"
+
+
+def test_fsl_fast_preflight_dialog_is_triggered():
+    """local-slow must match the preflight dialog trigger condition."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    assert manifest["compute_profile"] in {"local-slow", "local-unsafe"}
+
+
+def test_fsl_fast_dataset_positional_false():
+    """FAST takes a single NIfTI file, not a BIDS dataset directory."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    assert manifest.get("dataset_positional") is False
+
+
+def test_fsl_fast_input_param_is_mounted_with_cli_flag():
+    """input param must be file_path, required, mount: true, cli_flag: --input."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "input" in params
+    inp = params["input"]
+    assert inp["type"] == "file_path"
+    assert inp.get("required") is True
+    assert inp.get("mount") is True
+    assert inp.get("cli_flag") == "--input"
+
+
+def test_fsl_fast_output_base_defaults_to_out_result():
+    """output-base default must write outputs to /out/result inside the container."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "output-base" in params
+    assert params["output-base"]["default"] == "/out/result"
+    assert params["output-base"].get("cli_flag") == "--output-base"
+
+
+def test_fsl_fast_image_type_defaults_to_t1():
+    """image-type must default to 1 (T1w) with cli_flag -t."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "image-type" in params
+    assert params["image-type"]["default"] == 1
+    assert params["image-type"].get("cli_flag") == "-t"
+
+
+def test_fsl_fast_n_classes_defaults_to_3():
+    """n-classes must default to 3 with cli_flag -n."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "n-classes" in params
+    assert params["n-classes"]["default"] == 3
+    assert params["n-classes"].get("cli_flag") == "-n"
+
+
+def test_fsl_fast_bias_field_param_defaults_true():
+    """-b flag must be enabled by default so result_bias.nii.gz is always produced."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "bias-field" in params
+    assert params["bias-field"]["default"] is True
+    assert params["bias-field"].get("cli_flag") == "-b"
+
+
+def test_fsl_fast_produces_all_tissue_artifact_types():
+    """produces[] must declare tissue_class_map, tissue_pve_csf, tissue_pve_gm, tissue_pve_wm."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    produced_types = {slot["type"] for slot in manifest.get("produces", [])}
+    assert "tissue_class_map" in produced_types
+    assert "tissue_pve_csf" in produced_types
+    assert "tissue_pve_gm" in produced_types
+    assert "tissue_pve_wm" in produced_types
+
+
+def test_fsl_fast_produces_bias_field_and_restored():
+    """produces[] must declare bias_field and restored_image artifact types."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    produced_types = {slot["type"] for slot in manifest.get("produces", [])}
+    assert "bias_field" in produced_types
+    assert "restored_image" in produced_types
+
+
+def test_fsl_fast_path_hints_match_fast_output_names():
+    """path_hints must match the filenames FAST emits with the default output-base."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    hints = {slot["type"]: slot.get("path_hint") for slot in manifest.get("produces", [])}
+    assert hints["tissue_class_map"] == "result_seg.nii.gz"
+    assert hints["tissue_pve_csf"] == "result_pve_0.nii.gz"
+    assert hints["tissue_pve_gm"] == "result_pve_1.nii.gz"
+    assert hints["tissue_pve_wm"] == "result_pve_2.nii.gz"
+    assert hints["bias_field"] == "result_bias.nii.gz"
+    assert hints["restored_image"] == "result_restore.nii.gz"
+
+
+def test_fsl_fast_accepts_skull_stripped_as_primary():
+    """FAST must accept nifti_skull_stripped (the primary expected input)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    accepted_types = {slot["type"] for slot in manifest.get("accepts", [])}
+    assert "nifti_skull_stripped" in accepted_types
+
+
+def test_fsl_fast_accepts_nifti_raw_and_defaced():
+    """FAST must also accept nifti_raw and nifti_defaced for flexible chaining."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    accepted_types = {slot["type"] for slot in manifest.get("accepts", [])}
+    assert "nifti_raw" in accepted_types
+    assert "nifti_defaced" in accepted_types
+
+
+def test_fsl_fast_appears_in_pipeline_service():
+    """fsl-fast must appear in the registry after PipelineService is constructed."""
+    svc = PipelineService()
+    ids = [p["id"] for p in svc.list_all()]
+    assert "fsl-fast" in ids
+
+
+def test_fsl_fast_input_flag_uses_container_mount_path(tmp_path):
+    """--input CLI flag must receive the container-internal path, not the host path."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=400,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "--input" in cmd
+    input_idx = cmd.index("--input")
+    container_path = cmd[input_idx + 1]
+    assert container_path == f"/inputs/input/{brain_file.name}"
+    assert str(brain_file) not in container_path
+
+
+def test_fsl_fast_no_data_out_positional_prefix(tmp_path):
+    """FAST command must not start with /data /out (dataset_positional: false)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=401,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert "/data" not in sdk.command
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/data" not in bound_targets
+
+
+def test_fsl_fast_bias_flag_emitted_as_single_dash_b(tmp_path):
+    """The bias-field parameter must emit -b (single dash), not --bias-field."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=402,
+        manifest=manifest,
+        params={"input": str(brain_file), "bias-field": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    cmd_str = " ".join(cmd)
+    assert "-b" in cmd
+    assert "--bias-field" not in cmd_str
+
+
+def test_fsl_fast_known_errors_include_image_not_found():
+    """A missing wrapper image must produce a clear fix hint to build it locally."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ghcr.io/neuroforge/fsl-fast" in p or "not found" in p for p in patterns)
+
+
+# ------------------------------------------------------------------ #
+# FSL FLIRT manifest tests                                             #
+# ------------------------------------------------------------------ #
+
+
+def test_fsl_flirt_manifest_loads_without_error():
+    """fsl-flirt.yaml must load and pass JSON Schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest["id"] == "fsl-flirt"
+    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-flirt"
+    assert manifest["container"]["tag"] == "6.0.7"
+    assert manifest["container"]["engine"] == "docker"
+
+
+def test_fsl_flirt_manifest_has_required_fields():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest["display_name"] == "FSL FLIRT"
+    assert manifest["description"]
+    assert isinstance(manifest["parameters"], list)
+    assert len(manifest["parameters"]) >= 8
+    assert isinstance(manifest["known_errors"], list)
+    assert len(manifest["known_errors"]) >= 5
+
+
+def test_fsl_flirt_category_is_registration():
+    """FLIRT is a registration tool — category must be 'registration'."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest["category"] == "registration"
+
+
+def test_fsl_flirt_compute_profile_is_local_slow():
+    """FLIRT can take 5-20 min under Rosetta 2 emulation — must be local-slow."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest["compute_profile"] == "local-slow"
+
+
+def test_fsl_flirt_preflight_dialog_is_triggered():
+    """local-slow must match the preflight dialog trigger condition."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest["compute_profile"] in {"local-slow", "local-unsafe"}
+
+
+def test_fsl_flirt_dataset_positional_false():
+    """FLIRT takes a single NIfTI file, not a BIDS dataset directory."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    assert manifest.get("dataset_positional") is False
+
+
+def test_fsl_flirt_input_param_is_mounted_with_cli_flag():
+    """input param must be file_path, required, mount: true, cli_flag: --input."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "input" in params
+    inp = params["input"]
+    assert inp["type"] == "file_path"
+    assert inp.get("required") is True
+    assert inp.get("mount") is True
+    assert inp.get("cli_flag") == "--input"
+
+
+def test_fsl_flirt_ref_preset_defaults_to_mni152_2mm():
+    """ref-preset must default to mni152_2mm — the common fast registration target."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "ref-preset" in params
+    assert params["ref-preset"]["default"] == "mni152_2mm"
+    assert params["ref-preset"].get("cli_flag") == "--ref-preset"
+
+
+def test_fsl_flirt_ref_file_is_optional_and_mounted():
+    """ref-file must be optional, file_path, mount: true for custom reference support."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "ref-file" in params
+    rf = params["ref-file"]
+    assert rf["type"] == "file_path"
+    assert rf.get("required") is not True  # optional
+    assert rf.get("mount") is True
+    assert rf.get("cli_flag") == "--ref-file"
+
+
+def test_fsl_flirt_output_base_defaults_to_out_registered():
+    """output-base default must write outputs to /out/registered inside the container."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "output-base" in params
+    assert params["output-base"]["default"] == "/out/registered"
+    assert params["output-base"].get("cli_flag") == "--output-base"
+
+
+def test_fsl_flirt_dof_defaults_to_12():
+    """degrees-of-freedom must default to 12 (full affine) with cli_flag -dof."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "dof" in params
+    assert params["dof"]["default"] == 12
+    assert params["dof"].get("cli_flag") == "-dof"
+
+
+def test_fsl_flirt_cost_defaults_to_corratio():
+    """cost function must default to corratio (best for T1→MNI152) with cli_flag -cost."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "cost" in params
+    assert params["cost"]["default"] == "corratio"
+    assert params["cost"].get("cli_flag") == "-cost"
+
+
+def test_fsl_flirt_interp_defaults_to_trilinear():
+    """interpolation must default to trilinear with cli_flag -interp."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "interp" in params
+    assert params["interp"]["default"] == "trilinear"
+    assert params["interp"].get("cli_flag") == "-interp"
+
+
+def test_fsl_flirt_produces_registered_image_and_matrix():
+    """produces[] must declare registered_image and affine_matrix artifact types."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    produced_types = {slot["type"] for slot in manifest.get("produces", [])}
+    assert "registered_image" in produced_types
+    assert "affine_matrix" in produced_types
+
+
+def test_fsl_flirt_path_hints_match_flirt_output_names():
+    """path_hints must match the files FLIRT writes with the default output-base."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    hints = {slot["type"]: slot.get("path_hint") for slot in manifest.get("produces", [])}
+    assert hints["registered_image"] == "registered.nii.gz"
+    assert hints["affine_matrix"] == "registered.mat"
+
+
+def test_fsl_flirt_accepts_skull_stripped_as_primary():
+    """FLIRT must accept nifti_skull_stripped (the recommended registration input)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    accepted_types = {slot["type"] for slot in manifest.get("accepts", [])}
+    assert "nifti_skull_stripped" in accepted_types
+
+
+def test_fsl_flirt_accepts_restored_image_for_bet_fast_flirt_chain():
+    """FLIRT must accept restored_image so BET→FAST→FLIRT chaining works."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    accepted_types = {slot["type"] for slot in manifest.get("accepts", [])}
+    assert "restored_image" in accepted_types
+
+
+def test_fsl_flirt_appears_in_pipeline_service():
+    """fsl-flirt must appear in the registry after PipelineService is constructed."""
+    svc = PipelineService()
+    ids = [p["id"] for p in svc.list_all()]
+    assert "fsl-flirt" in ids
+
+
+def test_fsl_flirt_input_flag_uses_container_mount_path(tmp_path):
+    """--input CLI flag must receive the container-internal path, not the host path."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=500,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "--input" in cmd
+    idx = cmd.index("--input")
+    container_path = cmd[idx + 1]
+    assert container_path == f"/inputs/input/{brain_file.name}"
+    assert str(brain_file) not in container_path
+
+
+def test_fsl_flirt_no_data_out_positional_prefix(tmp_path):
+    """FLIRT command must not start with /data /out (dataset_positional: false)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=501,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+
+    assert "/data" not in sdk.command
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/data" not in bound_targets
+
+
+def test_fsl_flirt_ref_preset_passed_as_flag(tmp_path):
+    """--ref-preset must appear in the built command with its value."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=502,
+        manifest=manifest,
+        params={"input": str(brain_file), "ref-preset": "mni152_1mm"},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    assert "--ref-preset" in cmd
+    idx = cmd.index("--ref-preset")
+    assert cmd[idx + 1] == "mni152_1mm"
+
+
+def test_fsl_flirt_dof_flag_uses_single_dash(tmp_path):
+    """The dof parameter must emit -dof (single dash) not --dof."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=503,
+        manifest=manifest,
+        params={"input": str(brain_file), "dof": 6},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = executor.build_command(ctx)
+
+    cmd_str = " ".join(cmd)
+    assert "-dof" in cmd
+    assert "--dof" not in cmd_str
+
+
+def test_fsl_flirt_ref_file_mounted_when_provided(tmp_path):
+    """When ref-file is provided, it must be mounted and --ref-file flag must appear."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    ref_file = tmp_path / "my_template.nii.gz"
+    brain_file.write_text("fake")
+    ref_file.write_text("fake ref")
+
+    ctx = RunContext(
+        run_id=504,
+        manifest=manifest,
+        params={"input": str(brain_file), "ref-preset": "custom", "ref-file": str(ref_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    executor = DockerExecutor()
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = executor._build_sdk_params(ctx)
+        cmd = executor.build_command(ctx)
+
+    # ref-file must be mounted
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/inputs/ref-file/my_template.nii.gz" in bound_targets
+    # --ref-file must appear in command with container path
+    assert "--ref-file" in cmd
+    idx = cmd.index("--ref-file")
+    assert cmd[idx + 1] == "/inputs/ref-file/my_template.nii.gz"
+
+
+def test_fsl_flirt_known_errors_include_image_not_found():
+    """A missing wrapper image must produce a clear fix hint to build it locally."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ghcr.io/neuroforge/fsl-flirt" in p or "not found" in p for p in patterns)
+
+
+def test_fsl_flirt_known_errors_include_missing_ref_file():
+    """A missing ref-file when preset=custom must produce a clear error pattern."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ref-file" in p or "ref-preset=custom" in p for p in patterns)
+
+
+# ── FSL FNIRT ─────────────────────────────────────────────────────────────────
+
+
+def test_fsl_fnirt_manifest_loads_without_error():
+    """fsl-fnirt.yaml must load and pass JSON Schema validation."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    assert manifest["id"] == "fsl-fnirt"
+    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-fnirt"
+    assert manifest["container"]["tag"] == "6.0.7"
+    assert manifest["container"]["engine"] == "docker"
+
+
+def test_fsl_fnirt_manifest_has_required_fields():
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    assert manifest["display_name"] == "FSL FNIRT"
+    assert manifest["description"]
+    assert isinstance(manifest["parameters"], list)
+    assert len(manifest["parameters"]) >= 6
+    assert isinstance(manifest["known_errors"], list)
+    assert len(manifest["known_errors"]) >= 5
+
+
+def test_fsl_fnirt_category_is_registration():
+    """FNIRT is a registration tool — category must be 'registration'."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    assert manifest["category"] == "registration"
+
+
+def test_fsl_fnirt_compute_profile_is_local_slow():
+    """FNIRT takes 3-90 min depending on resolution and platform — must be local-slow."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    assert manifest["compute_profile"] == "local-slow"
+
+
+def test_fsl_fnirt_dataset_positional_false():
+    """FNIRT takes a single NIfTI file, not a BIDS dataset directory."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    assert manifest.get("dataset_positional") is False
+
+
+def test_fsl_fnirt_input_param_is_mounted_with_cli_flag():
+    """input param must be file_path, required, mount: true, cli_flag: --input."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "input" in params
+    inp = params["input"]
+    assert inp["type"] == "file_path"
+    assert inp.get("required") is True
+    assert inp.get("mount") is True
+    assert inp.get("cli_flag") == "--input"
+
+
+def test_fsl_fnirt_aff_mat_is_optional_and_mounted():
+    """aff-mat (FLIRT initialisation) must be optional and mount: true."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "aff-mat" in params
+    aff = params["aff-mat"]
+    assert aff.get("required") is not True
+    assert aff.get("mount") is True
+    assert aff.get("cli_flag") == "--aff-mat"
+
+
+def test_fsl_fnirt_ref_preset_defaults_to_mni152_2mm():
+    """ref-preset must default to mni152_2mm (the recommended standard template)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "ref-preset" in params
+    assert params["ref-preset"]["default"] == "mni152_2mm"
+
+
+def test_fsl_fnirt_ref_file_is_optional_and_mounted():
+    """ref-file must be optional (only used when ref-preset=custom) and mount: true."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "ref-file" in params
+    ref = params["ref-file"]
+    assert ref.get("required") is not True
+    assert ref.get("mount") is True
+    assert ref.get("cli_flag") == "--ref-file"
+
+
+def test_fsl_fnirt_config_preset_defaults_to_t1_2_mni152_2mm():
+    """config-preset must default to T1_2_MNI152_2mm (the standard FSL config)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    params = {p["name"]: p for p in manifest["parameters"]}
+    assert "config-preset" in params
+    assert params["config-preset"]["default"] == "T1_2_MNI152_2mm"
+
+
+def test_fsl_fnirt_produces_nonlinear_registered_image():
+    """produces[] must include nonlinear_registered_image (the resampled result)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    types = [p["type"] for p in manifest["produces"]]
+    assert "nonlinear_registered_image" in types
+
+
+def test_fsl_fnirt_produces_coefficient_field():
+    """produces[] must include coefficient_field (required for applywarp)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    types = [p["type"] for p in manifest["produces"]]
+    assert "coefficient_field" in types
+
+
+def test_fsl_fnirt_produces_optional_warp_and_jacobian():
+    """produces[] must include warp_field and jacobian_image (optional outputs)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    types = [p["type"] for p in manifest["produces"]]
+    assert "warp_field" in types
+    assert "jacobian_image" in types
+
+
+def test_fsl_fnirt_path_hints_match_wrapper_output_names():
+    """Path hints must match the filenames written by neuroforge-fnirt.sh."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    hints = {p["type"]: p["path_hint"] for p in manifest["produces"]}
+    assert hints["nonlinear_registered_image"] == "fnirt_result.nii.gz"
+    assert hints["coefficient_field"] == "fnirt_warpcoef.nii.gz"
+    assert hints["warp_field"] == "fnirt_field.nii.gz"
+    assert hints["jacobian_image"] == "fnirt_jac.nii.gz"
+
+
+def test_fsl_fnirt_accepts_skull_stripped_nifti():
+    """accepts[] must include nifti_skull_stripped mapped to the input param."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    accepted = {a["type"]: a for a in manifest["accepts"]}
+    assert "nifti_skull_stripped" in accepted
+    assert accepted["nifti_skull_stripped"]["param"] == "input"
+
+
+def test_fsl_fnirt_accepts_affine_matrix_for_initialisation():
+    """accepts[] must include affine_matrix mapped to aff-mat for the BET→FLIRT→FNIRT chain."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    accepted = {a["type"]: a for a in manifest["accepts"]}
+    assert "affine_matrix" in accepted
+    assert accepted["affine_matrix"]["param"] == "aff-mat"
+
+
+def test_fsl_fnirt_appears_in_pipeline_service():
+    """PipelineService.list() must include fsl-fnirt after registry seeding."""
+    from app.services.pipeline import get_registry
+    registry = get_registry()
+    assert "fsl-fnirt" in registry, "fsl-fnirt must be registered in get_registry()"
+
+
+def test_fsl_fnirt_input_flag_uses_container_mount_path(tmp_path):
+    """--input CLI flag must receive the container-internal /inputs/input/<name> path."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake nifti")
+
+    ctx = RunContext(
+        run_id=600,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = DockerExecutor().build_command(ctx)
+
+    assert "--input" in cmd
+    idx = cmd.index("--input")
+    container_path = cmd[idx + 1]
+    assert container_path == f"/inputs/input/{brain_file.name}"
+    assert str(brain_file) not in container_path
+
+
+def test_fsl_fnirt_no_data_out_positional_prefix(tmp_path):
+    """FNIRT command must not start with /data /out positional prefixes (dataset_positional: false)."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=601,
+        manifest=manifest,
+        params={"input": str(brain_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = DockerExecutor()._build_sdk_params(ctx)
+
+    assert "/data" not in sdk.command
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/data" not in bound_targets
+
+
+def test_fsl_fnirt_ref_preset_passed_as_flag(tmp_path):
+    """--ref-preset must appear in the built command with the correct value."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=602,
+        manifest=manifest,
+        params={"input": str(brain_file), "ref-preset": "mni152_1mm"},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = DockerExecutor().build_command(ctx)
+
+    assert "--ref-preset" in cmd
+    idx = cmd.index("--ref-preset")
+    assert cmd[idx + 1] == "mni152_1mm"
+
+
+def test_fsl_fnirt_aff_mat_mounted_when_provided(tmp_path):
+    """When aff-mat is provided, it must be mounted and --aff-mat flag must appear."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    mat_file = tmp_path / "registered.mat"
+    brain_file.write_text("fake")
+    mat_file.write_text("1 0 0 0\n0 1 0 0\n0 0 1 0\n0 0 0 1\n")
+
+    ctx = RunContext(
+        run_id=603,
+        manifest=manifest,
+        params={"input": str(brain_file), "aff-mat": str(mat_file)},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = DockerExecutor()._build_sdk_params(ctx)
+        cmd = DockerExecutor().build_command(ctx)
+
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/inputs/aff-mat/registered.mat" in bound_targets
+    assert "--aff-mat" in cmd
+    idx = cmd.index("--aff-mat")
+    assert cmd[idx + 1] == "/inputs/aff-mat/registered.mat"
+
+
+def test_fsl_fnirt_ref_file_mounted_when_provided(tmp_path):
+    """When ref-preset=custom and ref-file is provided, it must be mounted."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    ref_file = tmp_path / "my_template.nii.gz"
+    brain_file.write_text("fake")
+    ref_file.write_text("fake ref")
+
+    ctx = RunContext(
+        run_id=604,
+        manifest=manifest,
+        params={
+            "input": str(brain_file),
+            "ref-preset": "custom",
+            "ref-file": str(ref_file),
+        },
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        sdk = DockerExecutor()._build_sdk_params(ctx)
+        cmd = DockerExecutor().build_command(ctx)
+
+    bound_targets = [v["bind"] for v in sdk.volumes.values()]
+    assert "/inputs/ref-file/my_template.nii.gz" in bound_targets
+    assert "--ref-file" in cmd
+    idx = cmd.index("--ref-file")
+    assert cmd[idx + 1] == "/inputs/ref-file/my_template.nii.gz"
+
+
+def test_fsl_fnirt_output_field_flag_emitted_when_true(tmp_path):
+    """--output-field true must appear in the built command when the param is true."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    brain_file = tmp_path / "brain.nii.gz"
+    brain_file.write_text("fake")
+
+    ctx = RunContext(
+        run_id=605,
+        manifest=manifest,
+        params={"input": str(brain_file), "output-field": True},
+        dataset_path=str(tmp_path / "dataset"),
+        output_dir=str(tmp_path / "out"),
+    )
+    with patch("app.execution.docker_executor.to_host_path", side_effect=lambda p: p):
+        cmd = DockerExecutor().build_command(ctx)
+
+    assert "--output-field" in cmd
+
+
+def test_fsl_fnirt_known_errors_include_missing_wrapper_image():
+    """A missing wrapper image must produce a clear fix hint to build it locally."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ghcr.io/neuroforge/fsl-fnirt" in p or "manifest unknown" in p for p in patterns)
+
+
+def test_fsl_fnirt_known_errors_include_missing_ref_file():
+    """When ref-preset=custom without ref-file, the error pattern must match."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("ref-file" in p or "ref-preset=custom" in p for p in patterns)
+
+
+def test_fsl_fnirt_known_errors_include_memory_exhaustion():
+    """OOM kill must be caught — FNIRT needs 4-16 GB RAM."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("Killed" in p or "MemoryError" in p or "Cannot allocate" in p for p in patterns)
+
+
+def test_fsl_fnirt_known_errors_include_missing_input():
+    """Missing --input must produce a clear error pattern."""
+    schema = _load_schema()
+    manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
+    patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
+    assert any("--input is required" in p for p in patterns)

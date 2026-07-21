@@ -61,3 +61,44 @@ class WorkflowSummary(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class WorkflowExecutionCreate(BaseModel):
+    idempotency_key: str = Field(..., min_length=1, max_length=128)
+    execution_uuid: str | None = None
+    remote_profile_id: str | None = Field(None, max_length=128)
+    state: dict
+
+
+class WorkflowExecutionUpdate(BaseModel):
+    expected_revision: int = Field(..., ge=1)
+    status: str
+    current_node_id: str | None = None
+    remote_profile_id: str | None = None
+    return_sync_complete: bool = False
+    state: dict
+
+
+class WorkflowExecutionRead(BaseModel):
+    id: int
+    execution_uuid: str
+    workflow_id: int
+    idempotency_key: str
+    status: str
+    current_node_id: str | None
+    remote_profile_id: str | None
+    state: dict
+    revision: int
+    return_sync_complete: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowTransferRead(BaseModel):
+    artifact_key: str
+    relative_path: str
+    sha256: str
+    size_bytes: int
+    bytes_received: int
+    status: str
+    staged_path: str | None = None

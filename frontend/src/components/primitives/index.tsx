@@ -15,10 +15,10 @@ export function PageHeader({
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
         {eyebrow && (
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">{eyebrow}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{eyebrow}</p>
         )}
         <h1 className="mt-1 text-2xl font-bold text-white">{title}</h1>
-        {subtitle && <div className="mt-1 text-sm text-slate-400">{subtitle}</div>}
+        {subtitle && <div className="mt-1 text-sm text-gray-400">{subtitle}</div>}
       </div>
       {children && <div className="flex flex-wrap gap-2">{children}</div>}
     </div>
@@ -31,10 +31,10 @@ export function MetricCard({
   label, value, detail,
 }: { label: string; value: string | number; detail?: string }) {
   return (
-    <div className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p>
+    <div className="rounded-xl border border-white/8 bg-surface-raised p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{label}</p>
       <p className="mt-2 text-2xl font-bold tabular-nums text-white">{value}</p>
-      {detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}
+      {detail && <p className="mt-1 text-xs text-gray-500">{detail}</p>}
     </div>
   );
 }
@@ -45,8 +45,8 @@ export function Badge({
   children, tone = "slate",
 }: { children: ReactNode; tone?: BadgeTone }) {
   const style: Record<BadgeTone, string> = {
-    slate: "border-white/10 bg-white/5 text-slate-300",
-    cloud: "border-sky-400/20 bg-sky-400/10 text-sky-300",
+    slate: "border-white/10 bg-white/5 text-gray-300",
+    cloud: "border-accent/20 bg-accent/10 text-accent",
     success: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
     warning: "border-amber-400/20 bg-amber-400/10 text-amber-300",
     danger: "border-red-400/20 bg-red-400/10 text-red-300",
@@ -67,7 +67,7 @@ export function PrimaryButton({ children, ...props }: BtnProps) {
     <button
       type="button"
       {...props}
-      className="rounded-md bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-300 disabled:opacity-50"
+      className="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-gray-950 transition-colors hover:bg-accent disabled:opacity-50"
     >
       {children}
     </button>
@@ -79,7 +79,7 @@ export function SecondaryButton({ children, ...props }: BtnProps) {
     <button
       type="button"
       {...props}
-      className="rounded-md border border-white/10 px-3 py-2 text-xs text-slate-300 transition-colors hover:text-white disabled:opacity-40"
+      className="rounded-md border border-white/10 px-3 py-2 text-xs text-gray-300 transition-colors hover:text-white disabled:opacity-40"
     >
       {children}
     </button>
@@ -103,7 +103,7 @@ export function DangerButton({ children, ...props }: BtnProps) {
 export type BannerTone = "info" | "success" | "warning" | "danger";
 
 const BANNER_CLS: Record<BannerTone, string> = {
-  info: "border-cyan-400/20 bg-cyan-400/5 text-cyan-200",
+  info: "border-accent/20 bg-accent/5 text-accent",
   success: "border-emerald-400/20 bg-emerald-400/5 text-emerald-200",
   warning: "border-amber-400/20 bg-amber-400/5 text-amber-200",
   danger: "border-red-400/20 bg-red-400/5 text-red-300",
@@ -134,8 +134,8 @@ export function EmptyState({
 }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
     <div className="rounded-xl border border-dashed border-white/10 p-10 text-center">
-      <p className="text-sm font-medium text-slate-400">{title}</p>
-      {subtitle && <p className="mt-1 text-xs text-slate-600">{subtitle}</p>}
+      <p className="text-sm font-medium text-gray-400">{title}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-600">{subtitle}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );
@@ -144,8 +144,8 @@ export function EmptyState({
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-      <p className="text-sm text-slate-400">{label}</p>
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      <p className="text-sm text-gray-400">{label}</p>
     </div>
   );
 }
@@ -154,9 +154,9 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   return (
     <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-6 text-center">
       <p className="text-sm font-semibold text-red-300">Something went wrong</p>
-      <p className="mt-1 text-xs text-slate-400">{message}</p>
+      <p className="mt-1 text-xs text-gray-400">{message}</p>
       {onRetry && (
-        <button onClick={onRetry} className="mt-4 text-xs text-cyan-400 hover:text-cyan-300">
+        <button onClick={onRetry} className="mt-4 text-xs text-accent hover:text-accent">
           Try again
         </button>
       )}
@@ -170,16 +170,16 @@ export function FormField({
   label, error, children, hint,
 }: { label: string; error?: string | null; children: ReactNode; hint?: string }) {
   return (
-    <label className="block text-xs text-slate-400">
+    <label className="block text-xs text-gray-400">
       {label}
       <div className="mt-1">{children}</div>
-      {hint && !error && <p className="mt-1 text-[10px] text-slate-600">{hint}</p>}
+      {hint && !error && <p className="mt-1 text-[10px] text-gray-600">{hint}</p>}
       {error && <p className="mt-1 text-[10px] text-red-400">{error}</p>}
     </label>
   );
 }
 
-const INPUT_CLS = "w-full rounded border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none";
+const INPUT_CLS = "w-full rounded border border-white/10 bg-surface px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-accent/50 focus:outline-none";
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={INPUT_CLS} />;
@@ -199,7 +199,7 @@ export function SelectInput(
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-xl border border-white/8 bg-slate-900/50 p-5 ${className}`}>
+    <div className={`rounded-xl border border-white/8 bg-surface-raised p-5 ${className}`}>
       {children}
     </div>
   );
@@ -210,7 +210,7 @@ export function CardHeader({ title, subtitle, children }: { title: string; subti
     <div className="flex items-start justify-between gap-4">
       <div>
         <h2 className="text-sm font-semibold text-white">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -224,7 +224,7 @@ export function SectionDivider({ label }: { label?: string }) {
   return (
     <div className="flex items-center gap-3">
       <div className="h-px flex-1 bg-white/8" />
-      <span className="text-[10px] uppercase tracking-widest text-slate-600">{label}</span>
+      <span className="text-[10px] uppercase tracking-widest text-gray-600">{label}</span>
       <div className="h-px flex-1 bg-white/8" />
     </div>
   );
@@ -243,16 +243,16 @@ export function Drawer({
       role="dialog"
       aria-label={title}
     >
-      <div className={`h-full w-full ${width} overflow-y-auto border-l border-white/10 bg-[#0a0f1a] shadow-2xl`}>
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/8 bg-[#0a0f1a] px-6 py-4">
+      <div className={`h-full w-full ${width} overflow-y-auto border-l border-white/10 bg-surface shadow-2xl`}>
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/8 bg-surface px-6 py-4">
           <div>
             <h2 className="text-lg font-bold text-white">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+            {subtitle && <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md border border-white/10 px-3 py-1 text-sm text-slate-300 transition-colors hover:text-white"
+            className="rounded-md border border-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:text-white"
           >
             Close
           </button>
@@ -276,8 +276,8 @@ export function TabBar<T extends string>({
           onClick={() => onChange(tab)}
           className={`px-3 py-2 text-xs capitalize transition-colors ${
             active === tab
-              ? "border-b-2 border-cyan-400 text-cyan-300"
-              : "text-slate-500 hover:text-slate-300"
+              ? "border-b-2 border-accent text-accent"
+              : "text-gray-500 hover:text-gray-300"
           }`}
         >
           {tab}
@@ -297,7 +297,7 @@ export function ConfirmAction({
   const colorClass = tone === "danger" ? "text-red-300 border-red-400/20 hover:text-red-200" : "text-amber-300 border-amber-400/20 hover:text-amber-200";
   return (
     <div className="flex items-center gap-3">
-      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-xs text-gray-400">{label}</p>
       <button
         onClick={() => void onConfirm()}
         className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${colorClass}`}

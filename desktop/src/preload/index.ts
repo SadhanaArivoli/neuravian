@@ -1,7 +1,28 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { StartupUpdate } from "../main/types.js";
+import type {
+  DefaultViewerSceneRequest,
+  ReadArtifactRequest,
+  ViewerRendererApi,
+} from "./viewer-api-contract.js";
+
+// Sandboxed Electron preloads cannot require sibling files in packaged asar
+// builds. Keep this preload runtime self-contained; the types remain shared.
+const VIEWER_RUNTIME_BUILD = "2026-07-19-viewer-contract-v1";
+const VIEWER_CHANNELS = {
+  readArtifact: "viewers:read-artifact",
+  assertDefaultScene: "viewers:assert-default-scene",
+} as const;
+
+const viewerApi: ViewerRendererApi = {
+  viewerRuntimeBuild: VIEWER_RUNTIME_BUILD,
+  readArtifact: (input: ReadArtifactRequest) => ipcRenderer.invoke(VIEWER_CHANNELS.readArtifact, input),
+  assertDefaultViewerScene: (input: DefaultViewerSceneRequest) =>
+    ipcRenderer.invoke(VIEWER_CHANNELS.assertDefaultScene, input),
+};
 
 contextBridge.exposeInMainWorld("neuroforgeDesktop", {
+  ...viewerApi,
   platform: process.platform,
   architecture: process.arch,
   versions: {
@@ -41,11 +62,13 @@ contextBridge.exposeInMainWorld("neuroforgeDesktop", {
   openWorkspaceRun: (input: unknown) => ipcRenderer.invoke("workspaces:open-run", input),
   syncWorkspaceArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-artifacts", input),
   syncAllRunArtifacts: (input: unknown) => ipcRenderer.invoke("workspaces:sync-all-run-artifacts", input),
+  syncWorkflowInputs: (input: unknown) => ipcRenderer.invoke("workspaces:sync-workflow-inputs", input),
+  prepareWorkflowHandoff: (input: unknown) => ipcRenderer.invoke("workspaces:prepare-workflow-handoff", input),
+  updateWorkflowExecution: (input: unknown) => ipcRenderer.invoke("workspaces:update-workflow-execution", input),
   launchLocalViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch-local", request),
   launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
   browseForViewer: (viewerId: string) => ipcRenderer.invoke("viewers:browse-for-executable", viewerId),
   saveViewerConfig: (input: { viewerId: string; executablePath: string | null }) => ipcRenderer.invoke("viewers:save-configured", input),
-  readArtifact: (input: { workspaceId: string; runId: number; relativePath: string }) => ipcRenderer.invoke("viewers:read-artifact", input),
   pushCloudProject: (input: unknown) => ipcRenderer.invoke("workspaces:push-project", input),
   pushCloudWorkflow: (input: unknown) => ipcRenderer.invoke("workspaces:push-workflow", input),
   replicateObjects: (input: unknown) => ipcRenderer.invoke("workspaces:replicate-objects", input),

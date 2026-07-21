@@ -1,4 +1,9 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } from "electron";
+import {
+  VIEWER_CHANNELS,
+  type DefaultViewerSceneRequest,
+  type ReadArtifactRequest,
+} from "../preload/viewer-api-contract.js";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -482,9 +487,9 @@ ipcMain.handle("viewers:save-configured", async (
   await saveViewerSetting(app.getPath("userData"), input.viewerId, input.executablePath);
   return true;
 });
-ipcMain.handle("viewers:read-artifact", async (
+ipcMain.handle(VIEWER_CHANNELS.readArtifact, async (
   _event,
-  input: { workspaceId: string; runId: number; relativePath: string },
+  input: ReadArtifactRequest,
 ) => {
   const { workspaceId, runId, relativePath } = input;
   if (typeof workspaceId !== "string" || /[/\\]/.test(workspaceId) || !workspaceId) {
@@ -499,6 +504,24 @@ ipcMain.handle("viewers:read-artifact", async (
   const file = path.resolve(root, normalized);
   if (!file.startsWith(`${root}${path.sep}`)) throw new Error("Artifact path escaped cache root.");
   return await readFile(file);
+});
+ipcMain.handle(VIEWER_CHANNELS.assertDefaultScene, async (
+  _event,
+  request: DefaultViewerSceneRequest,
+) => {
+  if (request.files.length !== 1 || request.files[0]?.intendedRole !== "base image") {
+    throw new Error("Invalid viewer payload: a default launch requires exactly one semantic base image.");
+  }
+  const metadataPath = path.join(
+    app.getPath("userData"), "run-cache", request.workspaceId, `run-${request.runId}`, "run-metadata.json",
+  );
+  const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
+    artifacts: Array<{ relativePath: string }>;
+  };
+  if (!metadata.artifacts.some((artifact) => artifact.relativePath === request.files[0].relativePath)) {
+    throw new Error("Invalid viewer payload: the selected base image is not present in the synchronized run cache.");
+  }
+  return true;
 });
 ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
 ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
@@ -708,6 +731,100 @@ ipcMain.handle("workspaces:sync-all-run-artifacts", async (
   );
 });
 
+ipcMain.handle("workspaces:sync-workflow-inputs", async (
+  _event,
+  input: { profileId: string; executionUuid: string; upstreamRunId: number; artifactType: string },
+) => {
+  if (!/^[0-9a-f-]{36}$/i.test(input.executionUuid)) throw new Error("Invalid workflow execution UUID.");
+  if (!Number.isInteger(input.upstreamRunId) || input.upstreamRunId < 1) throw new Error("Invalid upstream run ID.");
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(input.artifactType)) throw new Error("Invalid artifact type.");
+  const { profiles, wre } = workspaceServices();
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  return await wre.syncWorkflowInputs(
+    profile,
+    await profiles.credential(input.profileId),
+    input.executionUuid,
+    input.upstreamRunId,
+    input.artifactType,
+  );
+});
+
+ipcMain.handle("workspaces:prepare-workflow-handoff", async (
+  _event,
+  input: {
+    profileId: string; workflowId: number; executionUuid: string; idempotencyKey: string;
+    upstreamRunId: number; artifactType: string; state: Record<string, unknown>;
+  },
+) => {
+  const { profiles, envManager, wre } = workspaceServices();
+  let profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  if (profile.connectionMode === "instance-id") {
+    const launched = await envManager.launch(input.profileId, credential);
+    profile = launched.profile;
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers.Authorization = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const createExecution = (workflowId: number) => fetch(new URL(`/api/workflows/${workflowId}/executions`, `${profile.serverUrl}/`).toString(), {
+    method: "POST", headers,
+    body: JSON.stringify({
+      execution_uuid: input.executionUuid,
+      idempotency_key: input.idempotencyKey,
+      remote_profile_id: input.profileId,
+      state: input.state,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  let cloudWorkflowId = input.workflowId;
+  let response = await createExecution(cloudWorkflowId);
+  if (response.status === 404) {
+    const workflowResponse = await fetch(new URL("/api/workflows", `${profile.serverUrl}/`).toString(), {
+      method: "POST", headers,
+      body: JSON.stringify({ name: "Mixed-location workflow", state: input.state }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!workflowResponse.ok) throw new Error(`Cloud workflow registration failed: HTTP ${workflowResponse.status}`);
+    const cloudWorkflow = await workflowResponse.json() as { id: number };
+    cloudWorkflowId = cloudWorkflow.id;
+    response = await createExecution(cloudWorkflowId);
+  }
+  if (!response.ok) throw new Error(`Cloud workflow handoff failed: HTTP ${response.status}`);
+  const execution = await response.json() as Record<string, unknown>;
+  const persistedExecutionUuid = String(execution.execution_uuid ?? input.executionUuid);
+  const sync = await wre.syncWorkflowInputs(
+    profile, credential, persistedExecutionUuid, input.upstreamRunId, input.artifactType,
+  );
+  return { execution, executionUuid: persistedExecutionUuid, cloudWorkflowId, ...sync };
+});
+
+ipcMain.handle("workspaces:update-workflow-execution", async (
+  _event,
+  input: {
+    profileId: string; executionUuid: string; expectedRevision: number; status: string;
+    currentNodeId?: string | null; returnSyncComplete?: boolean; state: Record<string, unknown>;
+  },
+) => {
+  const profiles = workspaceServices().profiles;
+  const profile = (await profiles.list()).find((item) => item.id === input.profileId);
+  if (!profile) throw new Error("Workspace profile not found.");
+  const credential = await profiles.credential(input.profileId);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (credential) headers.Authorization = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+  const response = await fetch(new URL(`/api/workflow-executions/${input.executionUuid}`, `${profile.serverUrl}/`).toString(), {
+    method: "PATCH", headers,
+    body: JSON.stringify({
+      expected_revision: input.expectedRevision, status: input.status,
+      current_node_id: input.currentNodeId ?? null, remote_profile_id: input.profileId,
+      return_sync_complete: input.returnSyncComplete ?? false, state: input.state,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Workflow state update failed: HTTP ${response.status}`);
+  return await response.json() as Record<string, unknown>;
+});
+
 ipcMain.handle("workspaces:push-project", async (
   _event,
   input: {
@@ -770,6 +887,18 @@ ipcMain.handle("workspaces:launch-pipeline", async (
     profileId: string;
     pipelineId: string;
     datasetId: number;
+    lineage?: {
+      upstream_run_id: number;
+      upstream_pipeline_id: string;
+      upstream_pipeline_display_name?: string;
+      artifact_type: string;
+      artifact_label: string;
+      injected_param?: string;
+      injected_path?: string;
+      external?: boolean;
+      upstream_workspace_id?: string;
+      workflow_execution_uuid?: string;
+    };
     params?: Record<string, unknown>;
     autoStart?: boolean;
   },
@@ -779,13 +908,17 @@ ipcMain.handle("workspaces:launch-pipeline", async (
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
 
-  // Auto-start: bring the environment up if it is not already running.
-  if (input.autoStart && profile.connectionMode === "instance-id") {
+  // Resolve the current public address even when EC2 is already running.
+  // A stop/start can change its IP while leaving a stale saved gateway URL.
+  if (profile.connectionMode === "instance-id") {
     const { resolveEc2State: getState } = await import("./workspace-client.js");
     const health = await getState(profile);
-    if (health.instanceState !== "running") {
+    if (input.autoStart && health.instanceState !== "running") {
       const launched = await envManager.launch(input.profileId, credential);
       profile = launched.profile;
+    } else if (health.resolvedServerUrl && health.resolvedServerUrl !== profile.serverUrl) {
+      profile = { ...profile, serverUrl: health.resolvedServerUrl, serverIdentity: null };
+      await profiles.update(profile);
     }
   }
 
@@ -803,6 +936,7 @@ ipcMain.handle("workspaces:launch-pipeline", async (
     body: JSON.stringify({
       pipeline_id: input.pipelineId,
       dataset_id: input.datasetId,
+      lineage: input.lineage,
       params: input.params ?? {},
     }),
     signal: AbortSignal.timeout(15_000),
@@ -997,7 +1131,11 @@ ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunch
   await launchViewer(command, outputRoot);
   return true;
 });
-ipcMain.handle("viewers:launch", async (_event, request: ViewerLaunchRequest) => {
+ipcMain.handle(VIEWER_CHANNELS.launch, async (_event, request: ViewerLaunchRequest) => {
+  if ((request.launchMode ?? "default") === "default" &&
+      (request.files.length !== 1 || request.files[0]?.intendedRole !== "base image")) {
+    throw new Error("Invalid viewer payload: a default launch requires exactly one semantic base image.");
+  }
   if (!["darwin", "win32", "linux"].includes(process.platform)) throw new Error("External viewers are unavailable on this platform.");
   const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
   if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");

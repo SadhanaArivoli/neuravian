@@ -298,12 +298,31 @@ export function remoteIdentityKey(identity: StableRemoteIdentity): string {
   return `${identity.workspaceId}:${identity.resourceType}:${identity.serverResourceId}`;
 }
 
+// Semantic role of an artifact — determined once at sync time and persisted.
+// Matches the ArtifactSemanticRole export in frontend/src/lib/artifact-capabilities.ts.
+export type ArtifactSemanticRole =
+  | "defaced-intensity"
+  | "anatomical-intensity"
+  | "functional-intensity"
+  | "diffusion-intensity"
+  | "segmentation"
+  | "mask"
+  | "probability-map"
+  | "statistical-map"
+  | "surface"
+  | "transform"
+  | "report"
+  | "unknown-volume"
+  | "other";
+
 export interface WorkspaceArtifact {
   artifactId: string | number;
   relativePath: string;
   url: string;
   sha256: string;
   sizeBytes: number;
+  /** Semantic role attached at sync time. Absent on legacy cached artifacts. */
+  semanticRole?: ArtifactSemanticRole;
   geometry?: {
     shape: number[];
     voxelSize: number[];

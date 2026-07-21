@@ -38,7 +38,7 @@ export default function Datasets() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-semibold">Datasets</h1>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               All Workspaces · {localDatasets.length} local · {allCloudDatasets.length} cloud
             </p>
           </div>
@@ -79,13 +79,13 @@ export default function Datasets() {
             return (
               <div
                 key={`cloud-${ds.remoteKey}`}
-                className="block rounded-md border border-sky-500/20 bg-surface-raised p-4"
+                className="block rounded-md border border-accent/20 bg-surface-raised p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-gray-100 truncate">{name}</p>
-                      <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud · {profileName}</span>
+                      <span className="shrink-0 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">Cloud · {profileName}</span>
                     </div>
                     {!!ds.path && <p className="text-xs text-gray-500 truncate mt-0.5">{String(ds.path)}</p>}
                     <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -129,7 +129,7 @@ export default function Datasets() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-semibold">Datasets</h1>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               {cloud.profile?.name ?? "Cloud workspace"} ·{" "}
               {cloud.loading ? "Syncing…" : cloud.online ? "Online" : "Offline (cached)"} ·{" "}
               {cloudDatasets.length} dataset{cloudDatasets.length !== 1 ? "s" : ""}
@@ -175,7 +175,7 @@ export default function Datasets() {
                         <p className="font-medium text-gray-100 truncate">
                           {(ds.name as string | undefined) ?? `Dataset #${d.id}`}
                         </p>
-                        <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud</span>
+                        <span className="shrink-0 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">Cloud</span>
                       </div>
                       {!!ds.path && <p className="text-xs text-gray-500 truncate mt-0.5">{String(ds.path)}</p>}
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -187,7 +187,7 @@ export default function Datasets() {
                           <span>{(ds.modalities as string[]).join(", ")}</span>
                         )}
                       </div>
-                      <p className="mt-1.5 text-[10px] font-mono text-slate-600 break-all">{d.remoteKey}</p>
+                      <p className="mt-1.5 text-[10px] font-mono text-gray-600 break-all">{d.remoteKey}</p>
                     </div>
                     {!!ds.validation_status && (
                       <ValidationStatusBanner status={ds.validation_status as Dataset["validation_status"]} />

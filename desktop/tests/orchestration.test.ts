@@ -10,7 +10,7 @@ import { StartupStateStore } from "../src/main/state-store.js";
 import { DesktopLogger } from "../src/main/logger.js";
 import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 
-const root = "/tmp/neuroforge-fixture";
+const root = path.join(os.tmpdir(), "neuroforge-fixture");
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
   dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],

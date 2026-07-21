@@ -6,6 +6,7 @@ import {
   Page, PageHeader, PrimaryButton, SecondaryButton, TabBar,
 } from "../components/primitives/index";
 import { WorkspaceSettingsPanel } from "../components/domain/WorkspaceSettingsPanel";
+import { CloudRunDetail } from "../components/domain/CloudRunDetail";
 
 const REFRESH_MS = 15_000;
 type WorkspaceView = "home" | "projects" | "datasets" | "workflows" | "runs" | "reports";
@@ -147,39 +148,6 @@ function ViewerStatusCard({ inspection }: { inspection: WorkspaceInspection | nu
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ArtifactTable({ run }: { run: WorkspaceRun }) {
-  if (!run.artifacts.length) return <p className="text-sm text-gray-500">No artifact manifest available.</p>;
-  return (
-    <div className="overflow-x-auto rounded-lg border border-white/8">
-      <table className="w-full min-w-[720px] text-left text-xs">
-        <thead className="bg-surface/70 text-gray-500">
-          <tr>
-            <th className="px-3 py-2">Artifact</th>
-            <th className="px-3 py-2">Location</th>
-            <th className="px-3 py-2">Size</th>
-            <th className="px-3 py-2">Checksum</th>
-            <th className="px-3 py-2">Geometry</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/5">
-          {run.artifacts.map((a) => {
-            const cached = run.cachedArtifacts.includes(a.relativePath);
-            return (
-              <tr key={String(a.artifactId)} className="text-gray-300">
-                <td className="px-3 py-2 font-mono text-[11px]">{a.relativePath}</td>
-                <td className="px-3 py-2"><Badge tone={cached ? "success" : "cloud"}>{cached ? "Cached" : "Cloud"}</Badge></td>
-                <td className="px-3 py-2">{formatBytes(a.sizeBytes)}</td>
-                <td className="px-3 py-2 font-mono text-[10px]" title={a.sha256}>{a.sha256.slice(0, 12)}…</td>
-                <td className="px-3 py-2">{a.geometry ? `${a.geometry.shape.join("×")} · ${a.geometry.orientation.join("")}` : "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -646,10 +614,10 @@ export default function Workspaces() {
 
       {/* Drawers */}
       {selectedRun && activeProfile && snapshot && (
-        <RunDrawer
+        <CloudRunDetail
           profile={activeProfile}
           workspaceId={snapshot.workspaceId}
-          run={selectedRun}
+          run={snapshot.runs.find((run) => run.id === selectedRun.id) ?? selectedRun}
           online={online}
           inspection={inspection}
           onClose={() => setSelectedRun(null)}
@@ -904,127 +872,6 @@ function CloudContent({
   );
 
   return null;
-}
-
-// ── Run drawer ─────────────────────────────────────────────────────────────────
-
-function RunDrawer({
-  profile, workspaceId, run, online, inspection, onClose, onCacheChanged,
-}: {
-  profile: WorkspaceProfile; workspaceId: string; run: WorkspaceRun; online: boolean;
-  inspection: WorkspaceInspection | null; onClose: () => void; onCacheChanged: () => void;
-}) {
-  const desktop = window.neuroforgeDesktop!;
-  const [tab, setTab] = useState<"overview" | "artifacts" | "logs" | "reports">("overview");
-  const [downloading, setDownloading] = useState<string[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
-  const anatomy = run.artifacts.find((a) => a.relativePath.endsWith("/mri/orig_nu.mgz"));
-  const segmentation = run.artifacts.find((a) => a.relativePath.endsWith("/mri/aseg.auto.mgz"));
-  const freeview = inspection?.viewers.find((v) => v.viewerId === "freeview");
-  const required = anatomy && segmentation ? [anatomy.relativePath, segmentation.relativePath] : [];
-  const cached = required.length > 0 && required.every((r) => run.cachedArtifacts.includes(r));
-
-  async function openFreeView() {
-    if (!freeview?.installed || required.length !== 2 || (!online && !cached)) return;
-    setMessage(null);
-    try {
-      if (online) {
-        setDownloading(required);
-        const result = await desktop.syncWorkspaceArtifacts({
-          profileId: profile.id, workspaceId, runId: run.id, relativePaths: required,
-        });
-        setMessage(`${result.downloaded.length} downloaded · ${result.reused.length} reused`);
-      }
-      await desktop.launchViewer({
-        viewerId: "freeview", workspaceId, runId: run.id,
-        files: [{ relativePath: required[0] }, { relativePath: required[1], overlay: true }],
-        opacity: 0.7, freesurferLut: true,
-      });
-      onCacheChanged();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDownloading([]);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm" role="dialog">
-      <div className="h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-surface p-6 shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-white">Run #{run.id}</h2>
-              <Badge tone="cloud">Cloud</Badge>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] ${cacheClass(run.cacheState)}`}>{cacheLabel(run.cacheState)}</span>
-            </div>
-            <p className="mt-1 text-sm text-gray-400">{run.pipeline_manifest_id} · {run.status}</p>
-          </div>
-          <SecondaryButton onClick={onClose}>Close</SecondaryButton>
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          <MetricCard label="Artifacts" value={run.artifacts.length} detail={`${run.cachedArtifacts.length} cached`} />
-          <MetricCard label="Reports" value={run.reports?.length ?? 0} />
-          <MetricCard label="Created" value={new Date(run.created_at).toLocaleDateString()} />
-          <MetricCard label="Completed" value={run.finished_at ? new Date(run.finished_at).toLocaleDateString() : "—"} />
-        </div>
-
-        <div className="mt-5">
-          <TabBar tabs={["overview", "artifacts", "logs", "reports"] as const} active={tab} onChange={setTab} />
-        </div>
-
-        <div className="mt-5">
-          {tab === "overview" && (
-            <div className="space-y-5">
-              <Card>
-                <CardHeader title="Open results" />
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <button onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
-                    className="rounded-lg border border-accent/20 bg-accent/10 p-3 text-left text-sm text-accent">
-                    Open in Cloud Browser
-                    <span className="mt-1 block text-[10px] text-gray-500">Authenticated cloud run page</span>
-                  </button>
-                  <button disabled={!freeview?.installed || required.length !== 2 || (!online && !cached)}
-                    onClick={() => void openFreeView()}
-                    className="rounded-lg border border-accent/20 bg-accent/10 p-3 text-left text-sm text-accent disabled:opacity-40 disabled:cursor-not-allowed">
-                    Open in FreeView
-                    <span className="mt-1 block text-[10px] text-gray-500">
-                      {!freeview?.installed ? (freeview?.reason ?? "Not installed") : required.length !== 2 ? "No compatible artifacts" : cached ? "Ready from cache" : "Downloads 2 artifacts"}
-                    </span>
-                  </button>
-                  <button disabled className="rounded-lg border border-white/8 bg-white/5 p-3 text-left text-sm text-gray-400 disabled:opacity-40 disabled:cursor-not-allowed">
-                    Open in MRIcroGL
-                    <span className="mt-1 block text-[10px] text-gray-500">Configure in Workspace Settings → Viewers</span>
-                  </button>
-                </div>
-                {downloading.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
-                    <p className="text-xs font-semibold text-amber-300">Downloading</p>
-                    {downloading.map((f) => (
-                      <div key={f} className="mt-2 flex items-center gap-2 text-xs text-gray-300">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-300" />{f.split("/").pop()}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {message && <p className="mt-3 text-xs text-gray-400">{message}</p>}
-              </Card>
-              <Card>
-                <CardHeader title="Pipeline parameters" />
-                <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-surface/70 p-3 text-[11px] text-gray-400">
-                  {JSON.stringify(run.parameters ?? {}, null, 2)}
-                </pre>
-              </Card>
-            </div>
-          )}
-          {tab === "artifacts" && <ArtifactTable run={run} />}
-          {tab === "logs" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-surface/70 p-4 text-[11px] text-gray-400">{JSON.stringify(run.logs ?? { message: "No logs cached" }, null, 2)}</pre>}
-          {tab === "reports" && <pre className="max-h-[60vh] overflow-auto rounded-lg bg-surface/70 p-4 text-[11px] text-gray-400">{JSON.stringify(run.reports ?? [], null, 2)}</pre>}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── Dataset drawer ─────────────────────────────────────────────────────────────

@@ -44,11 +44,11 @@ def _check(result, check_id: str):
     return next(check for check in result.checks if check.id == check_id)
 
 
-def test_native_x86_passes_architecture_but_stays_pending(tmp_path: Path) -> None:
+def test_native_x86_passes_architecture_and_empirical_verification(tmp_path: Path) -> None:
     result = _run("fmriprep", tmp_path)
     assert _check(result, "cpu_architecture").status == "pass"
-    assert _check(result, "empirical_verification").message == "Pending empirical x86_64 verification."
-    assert result.empirical_status == "pending-x86_64"
+    assert _check(result, "empirical_verification").message == "Verification status is recorded as verified."
+    assert result.empirical_status == "verified"
 
 
 def test_apple_silicon_blocks_local_unsafe_pipeline(tmp_path: Path) -> None:

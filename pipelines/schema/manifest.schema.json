@@ -4,7 +4,14 @@
   "title": "NeuroForge Pipeline Manifest",
   "description": "Schema for YAML pipeline manifests. Each manifest describes how to invoke one containerized neuroimaging tool.",
   "type": "object",
-  "required": ["id", "display_name", "description", "inputs", "outputs", "parameters"],
+  "required": [
+    "id",
+    "display_name",
+    "description",
+    "inputs",
+    "outputs",
+    "parameters"
+  ],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -27,7 +34,11 @@
     },
     "container": {
       "type": "object",
-      "required": ["image", "tag", "engine"],
+      "required": [
+        "image",
+        "tag",
+        "engine"
+      ],
       "additionalProperties": false,
       "properties": {
         "image": {
@@ -37,7 +48,11 @@
         "tag": {
           "type": "string",
           "description": "Pinned image tag. Never 'latest'.",
-          "not": { "enum": ["latest"] }
+          "not": {
+            "enum": [
+              "latest"
+            ]
+          }
         },
         "digest": {
           "type": "string",
@@ -46,7 +61,9 @@
         },
         "engine": {
           "type": "string",
-          "enum": ["docker"],
+          "enum": [
+            "docker"
+          ],
           "description": "Container engine. Only 'docker' is supported in v1."
         }
       }
@@ -54,12 +71,17 @@
     "execution": {
       "type": "object",
       "description": "Native subprocess execution block. Use this instead of 'container' for tools installed directly in the backend image (e.g. via pip). Exactly one of 'container' or 'execution' must be present.",
-      "required": ["type", "command"],
+      "required": [
+        "type",
+        "command"
+      ],
       "additionalProperties": false,
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["native"],
+          "enum": [
+            "native"
+          ],
           "description": "Execution type. 'native' runs the tool as a subprocess inside the backend container via NativeExecutor."
         },
         "command": {
@@ -70,17 +92,23 @@
     },
     "inputs": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Expected input types (e.g. ['bids_dataset'])."
     },
     "outputs": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Expected output directories relative to the derivatives root."
     },
     "parameters": {
       "type": "array",
-      "items": { "$ref": "#/$defs/parameter" },
+      "items": {
+        "$ref": "#/$defs/parameter"
+      },
       "description": "Ordered list of user-configurable parameters rendered in the run wizard."
     },
     "max_runtime_hours": {
@@ -90,7 +118,9 @@
     },
     "known_errors": {
       "type": "array",
-      "items": { "$ref": "#/$defs/known_error" },
+      "items": {
+        "$ref": "#/$defs/known_error"
+      },
       "description": "Regex-based error patterns with plain-language explanations."
     },
     "command_template": {
@@ -105,17 +135,26 @@
     "run_as_user": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["uid", "gid"],
+      "required": [
+        "uid",
+        "gid"
+      ],
       "properties": {
-        "uid": {"type": "integer", "minimum": 0},
-        "gid": {"type": "integer", "minimum": 0}
+        "uid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "description": "Optional explicit numeric UID/GID for the container process. Mutually exclusive with run_as_host_user. The executor prepares only the current run output directory for this identity before launch."
     },
     "dataset_positional": {
       "type": "boolean",
       "default": true,
-      "description": "If true (default), the container command starts with the fixed positional pair '/data /out' and /data is mounted read-only to the BIDS dataset. If false, no positional prefix is emitted and /data is not mounted — used for flag-only pipelines like FastSurfer that address inputs via --flag mounts rather than a BIDS directory argument."
+      "description": "If true (default), the container command starts with the fixed positional pair '/data /out' and /data is mounted read-only to the BIDS dataset. If false, no positional prefix is emitted and /data is not mounted \u2014 used for flag-only pipelines like FastSurfer that address inputs via --flag mounts rather than a BIDS directory argument."
     },
     "seed_output_from_lineage_artifact_type": {
       "type": "string",
@@ -123,82 +162,166 @@
     },
     "deprecated_params": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
-      "description": "Map of old param name → new param name for migration across manifest versions."
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Map of old param name \u2192 new param name for migration across manifest versions."
     },
     "compute_profile": {
       "type": "string",
-      "enum": ["local-ok", "local-slow", "local-unsafe"],
+      "enum": [
+        "local-ok",
+        "local-slow",
+        "local-unsafe"
+      ],
       "description": "Expected local-execution quality. local-ok=runs well locally; local-slow=runs but significantly slower (e.g. Rosetta 2 emulation); local-unsafe=may hang indefinitely locally (e.g. AVX2 dependency)."
     },
     "preflight": {
       "type": "object",
-      "required": ["empirical_status", "required_os", "required_architecture", "architecture_mismatch", "resources"],
+      "required": [
+        "empirical_status",
+        "required_os",
+        "required_architecture",
+        "architecture_mismatch",
+        "resources"
+      ],
       "additionalProperties": false,
       "properties": {
         "empirical_status": {
           "type": "string",
-          "enum": ["verified", "pending-x86_64", "unsupported"]
+          "enum": [
+            "verified",
+            "pending-x86_64",
+            "unsupported"
+          ]
         },
-        "required_os": { "type": "string" },
-        "required_architecture": { "type": "string" },
+        "required_os": {
+          "type": "string"
+        },
+        "required_architecture": {
+          "type": "string"
+        },
         "architecture_mismatch": {
           "type": "string",
-          "enum": ["warning", "fail"]
+          "enum": [
+            "warning",
+            "fail"
+          ]
         },
-        "requires_valid_bids": { "type": "boolean", "default": false },
+        "requires_valid_bids": {
+          "type": "boolean",
+          "default": false
+        },
         "license_parameters": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": []
         },
         "ports": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
           "default": []
         },
-        "known_local_unsafe": { "type": "string" },
+        "known_local_unsafe": {
+          "type": "string"
+        },
         "resources": {
           "type": "object",
-          "required": ["min_ram_gb", "recommended_ram_gb", "min_cpu_count", "recommended_cpu_count", "min_disk_free_gb", "working_space_gb", "output_space_gb"],
+          "required": [
+            "min_ram_gb",
+            "recommended_ram_gb",
+            "min_cpu_count",
+            "recommended_cpu_count",
+            "min_disk_free_gb",
+            "working_space_gb",
+            "output_space_gb"
+          ],
           "additionalProperties": false,
           "properties": {
-            "min_ram_gb": { "type": "number", "minimum": 0 },
-            "recommended_ram_gb": { "type": "number", "minimum": 0 },
-            "min_cpu_count": { "type": "integer", "minimum": 1 },
-            "recommended_cpu_count": { "type": "integer", "minimum": 1 },
-            "min_disk_free_gb": { "type": "number", "minimum": 0 },
-            "working_space_gb": { "type": "number", "minimum": 0 },
-            "output_space_gb": { "type": "number", "minimum": 0 }
+            "min_ram_gb": {
+              "type": "number",
+              "minimum": 0
+            },
+            "recommended_ram_gb": {
+              "type": "number",
+              "minimum": 0
+            },
+            "min_cpu_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recommended_cpu_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "min_disk_free_gb": {
+              "type": "number",
+              "minimum": 0
+            },
+            "working_space_gb": {
+              "type": "number",
+              "minimum": 0
+            },
+            "output_space_gb": {
+              "type": "number",
+              "minimum": 0
+            }
           }
         }
       }
     },
     "category": {
       "type": "string",
-      "enum": ["conversion", "validation", "quality_control", "segmentation", "preprocessing", "deidentification", "connectivity"],
+      "enum": [
+        "conversion",
+        "validation",
+        "quality_control",
+        "segmentation",
+        "preprocessing",
+        "deidentification",
+        "connectivity",
+        "registration"
+      ],
       "description": "Functional category for UI grouping and filtering. Choose the primary purpose of the tool."
     },
     "input_type": {
       "type": "string",
-      "enum": ["dicom", "nifti", "bids_dataset", "matrix"],
+      "enum": [
+        "dicom",
+        "nifti",
+        "bids_dataset",
+        "matrix"
+      ],
       "description": "Coarse classification of what raw data this pipeline expects. Used for UI filtering. dicom=raw scanner DICOMs; nifti=one or more .nii/.nii.gz files; bids_dataset=a BIDS-formatted directory."
     },
     "accepts": {
       "type": "array",
-      "items": { "$ref": "#/$defs/accept_slot" },
-      "description": "Artifact types this pipeline can receive from a prior run. Each entry maps an artifact type to a parameter that the artifact path populates. Optional — pipelines without this field are standalone only."
+      "items": {
+        "$ref": "#/$defs/accept_slot"
+      },
+      "description": "Artifact types this pipeline can receive from a prior run. Each entry maps an artifact type to a parameter that the artifact path populates. Optional \u2014 pipelines without this field are standalone only."
     },
     "produces": {
       "type": "array",
-      "items": { "$ref": "#/$defs/produce_slot" },
+      "items": {
+        "$ref": "#/$defs/produce_slot"
+      },
       "description": "Artifact types this pipeline outputs. Used for chaining: downstream pipelines that accept a matching type can be pre-populated from this run's outputs. Optional."
     }
   },
   "$defs": {
     "parameter": {
       "type": "object",
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "additionalProperties": false,
       "properties": {
         "name": {
@@ -207,7 +330,16 @@
         },
         "type": {
           "type": "string",
-          "enum": ["string", "integer", "float", "boolean", "file_path", "directory_path", "multiselect", "select"],
+          "enum": [
+            "string",
+            "integer",
+            "float",
+            "boolean",
+            "file_path",
+            "directory_path",
+            "multiselect",
+            "select"
+          ],
           "description": "Parameter value type, used to render the correct form control."
         },
         "required": {
@@ -219,7 +351,9 @@
         },
         "options": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Allowed values for 'select' and 'multiselect' types."
         },
         "help": {
@@ -264,7 +398,10 @@
     },
     "known_error": {
       "type": "object",
-      "required": ["pattern", "explanation"],
+      "required": [
+        "pattern",
+        "explanation"
+      ],
       "additionalProperties": false,
       "properties": {
         "pattern": {
@@ -283,7 +420,10 @@
     },
     "accept_slot": {
       "type": "object",
-      "required": ["type", "label"],
+      "required": [
+        "type",
+        "label"
+      ],
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -310,13 +450,16 @@
         "required": {
           "type": "boolean",
           "default": false,
-          "description": "If true, this accept slot must be filled before the pipeline can launch. All slots are optional by default — chaining is never mandatory."
+          "description": "If true, this accept slot must be filled before the pipeline can launch. All slots are optional by default \u2014 chaining is never mandatory."
         }
       }
     },
     "produce_slot": {
       "type": "object",
-      "required": ["type", "label"],
+      "required": [
+        "type",
+        "label"
+      ],
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -325,7 +468,7 @@
         },
         "path_hint": {
           "type": "string",
-          "description": "Glob pattern relative to output_dir for auto-discovery. Empty string means output_dir itself is the artifact (for directory-type outputs). Absent means the artifact cannot be auto-resolved — user must browse manually."
+          "description": "Glob pattern relative to output_dir for auto-discovery. Empty string means output_dir itself is the artifact (for directory-type outputs). Absent means the artifact cannot be auto-resolved \u2014 user must browse manually."
         },
         "source_param": {
           "type": "string",

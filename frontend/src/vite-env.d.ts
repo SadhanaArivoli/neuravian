@@ -72,6 +72,43 @@ interface NeuroForgeDesktopBridge {
     workspaceId: string;
     runId: number;
   }): Promise<{ runId: number; downloaded: string[]; reused: string[] }>;
+  syncWorkflowInputs?(input: {
+    profileId: string;
+    executionUuid: string;
+    upstreamRunId: number;
+    artifactType: string;
+  }): Promise<{
+    uploaded: string[];
+    reused: string[];
+    stagedPaths: Record<string, string>;
+    bytesTransferred: number;
+  }>;
+  prepareWorkflowHandoff?(input: {
+    profileId: string;
+    workflowId: number;
+    executionUuid: string;
+    idempotencyKey: string;
+    upstreamRunId: number;
+    artifactType: string;
+    state: Record<string, unknown>;
+  }): Promise<{
+    execution: Record<string, unknown>;
+    executionUuid: string;
+    cloudWorkflowId: number;
+    uploaded: string[];
+    reused: string[];
+    stagedPaths: Record<string, string>;
+    bytesTransferred: number;
+  }>;
+  updateWorkflowExecution?(input: {
+    profileId: string;
+    executionUuid: string;
+    expectedRevision: number;
+    status: string;
+    currentNodeId?: string | null;
+    returnSyncComplete?: boolean;
+    state: Record<string, unknown>;
+  }): Promise<Record<string, unknown> & { revision: number }>;
   launchLocalViewer(request: {
     viewerId: "freeview" | "mricrogl";
     workspaceId: string;
@@ -84,7 +121,12 @@ interface NeuroForgeDesktopBridge {
     viewerId: "freeview" | "mricrogl";
     runId: number;
     workspaceId?: string;
-    files: Array<{ relativePath: string; overlay?: boolean }>;
+    launchMode?: "default" | "composed";
+    files: Array<{
+      relativePath: string;
+      overlay?: boolean;
+      intendedRole?: "base image" | "overlay" | "segmentation";
+    }>;
     opacity?: number;
     freesurferLut?: boolean;
   }): Promise<boolean>;
@@ -117,7 +159,11 @@ interface NeuroForgeDesktopBridge {
   }): Promise<Record<string, unknown>>;
   browseForViewer(viewerId: string): Promise<string | null>;
   saveViewerConfig(input: { viewerId: string; executablePath: string | null }): Promise<boolean>;
-  readArtifact(input: { workspaceId: string; runId: number; relativePath: string }): Promise<Uint8Array>;
+  viewerRuntimeBuild?: string;
+  readArtifact(input: import("../../desktop/src/preload/viewer-api-contract").ReadArtifactRequest): Promise<Uint8Array>;
+  assertDefaultViewerScene?(
+    input: import("../../desktop/src/preload/viewer-api-contract").DefaultViewerSceneRequest,
+  ): Promise<boolean>;
   replicateObjects(input: { profileId: string; objects: unknown[] }): Promise<{
     pushed: string[];
     skipped: string[];
@@ -145,6 +191,18 @@ interface NeuroForgeDesktopBridge {
     profileId: string;
     pipelineId: string;
     datasetId: number;
+    lineage?: {
+      upstream_run_id: number;
+      upstream_pipeline_id: string;
+      upstream_pipeline_display_name?: string;
+      artifact_type: string;
+      artifact_label: string;
+      injected_param?: string;
+      injected_path?: string;
+      external?: boolean;
+      upstream_workspace_id?: string;
+      workflow_execution_uuid?: string;
+    };
     params?: Record<string, unknown>;
     autoStart?: boolean;
   }): Promise<{ runId: number; status: string; profileId: string }>;
@@ -188,6 +246,8 @@ interface WorkspaceArtifact {
   url: string;
   sha256: string;
   sizeBytes: number;
+  /** Semantic role attached at sync time. Absent on legacy cached artifacts — fall back to classifyArtifactRole(). */
+  semanticRole?: import("./lib/artifact-capabilities").ArtifactSemanticRole;
   geometry?: {
     shape: number[];
     voxelSize: number[];

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BarChart2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,7 +16,7 @@ import { CloudRunDetail } from "../components/domain/CloudRunDetail";
 const STATUS_STYLES: Record<string, { dot: string; bg: string; text: string }> = {
   queued:      { dot: "bg-gray-400",   bg: "bg-gray-400/10",   text: "text-gray-300" },
   pending:     { dot: "bg-yellow-400", bg: "bg-yellow-400/10", text: "text-yellow-300" },
-  running:     { dot: "bg-blue-400 animate-pulse", bg: "bg-blue-400/10", text: "text-blue-300" },
+  running:     { dot: "bg-accent animate-pulse", bg: "bg-accent/10", text: "text-accent" },
   success:     { dot: "bg-green-400",  bg: "bg-green-400/10",  text: "text-green-300" },
   failed:      { dot: "bg-red-400",    bg: "bg-red-400/10",    text: "text-red-300" },
   cancelled:   { dot: "bg-orange-400", bg: "bg-orange-400/10", text: "text-orange-300" },
@@ -126,13 +126,13 @@ function ConfirmDialog({
 function QueueBanner({ runningRunId, queuedCount }: { runningRunId: number | null; queuedCount: number }) {
   if (runningRunId === null && queuedCount === 0) return null;
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm">
-      <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-      <span className="text-blue-200">
+    <div className="mb-4 flex items-center gap-3 rounded-lg border border-accent/20 bg-accent/5 px-4 py-3 text-sm">
+      <span className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />
+      <span className="text-accent">
         {runningRunId !== null && (
           <>
             Run{" "}
-            <Link to={`/runs/${runningRunId}`} className="font-semibold text-blue-300 hover:underline">
+            <Link to={`/runs/${runningRunId}`} className="font-semibold text-accent hover:underline">
               #{runningRunId}
             </Link>{" "}
             is executing.
@@ -229,6 +229,16 @@ export default function Runs() {
   const [selectedCloudRun, setSelectedCloudRun] = useState<WorkspaceRun | null>(null);
   const [selectedCloudRunProfile, setSelectedCloudRunProfile] = useState<WorkspaceProfile | null>(null);
   const [selectedCloudRunWorkspaceId, setSelectedCloudRunWorkspaceId] = useState<string | undefined>(undefined);
+  const [cloudInspection, setCloudInspection] = useState<WorkspaceInspection | null>(null);
+
+  useEffect(() => {
+    const desktop = window.neuroforgeDesktop;
+    if (!desktop || !isCloud || !cloud.profile || !cloud.snapshot) return;
+    void desktop.inspectWorkspace({
+      profileId: cloud.profile.id,
+      workspaceId: cloud.snapshot.workspaceId,
+    }).then(setCloudInspection).catch(() => { /* offline — leave null */ });
+  }, [isCloud, cloud.profile?.id, cloud.snapshot?.workspaceId]);
 
   const { data: queue } = useQuery({
     queryKey: ["run-queue"],
@@ -353,20 +363,25 @@ export default function Runs() {
         {/* Cloud run detail overlay — shared across both local and all-workspace views */}
         {selectedCloudRun && selectedCloudRunProfile && (
           <CloudRunDetail
-            run={selectedCloudRun}
+            run={allCloud
+              .find((item) => item.profile.id === selectedCloudRunProfile.id)
+              ?.snapshot?.runs.find((run) => run.id === selectedCloudRun.id) ?? selectedCloudRun}
             profile={selectedCloudRunProfile}
             workspaceId={selectedCloudRunWorkspaceId ?? selectedCloudRunProfile.id}
             online={allCloud.find((c) => c.profile.id === selectedCloudRunProfile.id)?.online ?? false}
             inspection={null}
             onClose={() => { setSelectedCloudRun(null); setSelectedCloudRunProfile(null); }}
-            onCacheChanged={() => void allCloud[0]?.profile}
+            onCacheChanged={() => {
+              const owning = allCloud.find((c) => c.profile.id === selectedCloudRunProfile?.id);
+              if (owning) void owning.sync();
+            }}
           />
         )}
 
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div>
             <h1 className="text-xl font-semibold text-gray-100">Runs</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5">
               All Workspaces · {localRuns.length} local · {cloudRuns.length} cloud
               {cloudSyncing && " · Syncing…"}
             </p>
@@ -452,11 +467,11 @@ export default function Runs() {
                       <tr
                         key={`cloud-${item.profile.id}-${r.id}`}
                         onClick={() => { setSelectedCloudRun(r); setSelectedCloudRunProfile(item.profile); setSelectedCloudRunWorkspaceId(item.workspaceId); }}
-                        className="cursor-pointer hover:bg-sky-500/5 transition-colors"
+                        className="cursor-pointer hover:bg-accent/5 transition-colors"
                       >
-                        <td className="px-4 py-3 text-sky-400 font-mono text-xs">#{r.id}</td>
+                        <td className="px-4 py-3 text-accent font-mono text-xs">#{r.id}</td>
                         <td className="px-4 py-3">
-                          <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud</span>
+                          <span className="rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">Cloud</span>
                         </td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-gray-200 truncate max-w-xs">{r.pipeline_manifest_id}</p>
@@ -481,7 +496,7 @@ export default function Runs() {
   // ── Cloud branch ─────────────────────────────────────────────────────────────
   if (isCloud) {
     const cloudRuns = cloud.snapshot?.runs ?? [];
-    const inspection = null; // inspectWorkspace is called lazily in Workspaces.tsx; cloud Runs page passes null
+    const inspection = cloudInspection;
     const filteredCloud = cloudRuns.filter((r) => {
       const q = search.trim().toLowerCase();
       if (activeStatuses.size > 0 && !activeStatuses.has(r.status)) return false;
@@ -494,7 +509,7 @@ export default function Runs() {
       <div className="p-6 sm:p-8 max-w-screen-xl mx-auto">
         {selectedCloudRun && cloud.profile && (
           <CloudRunDetail
-            run={selectedCloudRun}
+            run={cloud.snapshot?.runs.find((run) => run.id === selectedCloudRun.id) ?? selectedCloudRun}
             profile={cloud.profile}
             workspaceId={cloud.snapshot?.workspaceId ?? cloud.profile.id}
             online={cloud.online}
@@ -507,7 +522,7 @@ export default function Runs() {
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div>
             <h1 className="text-xl font-semibold text-gray-100">Runs</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5">
               {cloud.profile?.name ?? "Cloud workspace"} ·{" "}
               {cloud.loading ? "Syncing…" : cloud.online ? "Online" : "Offline (cached)"} ·{" "}
               {cloudRuns.length} run{cloudRuns.length !== 1 ? "s" : ""}
@@ -587,7 +602,7 @@ export default function Runs() {
                       onClick={() => setSelectedCloudRun(run)}
                       className="group hover:bg-white/5 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 font-mono text-sm font-semibold text-cyan-400">
+                      <td className="px-4 py-3 font-mono text-sm font-semibold text-accent">
                         #{run.id}
                       </td>
                       <td className="px-4 py-3">
@@ -609,7 +624,7 @@ export default function Runs() {
                         {formatDate(run.created_at)}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full border px-2 py-0.5 text-[10px] border-sky-400/20 bg-sky-400/10 text-sky-300">
+                        <span className="inline-flex rounded-full border px-2 py-0.5 text-[10px] border-accent/20 bg-accent/10 text-accent">
                           {run.cacheState === "fully-cached" ? "Full" : run.cacheState === "partially-cached" ? "Partial" : "Cloud"}
                         </span>
                       </td>
@@ -628,7 +643,7 @@ export default function Runs() {
                   className="w-full text-left px-4 py-3.5 hover:bg-white/5 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-cyan-400">#{run.id}</span>
+                    <span className="font-mono text-xs text-accent">#{run.id}</span>
                     <StatusBadge status={run.status} />
                   </div>
                   <p className="mt-1 text-sm text-gray-200 truncate">{run.pipeline_manifest_id}</p>

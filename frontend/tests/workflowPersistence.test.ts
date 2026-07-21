@@ -125,7 +125,7 @@ describe("serializeWorkflowState", () => {
     expect(state.schema_version).toBe(WORKFLOW_SCHEMA_VERSION);
   });
 
-  it("strips runtime-only node fields", () => {
+  it("persists restart-critical runtime fields but strips resolved artifact payloads", () => {
     const nodeWithRuntime = {
       ...makeNode(),
       status: "success" as const,
@@ -135,9 +135,9 @@ describe("serializeWorkflowState", () => {
     };
     const state = serializeWorkflowState(makeSource(), [nodeWithRuntime], null);
     const serialized = state.nodes[0] as unknown as Record<string, unknown>;
-    expect(serialized.status).toBeUndefined();
-    expect(serialized.runId).toBeUndefined();
-    expect(serialized.error).toBeUndefined();
+    expect(serialized.status).toBe("success");
+    expect(serialized.runId).toBe(42);
+    expect(serialized.error).toBe("some error");
     expect(serialized.resolvedOutputs).toBeUndefined();
   });
 

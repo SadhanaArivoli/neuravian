@@ -17,7 +17,7 @@ import { useAllCloudSnapshots } from "../hooks/useAllCloudSnapshots";
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-500/12 text-green-300 border border-green-500/20",
   paused: "bg-amber-500/12 text-amber-300 border border-amber-500/20",
-  completed: "bg-blue-500/12 text-blue-300 border border-blue-500/20",
+  completed: "bg-accent/12 text-accent border border-accent/20",
   archived: "bg-white/8 text-gray-500 border border-white/10",
 };
 
@@ -263,7 +263,7 @@ export default function Projects() {
         <div className="flex items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-semibold text-gray-100">Research Projects</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5">
               All Workspaces · {localProjects.length} local · {allCloudProjects.length} cloud
             </p>
           </div>
@@ -323,7 +323,7 @@ export default function Projects() {
                           <button
                             onClick={() => void handlePushToCloud(p.id, cp.id)}
                             disabled={pushing[key]}
-                            className="rounded border border-sky-400/20 bg-sky-400/8 px-2 py-0.5 text-[10px] text-sky-300 hover:bg-sky-400/15 disabled:opacity-40 transition-colors"
+                            className="rounded border border-accent/20 bg-accent/8 px-2 py-0.5 text-[10px] text-accent hover:bg-accent/15 disabled:opacity-40 transition-colors"
                           >
                             {pushing[key] ? "Pushing…" : `↑ ${cp.name}`}
                           </button>
@@ -339,12 +339,12 @@ export default function Projects() {
 
           {/* Cloud projects */}
           {allCloudProjects.map(({ profileName, proj }) => (
-            <div key={`cloud-${proj.remoteKey}`} className="rounded-xl border border-sky-500/20 bg-slate-900/55 p-4 flex flex-col gap-3">
+            <div key={`cloud-${proj.remoteKey}`} className="rounded-xl border border-accent/20 bg-surface-raised p-4 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold text-gray-100 text-sm line-clamp-2">
                   {(proj.name as string | undefined) ?? (proj.title as string | undefined) ?? `Project #${proj.id}`}
                 </h3>
-                <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud · {profileName}</span>
+                <span className="shrink-0 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">Cloud · {profileName}</span>
               </div>
               {!!proj.description && <p className="text-xs text-gray-500 line-clamp-2">{String(proj.description)}</p>}
               {!!proj.status && (
@@ -364,7 +364,7 @@ export default function Projects() {
         <div className="flex items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-semibold text-gray-100">Research Projects</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5">
               {cloud.profile?.name ?? "Cloud workspace"} ·{" "}
               {cloud.loading ? "Syncing…" : cloud.online ? "Online" : "Offline (cached)"} ·{" "}
               {cloudProjects.length} project{cloudProjects.length !== 1 ? "s" : ""}
@@ -400,17 +400,17 @@ export default function Projects() {
             {cloudProjects.map((p) => {
               const proj = p as Record<string, unknown>;
               return (
-                <div key={p.id} className="rounded-xl border border-white/8 bg-slate-900/55 p-4">
+                <div key={p.id} className="rounded-xl border border-white/8 bg-surface-raised p-4">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="font-semibold text-gray-100 text-sm">
                       {(proj.name as string | undefined) ?? `Project #${p.id}`}
                     </h3>
-                    <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-300">Cloud</span>
+                    <span className="shrink-0 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">Cloud</span>
                   </div>
                   {!!proj.description && (
                     <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">{String(proj.description)}</p>
                   )}
-                  <p className="mt-2 text-[10px] font-mono text-slate-600 break-all">{p.remoteKey}</p>
+                  <p className="mt-2 text-[10px] font-mono text-gray-600 break-all">{p.remoteKey}</p>
                   <div className="mt-3 flex items-center gap-2">
                     {!!proj.status && (
                       <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-gray-400 capitalize">
@@ -500,7 +500,7 @@ export default function Projects() {
                         <button
                           onClick={() => void handlePushToCloud(p.id, cp.id)}
                           disabled={pushing[key]}
-                          className="rounded border border-sky-400/20 bg-sky-400/8 px-2 py-0.5 text-[10px] text-sky-300 hover:bg-sky-400/15 disabled:opacity-40 transition-colors"
+                          className="rounded border border-accent/20 bg-accent/8 px-2 py-0.5 text-[10px] text-accent hover:bg-accent/15 disabled:opacity-40 transition-colors"
                         >
                           {pushing[key] ? "Pushing…" : `↑ Push to ${cp.name}`}
                         </button>

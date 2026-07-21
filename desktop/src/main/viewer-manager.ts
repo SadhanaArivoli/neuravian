@@ -28,7 +28,12 @@ export interface ViewerLaunchRequest {
   viewerId: ExternalViewerId;
   runId: number;
   workspaceId?: string;
-  files: Array<{ relativePath: string; overlay?: boolean }>;
+  launchMode?: "default" | "composed";
+  files: Array<{
+    relativePath: string;
+    overlay?: boolean;
+    intendedRole?: "base image" | "overlay" | "segmentation";
+  }>;
   opacity?: number;
   freesurferLut?: boolean;
 }

@@ -1,0 +1,362 @@
+id: fsl-fnirt
+display_name: FSL FNIRT
+description: >
+  FSL FNIRT (FMRIB's Non-linear Image Registration Tool) performs nonlinear
+  registration of structural MRI images to a reference space using a B-spline
+  representation of the warp field. FNIRT refines an initial affine alignment
+  — typically produced by FLIRT — into a dense nonlinear deformation that
+  accounts for local shape differences between subject and template.
+  The primary output is a warp coefficient field (.nii.gz) that encodes the
+  nonlinear transformation in a compact B-spline representation. A second output
+  is the input image resampled into the reference space. Optionally FNIRT can
+  produce the full displacement field in millimetres and a Jacobian determinant
+  map quantifying local volumetric change.
+  FNIRT is the standard FSL tool for nonlinear inter-subject registration and
+  is a prerequisite for voxel-based morphometry (VBM), tract-based spatial
+  statistics (TBSS), atlas-based ROI extraction in standard space, and
+  group-level statistical analyses with FSL randomise.
+  MNI152 1mm and 2mm templates and FNIRT configuration files are built into
+  the container — no template or config files need to be manually located.
+  For the standard structural pipeline, run FLIRT first to produce an affine
+  matrix, then supply it to FNIRT via the "aff-mat" parameter.
+  Requires the NeuroForge FSL FNIRT wrapper image — build it once with
+  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7
+  docker/fsl-fnirt/" before submitting a run.
+homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/registration/fnirt
+category: registration
+input_type: nifti
+
+# FNIRT to MNI152 2mm takes 3-15 minutes on native x86_64.
+# Under Rosetta 2 emulation on Apple Silicon, expect 30-90 minutes.
+# FNIRT to 1mm is significantly slower in both cases.
+# Classified as local-slow to trigger the preflight warning dialog.
+# FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
+# Wrapper image: ghcr.io/neuroforge/fsl-fnirt:6.0.7
+compute_profile: local-slow
+
+preflight:
+  empirical_status: pending-x86_64
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: false
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 4
+    recommended_ram_gb: 16
+    min_cpu_count: 1
+    recommended_cpu_count: 4
+    min_disk_free_gb: 2
+    working_space_gb: 2
+    output_space_gb: 2
+
+container:
+  # NeuroForge wrapper image built from docker/fsl-fnirt/Dockerfile.
+  # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
+  # /usr/local/bin/neuroforge-fnirt wrapper script that resolves reference image
+  # presets and FNIRT config files, then calls fnirt with the native key=value CLI.
+  # MNI152 templates and FNIRT config files are bundled inside the FSL base image.
+  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+  image: ghcr.io/neuroforge/fsl-fnirt
+  tag: "6.0.7"
+  engine: docker
+
+# FNIRT takes a single NIfTI file, not a BIDS dataset directory.
+dataset_positional: false
+
+inputs:
+  - skull_stripped_nifti
+  - raw_nifti
+  - registered_nifti
+
+outputs:
+  - nonlinear_registered_nifti
+  - warp_coefficient_field
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────────────
+  - name: input
+    cli_flag: "--input"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to the structural NIfTI image to register (.nii or .nii.gz).
+      FNIRT works best on skull-stripped T1w volumes — run FSL BET before FNIRT.
+      For the standard BET→FLIRT→FNIRT workflow, use the brain.nii.gz output
+      from BET. The file is mounted read-only into the container.
+
+  # ── Affine initialisation ─────────────────────────────────────────────────────
+  - name: aff-mat
+    cli_flag: "--aff-mat"
+    type: file_path
+    required: false
+    mount: true
+    help: >
+      Path to an FSL-format affine transformation matrix (.mat) from FLIRT to
+      use as the initialisation for FNIRT's nonlinear optimisation. Providing
+      this matrix is strongly recommended — FNIRT converges faster and more
+      reliably when started from a good linear alignment.
+      For the standard structural pipeline: run FLIRT on your skull-stripped
+      T1w image and supply the registered.mat output here. If omitted, FNIRT
+      starts from an identity transformation, which may produce poor results
+      unless the image is already roughly aligned to the template.
+
+  # ── Reference image ───────────────────────────────────────────────────────────
+  - name: ref-preset
+    cli_flag: "--ref-preset"
+    type: string
+    required: false
+    default: mni152_2mm
+    help: >
+      Reference image preset. Choose one of:
+        mni152_2mm  — MNI152 T1 2mm (recommended; faster, standard for most workflows)
+        mni152_1mm  — MNI152 T1 1mm (higher resolution; significantly slower)
+        custom      — use the ref-file parameter to specify your own reference
+      The MNI152 templates and their brain masks are bundled inside the container
+      at /usr/local/fsl/data/standard/ and are selected automatically by preset.
+      Use mni152_2mm for VBM, randomise, and atlas-based ROI extraction. Use
+      mni152_1mm when sub-millimetre precision is required or for publication-
+      quality registration QC.
+
+  - name: ref-file
+    cli_flag: "--ref-file"
+    type: file_path
+    required: false
+    mount: true
+    help: >
+      Path to a custom reference NIfTI image (.nii or .nii.gz). Only used when
+      ref-preset is set to "custom". Ignored for mni152_1mm and mni152_2mm.
+      When using a custom reference, also set config-preset to "none" or supply
+      a matching config file, as the bundled T1_2_MNI152 configs are tuned for
+      the MNI152 templates. Note: the auto-detected reference brain mask is only
+      available for the MNI152 presets — with a custom reference you may need to
+      supply --refmask manually via the extra_args mechanism.
+
+  # ── FNIRT configuration ───────────────────────────────────────────────────────
+  - name: config-preset
+    cli_flag: "--config-preset"
+    type: string
+    required: false
+    default: T1_2_MNI152_2mm
+    advanced: true
+    help: >
+      FNIRT configuration file preset. Choose one of:
+        T1_2_MNI152_2mm  — standard T1→MNI152 2mm config (recommended; built into FSL)
+        T1_2_MNI152_1mm  — standard T1→MNI152 1mm config (use with mni152_1mm ref)
+        none             — no config file; FNIRT uses its own defaults
+        custom           — use the config-file parameter to specify your own .cnf file
+      The bundled configs define the multiresolution warp schedule, regularisation
+      weights, subsampling factors, and iteration counts optimised for T1→MNI152
+      registration. If you change ref-preset to mni152_1mm, also set this to
+      T1_2_MNI152_1mm. Leave as T1_2_MNI152_2mm for the standard structural pipeline.
+
+  - name: config-file
+    cli_flag: "--config-file"
+    type: file_path
+    required: false
+    mount: true
+    advanced: true
+    help: >
+      Path to a custom FNIRT configuration file (.cnf). Only used when
+      config-preset is "custom". Standard FSL config files are located at
+      /usr/local/fsl/etc/flirtsch/ inside the container. Custom configs allow
+      full control over the multiresolution warp schedule, regularisation, and
+      iteration counts.
+
+  # ── Optional outputs ──────────────────────────────────────────────────────────
+  - name: output-field
+    cli_flag: "--output-field"
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Produce the full displacement field in millimetres in addition to the
+      coefficient field (default false). The displacement field (fnirt_field.nii.gz)
+      encodes the warp as a 4D vector field with one 3D volume per spatial dimension.
+      Use this when you need to compose warps outside of FSL, verify the field
+      visually, or feed it to non-FSL tools. The coefficient field (always produced)
+      is sufficient for FSL applywarp and most standard workflows.
+
+  - name: output-jacobian
+    cli_flag: "--output-jacobian"
+    type: boolean
+    required: false
+    default: false
+    help: >
+      Produce a Jacobian determinant map in addition to the coefficient field
+      (default false). The Jacobian image (fnirt_jac.nii.gz) encodes the local
+      volumetric expansion and contraction induced by the warp — values > 1
+      indicate expansion, < 1 contraction. Used in VBM Jacobian modulation and
+      for registration quality control.
+
+accepts:
+  - type: nifti_skull_stripped
+    param: input
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from BET; the recommended input for MNI152 nonlinear registration"
+
+  - type: nifti_raw
+    param: input
+    label: "Raw NIfTI"
+    description: "Unprocessed structural NIfTI; skull-strip first for best nonlinear registration quality"
+
+  - type: nifti_defaced
+    param: input
+    label: "Defaced NIfTI"
+    description: "De-identified structural NIfTI; skull-strip before FNIRT for best results"
+
+  - type: restored_image
+    param: input
+    label: "Bias-Corrected Image"
+    description: "Bias-corrected structural from FAST; can be registered directly to MNI152"
+
+  - type: registered_image
+    param: input
+    label: "Linearly Registered Image"
+    description: "FLIRT-registered image already in approximate MNI space; FNIRT refines the alignment"
+
+  - type: affine_matrix
+    param: aff-mat
+    label: "Affine Matrix"
+    description: "FSL-format affine matrix from FLIRT; strongly recommended as FNIRT initialisation"
+
+produces:
+  - type: nonlinear_registered_image
+    path_hint: "fnirt_result.nii.gz"
+    label: "Nonlinearly Registered Image"
+    description: "Input image resampled into reference space by FNIRT (fnirt_result.nii.gz)"
+
+  - type: coefficient_field
+    path_hint: "fnirt_warpcoef.nii.gz"
+    label: "Warp Coefficient Field"
+    description: "B-spline warp coefficient field from FNIRT; required for applywarp (fnirt_warpcoef.nii.gz)"
+
+  - type: warp_field
+    path_hint: "fnirt_field.nii.gz"
+    label: "Displacement Field"
+    description: "Full displacement field in mm from FNIRT (fnirt_field.nii.gz); only present when output-field=true"
+
+  - type: jacobian_image
+    path_hint: "fnirt_jac.nii.gz"
+    label: "Jacobian Map"
+    description: "Jacobian determinant map from FNIRT (fnirt_jac.nii.gz); only present when output-jacobian=true"
+
+max_runtime_hours: 6
+
+# ── Manual testing reference ───────────────────────────────────────────────────
+# Standard workflow (BET → FLIRT → FNIRT):
+#   1. brain.nii.gz from FSL BET
+#   2. registered.mat from FSL FLIRT (T1→MNI152 2mm, dof=12)
+#   3. FNIRT with aff-mat=registered.mat, ref-preset=mni152_2mm
+#
+# Build: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+#
+# CLI verified (example):
+#   docker run --rm --platform linux/amd64 \
+#     -v <brain.nii.gz>:/inputs/input/brain.nii.gz:ro \
+#     -v <registered.mat>:/inputs/aff-mat/registered.mat:ro \
+#     -v <out_dir>:/out:rw \
+#     ghcr.io/neuroforge/fsl-fnirt:6.0.7 \
+#     --input /inputs/input/brain.nii.gz \
+#     --aff-mat /inputs/aff-mat/registered.mat \
+#     --ref-preset mni152_2mm \
+#     --config-preset T1_2_MNI152_2mm
+#
+# Expected outputs: fnirt_result.nii.gz, fnirt_warpcoef.nii.gz
+# ──────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "neuroforge-fnirt: error: --input is required"
+    explanation: >
+      The FNIRT run was submitted without an input file path. The input parameter
+      is required for all FNIRT runs.
+    fix_hint: >
+      Open the pipeline form and fill in the "input" field with the full path
+      to your skull-stripped structural NIfTI file, then resubmit.
+
+  - pattern: "neuroforge-fnirt: error: --ref-file is required when --ref-preset=custom"
+    explanation: >
+      The ref-preset was set to "custom" but no ref-file path was provided.
+    fix_hint: >
+      Either change ref-preset to "mni152_2mm" or "mni152_1mm" to use a built-in
+      MNI152 template, or fill in the "ref-file" field with the path to your
+      custom reference NIfTI image.
+
+  - pattern: "neuroforge-fnirt: error: --config-file is required when --config-preset=custom"
+    explanation: >
+      The config-preset was set to "custom" but no config-file path was provided.
+    fix_hint: >
+      Either change config-preset to "T1_2_MNI152_2mm" (recommended) or provide
+      the path to a custom FNIRT .cnf configuration file.
+
+  - pattern: "Cannot open file|No such file or directory.*\\.nii|Error opening.*nii"
+    explanation: >
+      FNIRT could not open the input NIfTI file. The path specified does not
+      point to a readable .nii or .nii.gz file.
+    fix_hint: >
+      Verify that the "input" path points to an existing skull-stripped .nii or
+      .nii.gz file. Use an absolute path. Ensure FSL BET has been run first.
+
+  - pattern: "Cannot open MNI152|No such file or directory.*MNI152|standard/MNI152"
+    explanation: >
+      FNIRT could not find the MNI152 template inside the container. This indicates
+      the container image was built incorrectly or the FSL data directory is missing.
+    fix_hint: >
+      Rebuild the FNIRT wrapper image from the NeuroForge repository:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+      The brainlife/fsl base image includes the FSL standard templates and config
+      files. If the build still fails, check that the FSL base image digest matches
+      the one in the Dockerfile.
+
+  - pattern: "Cannot open config file|No such file.*\\.cnf|Error reading config"
+    explanation: >
+      FNIRT could not find the specified configuration file inside the container.
+      The bundled FSL config files should be at /usr/local/fsl/etc/flirtsch/.
+    fix_hint: >
+      Set config-preset to "T1_2_MNI152_2mm" (the default) or "T1_2_MNI152_1mm"
+      to use the built-in FSL config files. If using a custom config, ensure the
+      file path is correct and the config-preset is set to "custom".
+
+  - pattern: "Cannot open affine|Error reading.*\\.mat|bad aff|unable to read matrix"
+    explanation: >
+      FNIRT could not read the affine matrix file. The .mat file may be corrupt,
+      in the wrong format, or from a different version of FSL.
+    fix_hint: >
+      The affine matrix must be a valid FSL-format .mat file produced by FLIRT.
+      Check that the aff-mat parameter points to the correct registered.mat from
+      a previous FLIRT run. The matrix is a plain-text 4x4 affine in FSL convention.
+
+  - pattern: "Killed|MemoryError|Cannot allocate memory|bad_alloc|std::bad_alloc"
+    explanation: >
+      FNIRT was killed by the operating system due to insufficient memory. FNIRT
+      requires approximately 4-8 GB RAM for MNI152 2mm registration and up to
+      16 GB for 1mm. Docker Desktop with a low memory limit will trigger this.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources → Memory, increase the limit to
+      at least 16 GB and retry. For 1mm registration, allocate 32 GB if possible.
+      Alternatively, register to MNI152 2mm first and submit the 1mm run on EC2.
+
+  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-fnirt|manifest unknown"
+    explanation: >
+      Docker could not find the NeuroForge FSL FNIRT wrapper image locally or on
+      any registry. This image must be built locally from the NeuroForge repository
+      before first use.
+    fix_hint: >
+      From the NeuroForge project root, run:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+      This takes ~30 seconds and only needs to be done once per machine.
+      After the build completes, resubmit the run.
+
+  - pattern: "Run stopped automatically after.*maximum runtime"
+    explanation: >
+      The NeuroForge watchdog stopped this FNIRT run after it exceeded the
+      6-hour maximum. FNIRT to MNI152 2mm should complete in 3-15 minutes on
+      native x86_64. An extremely long runtime indicates the container stalled,
+      insufficient memory (causing swap), or the run is executing under Rosetta 2
+      emulation which is significantly slower.
+    fix_hint: >
+      For local Apple Silicon runs, use MNI152 2mm and allow 30-90 minutes.
+      For MNI152 1mm registration, use EC2 cloud execution. Ensure Docker Desktop
+      has at least 16 GB of memory allocated to prevent swap-induced slowdowns.

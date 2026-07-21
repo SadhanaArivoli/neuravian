@@ -61,6 +61,13 @@ export interface ShutdownFenceResult {
   fenceComplete: boolean;
 }
 
+export interface WorkflowInputSyncResult {
+  uploaded: string[];
+  reused: string[];
+  stagedPaths: Record<string, string>;
+  bytesTransferred: number;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function authorization(credential: WorkspaceCredential | null): string | null {
@@ -90,6 +97,7 @@ function contentHash(payload: unknown): string {
 
 export class WorkspaceReplicationEngine {
   private readonly eventListeners: Array<(event: WREEvent) => void> = [];
+  private readonly autoSyncedRuns = new Set<string>();
 
   constructor(private readonly config: WREConfig) {}
 
@@ -128,6 +136,26 @@ export class WorkspaceReplicationEngine {
           status: run.status,
           workspaceId: result.snapshot.workspaceId,
         });
+        const key = `${result.snapshot.workspaceId}:${run.id}`;
+        if (run.status === "success" && run.artifacts.length > 0
+            && run.cacheState !== "fully-cached" && !this.autoSyncedRuns.has(key)) {
+          this.autoSyncedRuns.add(key);
+          try {
+            const synced = await this.syncAllRunArtifacts(
+              profile,
+              credential,
+              result.snapshot.workspaceId,
+              run.id,
+            );
+            run.cachedArtifacts = [...new Set([...run.cachedArtifacts, ...synced.downloaded, ...synced.reused])];
+            run.cacheState = run.cachedArtifacts.length === run.artifacts.length
+              ? "fully-cached"
+              : "partially-cached";
+          } catch {
+            // Metadata remains usable online. A later synchronization retries.
+            this.autoSyncedRuns.delete(key);
+          }
+        }
       }
     }
     return result;
@@ -253,6 +281,62 @@ export class WorkspaceReplicationEngine {
       url: new URL(a.url, `${profile.serverUrl}/`).toString(),
     }));
     return await syncRun(path.join(this.config.artifactCacheRoot, workspaceId), manifest, fetcher);
+  }
+
+  /** Upload only manifest-registered artifacts consumed by the next cloud node. */
+  async syncWorkflowInputs(
+    profile: WorkspaceProfile,
+    credential: WorkspaceCredential | null,
+    executionUuid: string,
+    upstreamRunId: number,
+    artifactType: string,
+  ): Promise<WorkflowInputSyncResult> {
+    const baseFetch = this.config.fetcher ?? fetch;
+    const localManifestResponse = await baseFetch(
+      `http://127.0.0.1:8000/api/runs/${upstreamRunId}/handoff-manifest?artifact_type=${encodeURIComponent(artifactType)}`,
+    );
+    if (!localManifestResponse.ok) throw new Error(`Local handoff manifest failed: HTTP ${localManifestResponse.status}`);
+    const manifest = await localManifestResponse.json() as { artifacts: SyncManifest["artifacts"] };
+    const remoteFetch = this._authedFetcher(credential);
+    const statusUrl = replicationUrl(profile.serverUrl, `/api/workflow-executions/${executionUuid}/inputs`);
+    const statusResponse = await remoteFetch(statusUrl);
+    const existing = statusResponse.ok
+      ? await statusResponse.json() as Array<{ artifact_key: string; sha256: string; size_bytes: number; status: string; staged_path?: string }>
+      : [];
+    const complete = new Map(existing.filter((item) => item.status === "complete").map((item) => [item.artifact_key, item]));
+    const result: WorkflowInputSyncResult = { uploaded: [], reused: [], stagedPaths: {}, bytesTransferred: 0 };
+    for (const artifact of manifest.artifacts) {
+      const key = String(artifact.artifactId).replace(/[^A-Za-z0-9._-]/g, "-");
+      const cached = complete.get(key);
+      if (cached && cached.sha256 === artifact.sha256 && cached.size_bytes === artifact.sizeBytes) {
+        result.reused.push(key);
+        if (cached.staged_path) result.stagedPaths[key] = cached.staged_path;
+        continue;
+      }
+      const localResponse = await baseFetch(new URL(artifact.url, "http://127.0.0.1:8000/").toString());
+      if (!localResponse.ok) throw new Error(`Local artifact read failed: HTTP ${localResponse.status}`);
+      const bytes = new Uint8Array(await localResponse.arrayBuffer());
+      const digest = createHash("sha256").update(bytes).digest("hex");
+      if (digest !== artifact.sha256 || bytes.byteLength !== artifact.sizeBytes) {
+        throw new Error("Local artifact changed after the handoff manifest was created.");
+      }
+      const uploadUrl = replicationUrl(profile.serverUrl, `/api/workflow-executions/${executionUuid}/inputs/${key}`);
+      const uploadResponse = await remoteFetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-NeuroForge-Sha256": artifact.sha256,
+          "X-NeuroForge-Relative-Path": artifact.relativePath,
+        },
+        body: bytes,
+      });
+      if (!uploadResponse.ok) throw new Error(`Cloud input synchronization failed: HTTP ${uploadResponse.status}`);
+      const uploaded = await uploadResponse.json() as { staged_path?: string };
+      result.uploaded.push(key);
+      result.bytesTransferred += bytes.byteLength;
+      if (uploaded.staged_path) result.stagedPaths[key] = uploaded.staged_path;
+    }
+    return result;
   }
 
   // ── Auto-sync (triggered by event bus) ────────────────────────────────────

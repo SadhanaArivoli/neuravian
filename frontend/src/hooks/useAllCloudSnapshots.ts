@@ -7,6 +7,7 @@ export interface AllCloudSnapshot {
   online: boolean;
   loading: boolean;
   error: string | null;
+  sync: () => void;
 }
 
 const REFRESH_MS = 30_000;
@@ -19,7 +20,7 @@ export function useAllCloudSnapshots(): AllCloudSnapshot[] {
   const { selected, cloudProfiles } = useWorkspace();
   const desktop = window.neuroforgeDesktop;
   const isAll = selected === "all";
-  const [snapshots, setSnapshots] = useState<Map<string, Omit<AllCloudSnapshot, "profile">>>(new Map());
+  const [snapshots, setSnapshots] = useState<Map<string, Omit<AllCloudSnapshot, "profile" | "sync">>>(new Map());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAll = useCallback(async (quiet = false) => {
@@ -73,5 +74,6 @@ export function useAllCloudSnapshots(): AllCloudSnapshot[] {
   return cloudProfiles.map((profile) => ({
     profile,
     ...(snapshots.get(profile.id) ?? { snapshot: null, online: false, loading: true, error: null }),
+    sync: () => void fetchAll(),
   }));
 }

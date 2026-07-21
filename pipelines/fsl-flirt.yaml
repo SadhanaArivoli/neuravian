@@ -1,0 +1,407 @@
+id: fsl-flirt
+display_name: FSL FLIRT
+description: >
+  FSL FLIRT (FMRIB's Linear Image Registration Tool) performs affine registration
+  of structural MRI images to a reference space using a normalized mutual information
+  or correlation ratio cost function. FLIRT finds the optimal rigid-body (6 DOF),
+  similarity (7 DOF), or full affine (12 DOF) transformation aligning an input
+  image to a reference — most commonly the MNI152 standard brain template.
+  The output is a registered NIfTI volume and an affine transformation matrix
+  (.mat) that can be applied to other images from the same session.
+  FLIRT is the standard FSL tool for brain registration and is a prerequisite
+  for atlas-based ROI extraction, VBM, functional connectivity analysis, and
+  multi-subject group studies.
+  MNI152 1mm and 2mm templates are built into the container — no template files
+  need to be manually located.
+  Requires the NeuroForge FSL FLIRT wrapper image — build it once with
+  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7
+  docker/fsl-flirt/" before submitting a run.
+homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/registration/flirt
+category: registration
+input_type: nifti
+
+# FLIRT to MNI152 2mm takes 1-3 minutes on native x86_64.
+# Under Rosetta 2 emulation on Apple Silicon, expect 5-20 minutes.
+# FLIRT to 1mm takes 3-15 minutes natively; 30-90 min under emulation.
+# Classified as local-slow to trigger the preflight warning dialog.
+# FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
+# Wrapper image: ghcr.io/neuroforge/fsl-flirt:6.0.7
+compute_profile: local-slow
+
+preflight:
+  empirical_status: verified
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: false
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 2
+    recommended_ram_gb: 8
+    min_cpu_count: 1
+    recommended_cpu_count: 2
+    min_disk_free_gb: 1
+    working_space_gb: 0
+    output_space_gb: 1
+
+container:
+  # NeuroForge wrapper image built from docker/fsl-flirt/Dockerfile.
+  # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
+  # /usr/local/bin/neuroforge-flirt wrapper script that resolves reference image
+  # presets and translates NeuroForge flags into FLIRT's convention.
+  # MNI152 templates are bundled inside the FSL base image — no external files needed.
+  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+  image: ghcr.io/neuroforge/fsl-flirt
+  tag: "6.0.7"
+  engine: docker
+
+# FLIRT takes a single NIfTI file, not a BIDS dataset directory.
+dataset_positional: false
+
+inputs:
+  - skull_stripped_nifti
+  - raw_nifti
+
+outputs:
+  - registered_nifti
+  - affine_matrix
+
+parameters:
+  # ── Required ──────────────────────────────────────────────────────────────────
+  - name: input
+    cli_flag: "--input"
+    type: file_path
+    required: true
+    mount: true
+    help: >
+      Full path to the structural NIfTI image to register (.nii or .nii.gz).
+      FLIRT works best on skull-stripped T1w volumes — run FSL BET first if your
+      image still contains skull or neck tissue. For MNI152 registration, point
+      at the brain.nii.gz output from a BET run. The file is mounted read-only
+      into the container.
+
+  # ── Reference image ───────────────────────────────────────────────────────────
+  - name: ref-preset
+    cli_flag: "--ref-preset"
+    type: string
+    required: false
+    default: mni152_2mm
+    help: >
+      Reference image preset. Choose one of:
+        mni152_2mm  — MNI152 T1 2mm (recommended for most workflows; faster)
+        mni152_1mm  — MNI152 T1 1mm (higher resolution; significantly slower)
+        custom      — use the ref-file parameter to specify your own reference
+      The MNI152 templates are bundled inside the container at
+      /usr/local/fsl/data/standard/ — no files need to be manually located.
+      Use mni152_2mm for group studies, functional connectivity analysis, and
+      atlas-based ROI extraction. Use mni152_1mm when sub-millimetre precision
+      is required (e.g. high-resolution structural studies or longitudinal VBM).
+
+  - name: ref-file
+    cli_flag: "--ref-file"
+    type: file_path
+    required: false
+    mount: true
+    help: >
+      Path to a custom reference NIfTI image (.nii or .nii.gz). Only used
+      when ref-preset is set to "custom". Ignored for mni152_1mm and mni152_2mm.
+      The custom reference is mounted read-only into the container alongside
+      the input. Typical use cases: subject-specific template, study-specific
+      standard space, or within-subject registration (e.g. T1 → T2 co-registration).
+
+  # ── Output control ────────────────────────────────────────────────────────────
+  - name: output-base
+    cli_flag: "--output-base"
+    type: string
+    required: false
+    default: /out/registered
+    help: >
+      Container-internal path prefix for FLIRT outputs. FLIRT writes two files:
+        {output-base}.nii.gz — the registered NIfTI image
+        {output-base}.mat   — the affine transformation matrix
+      The default /out/registered writes registered.nii.gz and registered.mat
+      to the run's output directory. Do not change unless you need a custom
+      name inside the container.
+
+  # ── Registration parameters ───────────────────────────────────────────────────
+  - name: dof
+    cli_flag: "-dof"
+    type: integer
+    required: false
+    default: 12
+    help: >
+      Degrees of freedom for the affine transformation (default 12).
+        6  — rigid-body (translation + rotation only; use for intra-subject,
+              same-modality registration, e.g. T1w to T1w)
+        7  — similarity (rigid-body + isotropic scaling; useful for
+              inter-subject registration or cross-scanner comparisons)
+        9  — traditional (rigid-body + non-isotropic scaling; rarely needed)
+        12 — full affine (translation, rotation, scaling, shear; the
+              standard choice for inter-subject MNI152 registration)
+      For registering a brain-extracted T1w to MNI152, use 12.
+      For co-registering T2w or BOLD to the same subject's T1w, use 6.
+
+  - name: cost
+    cli_flag: "-cost"
+    type: string
+    required: false
+    default: corratio
+    help: >
+      Cost function for the registration optimisation (default corratio).
+        corratio    — correlation ratio; recommended for intra-modality (T1→MNI152)
+        mutualinfo  — mutual information; better for cross-modality (T2→T1, BOLD→T1)
+        normmi      — normalised mutual information; alternative for cross-modality
+        normcorr    — normalised correlation; use for very similar contrasts
+        leastsq     — least squares; suitable for identical modalities, no noise
+      Use corratio for T1w → MNI152. Use mutualinfo for BOLD EPI → T1w
+      or any registration involving different image contrasts or modalities.
+
+  - name: interp
+    cli_flag: "-interp"
+    type: string
+    required: false
+    default: trilinear
+    help: >
+      Interpolation method applied when resampling the registered image (default trilinear).
+        trilinear       — standard linear interpolation; good default for structural images
+        nearestneighbour — preserves integer label values; use for tissue maps or atlases
+        sinc            — highest quality, slowest; use for final-step registration
+        spline          — high quality, moderate speed; good alternative to sinc
+      Use trilinear for structural T1w registration. Use nearestneighbour when
+      applying a previously computed transform to a segmentation or parcellation map.
+      Use sinc or spline when the registered image will be used for quantitative analysis.
+
+  # ── Search parameters ─────────────────────────────────────────────────────────
+  - name: searchrx
+    cli_flag: "--searchrx"
+    type: string
+    required: false
+    default: "-90 90"
+    help: >
+      Search range in degrees around the x-axis (pitch), given as "MIN MAX"
+      (default "-90 90"). FLIRT searches this angle range to find the initial
+      coarse alignment before the fine optimisation. Reduce to "-30 30" if
+      you know the image is already roughly aligned to MNI space; this speeds
+      up registration significantly. Set all three search ranges to "0 0" to
+      skip the search phase entirely (-nosearch).
+
+  - name: searchry
+    cli_flag: "--searchry"
+    type: string
+    required: false
+    default: "-90 90"
+    help: >
+      Search range in degrees around the y-axis (roll), given as "MIN MAX"
+      (default "-90 90"). See searchrx for full description.
+
+  - name: searchrz
+    cli_flag: "--searchrz"
+    type: string
+    required: false
+    default: "-90 90"
+    help: >
+      Search range in degrees around the z-axis (yaw), given as "MIN MAX"
+      (default "-90 90"). See searchrx for full description.
+
+  # ── Advanced options ──────────────────────────────────────────────────────────
+  - name: bins
+    cli_flag: "-bins"
+    type: integer
+    required: false
+    default: 256
+    advanced: true
+    help: >
+      Number of histogram bins for the cost function (default 256). More bins
+      improve accuracy for images with wide intensity ranges but increase memory
+      and compute time. Reduce to 64 or 128 for noisy images or when registration
+      is slow. The default of 256 is appropriate for standard 12-bit MRI data.
+
+  - name: nosearch
+    cli_flag: "-nosearch"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Skip the coarse search phase and go directly to fine optimisation (default false).
+      Enable when the input image is already roughly aligned to the reference
+      (e.g. after ACPC alignment or AC-PC centering). Significantly reduces
+      runtime but may fail if the starting alignment is poor. Equivalent to
+      setting all search ranges to "0 0".
+
+  - name: applyxfm
+    cli_flag: "-applyxfm"
+    type: boolean
+    required: false
+    default: false
+    advanced: true
+    help: >
+      Apply an existing transformation matrix without re-optimising (default false).
+      When enabled, FLIRT applies the matrix from init-matrix to the input image
+      and writes the result without running any registration. Use this to apply
+      a previously computed T1→MNI transform to a tissue segmentation, brain mask,
+      or other image from the same session. Requires init-matrix to be set.
+
+  - name: init-matrix
+    cli_flag: "-init"
+    type: file_path
+    required: false
+    mount: true
+    advanced: true
+    help: >
+      Path to an existing FLIRT affine matrix (.mat) to use as the starting
+      point for registration or to apply directly (when applyxfm=true).
+      The matrix must be in FSL format (4x4 affine, space-separated ASCII).
+      Typical use: supply the T1→MNI matrix from a previous FLIRT run and
+      apply it to a tissue map or atlas parcellation with applyxfm=true.
+
+  - name: sinc-width
+    cli_flag: "-sincwidth"
+    type: integer
+    required: false
+    default: 7
+    advanced: true
+    help: >
+      Width of the sinc interpolation window in full-width (default 7).
+      Only applies when interp=sinc. Larger values produce higher-quality
+      interpolation at the cost of longer resampling time. Values of 7-21
+      are typical; 7 is a good default for structural T1w registration.
+
+  - name: sinc-window
+    cli_flag: "-sincwindow"
+    type: string
+    required: false
+    default: hanning
+    advanced: true
+    help: >
+      Windowing function for sinc interpolation (default hanning).
+      Only applies when interp=sinc. Options: hanning, blackman, rectangular.
+      Hanning is the standard choice for structural neuroimaging registration.
+
+accepts:
+  - type: nifti_skull_stripped
+    param: input
+    label: "Skull-Stripped Brain"
+    description: "Brain-extracted NIfTI from BET; the recommended input for MNI152 registration"
+
+  - type: nifti_raw
+    param: input
+    label: "Raw NIfTI"
+    description: "Unprocessed structural NIfTI; skull-strip first for best registration quality"
+
+  - type: nifti_defaced
+    param: input
+    label: "Defaced NIfTI"
+    description: "De-identified NIfTI; skull-strip before FLIRT for best results"
+
+  - type: restored_image
+    param: input
+    label: "Bias-Corrected Image"
+    description: "Bias-corrected structural from FAST; can be registered directly to MNI152"
+
+produces:
+  - type: registered_image
+    path_hint: "registered.nii.gz"
+    label: "Registered Image"
+    description: "Input image resampled into reference space by FLIRT (registered.nii.gz)"
+
+  - type: affine_matrix
+    path_hint: "registered.mat"
+    label: "Affine Matrix"
+    description: "FSL-format 4x4 affine transformation matrix from FLIRT (registered.mat)"
+
+max_runtime_hours: 2
+
+# ── Manual testing reference ──────────────────────────────────────────────────────
+# Input: skull-stripped brain from FSL BET run (brain.nii.gz)
+# Reference: MNI152_T1_2mm.nii.gz (built into FSL container)
+# Build: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+# CLI verified:
+#   docker run --rm --platform linux/amd64 \
+#     -v <skull_stripped.nii.gz>:/inputs/input/brain.nii.gz:ro \
+#     -v <out_dir>:/out:rw \
+#     ghcr.io/neuroforge/fsl-flirt:6.0.7 \
+#     --input /inputs/input/brain.nii.gz \
+#     --ref-preset mni152_2mm \
+#     --output-base /out/registered \
+#     -dof 12 -cost corratio -interp trilinear \
+#     --searchrx "-90 90" --searchry "-90 90" --searchrz "-90 90"
+#
+# Expected outputs: registered.nii.gz, registered.mat
+# ─────────────────────────────────────────────────────────────────────────────────
+
+known_errors:
+  - pattern: "Error, input file does not exist|Cannot open volume|error loading volume"
+    explanation: >
+      FLIRT could not open the input NIfTI file. The path specified does not
+      point to a readable .nii or .nii.gz file, or the file was moved after
+      the run was created.
+    fix_hint: >
+      Verify that the "input" path points to an existing skull-stripped .nii or
+      .nii.gz file. Use an absolute path. Run FSL BET first if you have not already
+      skull-stripped the image — FLIRT registers much more reliably on brain-extracted
+      images than on images containing skull or neck tissue.
+
+  - pattern: "neuroforge-flirt: error: --input is required"
+    explanation: >
+      The FLIRT run was submitted without an input file path. This should not
+      happen in normal operation — the NeuroForge pipeline form marks this field
+      as required.
+    fix_hint: >
+      Open the pipeline form and fill in the "input" field with the full path
+      to your structural NIfTI file, then resubmit.
+
+  - pattern: "neuroforge-flirt: error: --ref-file is required when --ref-preset=custom"
+    explanation: >
+      The ref-preset was set to "custom" but no ref-file path was provided.
+    fix_hint: >
+      Either change ref-preset to "mni152_2mm" or "mni152_1mm" to use a built-in
+      template, or fill in the "ref-file" field with the path to your custom
+      reference NIfTI image.
+
+  - pattern: "Cannot open MNI152|No such file or directory.*MNI152|standard/MNI152"
+    explanation: >
+      FLIRT could not find the MNI152 template inside the container. This indicates
+      the container image was built incorrectly or the FSL data directory is missing.
+    fix_hint: >
+      Rebuild the FLIRT wrapper image from the NeuroForge repository:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+      The brainlife/fsl base image includes the FSL standard templates at
+      /usr/local/fsl/data/standard/. If the build still fails, check that the
+      FSL base image digest matches the one in the Dockerfile.
+
+  - pattern: "Killed|MemoryError|Cannot allocate memory|bad_alloc"
+    explanation: >
+      FLIRT was killed by the operating system due to insufficient memory.
+      FLIRT requires approximately 2–4 GB RAM for MNI152 2mm registration
+      and up to 8 GB for 1mm. Docker Desktop with a low memory limit can
+      trigger this.
+    fix_hint: >
+      In Docker Desktop → Settings → Resources → Memory, increase the limit to
+      at least 8 GB and retry. For 1mm registration, allocate 16 GB if possible.
+      Alternatively, register to MNI152 2mm first (much lower memory requirement)
+      and upsample the transform if needed.
+
+  - pattern: "Run stopped automatically after.*maximum runtime"
+    explanation: >
+      The NeuroForge watchdog stopped this FLIRT run after it exceeded the
+      2-hour maximum. FLIRT should complete in 1-15 minutes on x86_64 hardware.
+      An extremely long runtime indicates the container stalled, or 1mm
+      registration is being run under Rosetta 2 emulation.
+    fix_hint: >
+      Use the MNI152 2mm preset for local runs on Apple Silicon — it completes in
+      5-20 minutes under Rosetta 2 emulation versus 30-90 minutes for 1mm.
+      For 1mm registration, use the EC2 cloud execution target. Ensure Docker
+      Desktop has at least 8 GB of memory allocated.
+
+  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-flirt|manifest unknown"
+    explanation: >
+      Docker could not find the NeuroForge FSL FLIRT wrapper image locally or on
+      any registry. This image must be built locally from the NeuroForge repository
+      before first use.
+    fix_hint: >
+      From the NeuroForge project root, run:
+        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+      This takes ~30 seconds and only needs to be done once per machine.
+      After the build completes, resubmit the run.

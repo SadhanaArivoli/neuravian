@@ -22,7 +22,7 @@ from app.core.database import SessionLocal
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.plugin_loader import load_all_plugins
-    from app.services.run import recover_interrupted_runs, seed_pipeline_registry
+    from app.services.run import recover_interrupted_runs, recover_queued_runs, seed_pipeline_registry
     from app.services.execution_queue import start_processor
     # Plugins must be discovered before the pipeline registry is built
     # so plugin pipelines and artifact types are merged in.
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         seed_pipeline_registry(db)
         await recover_interrupted_runs(db)
+        await recover_queued_runs(db)
     start_processor()
     yield
 

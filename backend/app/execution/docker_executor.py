@@ -160,7 +160,7 @@ class _SdkParams:
 class DockerExecutor(Executor):
     """Runs pipeline containers via the Docker SDK for Python."""
 
-    def _build_sdk_params(self, ctx: RunContext) -> _SdkParams:
+    def _build_sdk_params(self, ctx: RunContext, *, validate_mounts: bool = True) -> _SdkParams:
         manifest = ctx.manifest
         params = ctx.params
         container = manifest["container"]
@@ -229,6 +229,45 @@ class DockerExecutor(Executor):
                 if resolved_dataset_path is not None
                 else Path(raw).name
             )
+            # Verify the source is accessible in the backend's filesystem before
+            # passing it to Docker. Modern Docker silently creates missing bind
+            # sources as directories, which causes containers to start but fail
+            # internally with an opaque error. Catching this here gives a clear
+            # failure message and prevents a false-success status.
+            #
+            # Validation is skipped when validate_mounts=False (e.g. build_command
+            # is called for command-preview display — no need to verify at that point).
+            #
+            # We can only validate a path when we can actually see it from here:
+            #   - The path was resolved via dataset-path translation → backend copy is accessible
+            #   - We are not inside a Docker container → raw filesystem is accessible
+            # When running inside Docker with an untranslated path (e.g. a FreeSurfer
+            # license file that lives outside the datasets mount), we cannot verify
+            # the source — the Docker daemon sees the host filesystem directly. Skip
+            # validation in that case; if the path is genuinely missing Docker will
+            # surface a clear bind-mount error.
+            expected_dir = p.get("type") == "directory_path"
+            if validate_mounts:
+                if resolved_dataset_path is not None:
+                    backend_path = resolved_dataset_path.backend
+                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    if not backend_ok:
+                        kind = "directory" if expected_dir else "file"
+                        raise RuntimeError(
+                            f"Mount validation failed for parameter '{name}': "
+                            f"{kind} not found at '{raw}'. "
+                            "The file may have been moved or deleted after the run was submitted."
+                        )
+                elif not _is_running_in_docker():
+                    backend_path = Path(raw)
+                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    if not backend_ok:
+                        kind = "directory" if expected_dir else "file"
+                        raise RuntimeError(
+                            f"Mount validation failed for parameter '{name}': "
+                            f"{kind} not found at '{raw}'. "
+                            "The file may have been moved or deleted after the run was submitted."
+                        )
             container_path = f"/inputs/{name}/{basename}"
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
             _mounted_paths[name] = container_path
@@ -362,7 +401,7 @@ class DockerExecutor(Executor):
 
     def build_command(self, ctx: RunContext) -> list[str]:
         """Full CLI representation — used for command_preview display."""
-        sdk = self._build_sdk_params(ctx)
+        sdk = self._build_sdk_params(ctx, validate_mounts=False)
         cli = ["docker", "run", "--rm"]
         if sdk.user is not None:
             cli += ["-u", sdk.user]

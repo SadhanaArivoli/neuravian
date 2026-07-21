@@ -1,16 +1,31 @@
 import json
+import hashlib
+import re
+import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.workflow import SavedWorkflow
-from app.schemas.workflow import WorkflowCreate, WorkflowRead, WorkflowSummary, WorkflowUpdate
+from app.models.workflow_execution import WorkflowExecution, WorkflowTransfer
+from app.schemas.workflow import (
+    WorkflowCreate, WorkflowExecutionCreate, WorkflowExecutionRead,
+    WorkflowExecutionUpdate, WorkflowRead, WorkflowSummary,
+    WorkflowTransferRead, WorkflowUpdate,
+)
 
 router = APIRouter(tags=["workflows"])
 
 CURRENT_SCHEMA_VERSION = "neuroforge-workflow-v1"
+EXECUTION_STATUSES = {
+    "planned", "running-local", "handoff-required", "synchronizing-inputs",
+    "starting-remote", "running-remote", "synchronizing-results", "failed", "complete",
+}
+ARTIFACT_KEY = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 
 
 def _row_to_summary(row: SavedWorkflow) -> WorkflowSummary:
@@ -51,6 +66,26 @@ def _row_to_read(row: SavedWorkflow) -> WorkflowRead:
         template_source_id=row.template_source_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _execution_to_read(row: WorkflowExecution) -> WorkflowExecutionRead:
+    return WorkflowExecutionRead(
+        id=row.id, execution_uuid=row.execution_uuid, workflow_id=row.workflow_id,
+        idempotency_key=row.idempotency_key, status=row.status,
+        current_node_id=row.current_node_id, remote_profile_id=row.remote_profile_id,
+        state=json.loads(row.state_json), revision=row.revision,
+        return_sync_complete=row.return_sync_complete,
+        created_at=row.created_at, updated_at=row.updated_at,
+    )
+
+
+def _transfer_to_read(row: WorkflowTransfer) -> WorkflowTransferRead:
+    return WorkflowTransferRead(
+        artifact_key=row.artifact_key, relative_path=row.relative_path,
+        sha256=row.sha256, size_bytes=row.size_bytes,
+        bytes_received=row.bytes_received, status=row.status,
+        staged_path=row.local_path,
     )
 
 
@@ -177,3 +212,126 @@ def promote_to_template(workflow_id: int, db: Session = Depends(get_db)) -> Work
     db.commit()
     db.refresh(tmpl)
     return _row_to_read(tmpl)
+
+
+@router.post("/workflows/{workflow_id}/executions", status_code=201)
+def create_workflow_execution(
+    workflow_id: int, body: WorkflowExecutionCreate, db: Session = Depends(get_db),
+) -> WorkflowExecutionRead:
+    if not db.get(SavedWorkflow, workflow_id):
+        raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
+    existing = db.query(WorkflowExecution).filter_by(
+        workflow_id=workflow_id, idempotency_key=body.idempotency_key,
+    ).first()
+    if existing:
+        return _execution_to_read(existing)
+    execution_uuid = body.execution_uuid or str(uuid.uuid4())
+    try:
+        uuid.UUID(execution_uuid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="execution_uuid must be a UUID") from exc
+    row = WorkflowExecution(
+        execution_uuid=execution_uuid, workflow_id=workflow_id,
+        idempotency_key=body.idempotency_key, remote_profile_id=body.remote_profile_id,
+        status="planned", state_json=json.dumps(body.state),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _execution_to_read(row)
+
+
+@router.get("/workflow-executions/{execution_uuid}")
+def get_workflow_execution(execution_uuid: str, db: Session = Depends(get_db)) -> WorkflowExecutionRead:
+    row = db.query(WorkflowExecution).filter_by(execution_uuid=execution_uuid).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Workflow execution not found")
+    return _execution_to_read(row)
+
+
+@router.patch("/workflow-executions/{execution_uuid}")
+def update_workflow_execution(
+    execution_uuid: str, body: WorkflowExecutionUpdate, db: Session = Depends(get_db),
+) -> WorkflowExecutionRead:
+    row = db.query(WorkflowExecution).filter_by(execution_uuid=execution_uuid).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Workflow execution not found")
+    if row.revision != body.expected_revision:
+        raise HTTPException(status_code=409, detail=f"Execution revision is {row.revision}")
+    if body.status not in EXECUTION_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid workflow execution status")
+    if body.status == "complete" and not body.return_sync_complete:
+        raise HTTPException(status_code=409, detail="Return synchronization must complete before the workflow completes")
+    row.status = body.status
+    row.current_node_id = body.current_node_id
+    row.remote_profile_id = body.remote_profile_id or row.remote_profile_id
+    row.return_sync_complete = body.return_sync_complete
+    row.state_json = json.dumps(body.state)
+    row.revision += 1
+    row.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(row)
+    return _execution_to_read(row)
+
+
+def _transfer_root(execution_uuid: str) -> Path:
+    root = Path(settings.data_dir).resolve() / "workflow-transfers" / execution_uuid / "inputs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@router.put("/workflow-executions/{execution_uuid}/inputs/{artifact_key}")
+async def upload_workflow_input(
+    execution_uuid: str, artifact_key: str, request: Request,
+    x_neuroforge_sha256: str = Header(...), x_neuroforge_relative_path: str = Header(...),
+    db: Session = Depends(get_db),
+) -> WorkflowTransferRead:
+    execution = db.query(WorkflowExecution).filter_by(execution_uuid=execution_uuid).first()
+    if not execution:
+        raise HTTPException(status_code=404, detail="Workflow execution not found")
+    if not ARTIFACT_KEY.fullmatch(artifact_key):
+        raise HTTPException(status_code=400, detail="Invalid artifact key")
+    relative = Path(x_neuroforge_relative_path)
+    if relative.is_absolute() or ".." in relative.parts or not relative.name:
+        raise HTTPException(status_code=400, detail="Invalid relative artifact path")
+    if not re.fullmatch(r"[0-9a-f]{64}", x_neuroforge_sha256.lower()):
+        raise HTTPException(status_code=400, detail="Invalid SHA-256")
+    payload = await request.body()
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != x_neuroforge_sha256.lower():
+        raise HTTPException(status_code=422, detail="Artifact checksum mismatch")
+    existing = db.query(WorkflowTransfer).filter_by(
+        execution_id=execution.id, artifact_key=artifact_key,
+    ).first()
+    if existing and existing.status == "complete" and existing.sha256 == digest and existing.size_bytes == len(payload):
+        return _transfer_to_read(existing)
+    destination = (_transfer_root(execution_uuid) / relative).resolve()
+    root = _transfer_root(execution_uuid)
+    if not destination.is_relative_to(root):
+        raise HTTPException(status_code=400, detail="Artifact path escapes transfer root")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".partial")
+    temporary.write_bytes(payload)
+    temporary.replace(destination)
+    row = existing or WorkflowTransfer(execution_id=execution.id, artifact_key=artifact_key)
+    row.relative_path = relative.as_posix()
+    row.sha256 = digest
+    row.size_bytes = len(payload)
+    row.bytes_received = len(payload)
+    row.status = "complete"
+    row.local_path = str(destination)
+    row.updated_at = datetime.now(UTC)
+    if not existing:
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _transfer_to_read(row)
+
+
+@router.get("/workflow-executions/{execution_uuid}/inputs")
+def list_workflow_inputs(execution_uuid: str, db: Session = Depends(get_db)) -> list[WorkflowTransferRead]:
+    execution = db.query(WorkflowExecution).filter_by(execution_uuid=execution_uuid).first()
+    if not execution:
+        raise HTTPException(status_code=404, detail="Workflow execution not found")
+    rows = db.query(WorkflowTransfer).filter_by(execution_id=execution.id).order_by(WorkflowTransfer.artifact_key).all()
+    return [_transfer_to_read(row) for row in rows]
