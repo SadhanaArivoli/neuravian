@@ -57,7 +57,10 @@ class ReplicatedObject(Base):
     cached_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
-Base.metadata.create_all(bind=engine)
+# This cache table is intentionally outside the authoritative Alembic schema.
+# Create only this table: creating all registered metadata here previously
+# materialized future migration tables while the database stamp stayed behind.
+ReplicatedObject.__table__.create(bind=engine, checkfirst=True)
 
 # ── SSE event bus ─────────────────────────────────────────────────────────────
 # In-process async queue. Callers push WREEvent dicts here; connected

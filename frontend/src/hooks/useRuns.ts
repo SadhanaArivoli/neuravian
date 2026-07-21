@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRun, fetchCompatiblePipelines, fetchRun, fetchRunFile, fetchRunProvenance, fetchRunResults, fetchRuns, type CompatiblePipeline, type RunCreate } from "../api/client";
 
+export const shouldPollRun = (status: string | undefined) =>
+  status === "pending" || status === "queued" || status === "running";
+
 export function useRuns() {
   return useQuery({
     queryKey: ["runs"],
@@ -20,7 +23,7 @@ export function useRun(id: number) {
     queryFn: () => fetchRun(id),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "pending" || status === "running" ? 2000 : false;
+      return shouldPollRun(status) ? 2000 : false;
     },
   });
 }
