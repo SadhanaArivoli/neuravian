@@ -101,6 +101,7 @@ function DatasetsTab({ projectId }: { projectId: number }) {
       {/* Assign */}
       <div className="flex gap-2">
         <select
+          aria-label="Dataset to assign to this project"
           className="flex-1 rounded-md border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
           value={selectedId}
           onChange={e => setSelectedId(Number(e.target.value) || "")}
@@ -450,6 +451,7 @@ function EditProjectPanel({ project, onClose }: {
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
         <textarea
+          aria-label="Project description"
           className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60 resize-none"
           rows={3}
           value={form.description}
@@ -461,6 +463,7 @@ function EditProjectPanel({ project, onClose }: {
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
         <select
+          aria-label="Project status"
           className="w-full rounded border border-white/15 bg-surface-overlay px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-accent/60"
           value={form.status}
           onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
@@ -548,10 +551,12 @@ export default function ProjectDetail() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/8">
+      <div role="tablist" aria-label="Project sections" className="flex gap-1 border-b border-white/8">
         {TABS.map(t => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === t

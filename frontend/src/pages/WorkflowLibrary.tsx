@@ -483,6 +483,7 @@ export default function WorkflowLibrary() {
 
           <input
             type="search"
+            aria-label="Search saved workflows"
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -490,6 +491,7 @@ export default function WorkflowLibrary() {
           />
 
           <select
+            aria-label="Sort saved workflows"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className="rounded-md border border-white/10 bg-surface px-3 py-1.5 text-sm text-gray-400 outline-none"

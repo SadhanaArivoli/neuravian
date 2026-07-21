@@ -235,8 +235,8 @@ const WHY_CARDS = [
   },
   {
     icon: <IconLock />,
-    title: "Your data stays local",
-    body: "NeuroForge runs entirely on your machine. No data is uploaded, logged, or shared externally.",
+    title: "Local-first by default",
+    body: "Projects run locally unless you explicitly continue a supported workflow in a configured cloud workspace.",
   },
   {
     icon: <IconLayers />,
@@ -384,15 +384,16 @@ export default function Welcome() {
           </h1>
           <p className="text-base sm:text-lg text-gray-400 mb-6 sm:mb-8 max-w-xl">
             NeuroForge wraps established neuroimaging tools — FSL, FreeSurfer,
-            fMRIPrep, and more — in a guided interface that runs entirely on
-            your machine.
+            fMRIPrep, and more — in one guided, local-first workspace with
+            optional cloud handoff for supported workflows.
           </p>
           <div className="flex items-center gap-3 flex-wrap">
             <Link
-              to="/pipelines"
+              to="/projects"
+              state={{ createProject: true }}
               className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
             >
-              Get Started →
+              Create Your First Project →
             </Link>
             <Link
               to="/datasets"
@@ -406,7 +407,7 @@ export default function Welcome() {
             <span className="text-gray-700">·</span>
             <span>3 compute profiles</span>
             <span className="text-gray-700">·</span>
-            <span>100% local</span>
+            <span>Local-first</span>
             <span className="text-gray-700">·</span>
             <span>Apache 2.0</span>
           </div>
@@ -433,7 +434,7 @@ export default function Welcome() {
             {
               icon: <IconShield />,
               title: "Self-Hosted",
-              body: "Your data never leaves your machine. No cloud accounts, no upload prompts.",
+              body: "Local execution is the default. Cloud transfer requires an explicit workspace and handoff confirmation.",
             },
             {
               icon: <IconClipboard />,
@@ -631,9 +632,14 @@ export default function Welcome() {
               GitHub
             </a>
             <span>Apache 2.0</span>
-            <span className="text-gray-700">
-              Docs coming soon
-            </span>
+            <a
+              href="https://github.com/SadhanaArivoli/neuroforge/blob/main/docs/quickstart.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-300 transition-colors"
+            >
+              Quick Start
+            </a>
           </div>
         </div>
       </footer>

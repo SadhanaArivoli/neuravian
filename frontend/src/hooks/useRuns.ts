@@ -5,7 +5,12 @@ export function useRuns() {
   return useQuery({
     queryKey: ["runs"],
     queryFn: fetchRuns,
-    refetchInterval: 5000, // poll while runs might be in progress
+    refetchInterval: (query) => {
+      const runs = query.state.data;
+      return runs?.some((run) => ["pending", "queued", "running"].includes(run.status))
+        ? 5000
+        : false;
+    },
   });
 }
 

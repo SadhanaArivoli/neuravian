@@ -391,6 +391,7 @@ export default function Runs() {
         {/* Filter bar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <input
+            aria-label="Filter runs by pipeline"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by pipeline…"
@@ -548,6 +549,7 @@ export default function Runs() {
           <div className="relative max-w-sm">
             <input
               type="search"
+              aria-label="Filter cloud runs by pipeline"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter by pipeline…"
@@ -739,6 +741,7 @@ export default function Runs() {
           </svg>
           <input
             type="search"
+            aria-label="Filter runs by pipeline"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by pipeline…"

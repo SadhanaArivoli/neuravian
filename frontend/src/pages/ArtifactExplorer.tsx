@@ -448,12 +448,14 @@ function FilterBar({
     <div className="flex flex-wrap items-center gap-2 border-b border-white/8 bg-surface px-4 py-3">
       <input
         type="search"
+        aria-label="Search artifacts"
         placeholder="Search artifacts…"
         value={filters.search}
         onChange={(e) => setFilters({ ...filters, search: e.target.value })}
         className="min-w-48 flex-1 rounded-md border border-white/10 bg-surface-overlay px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:border-accent/60 focus:outline-none"
       />
       <select
+        aria-label="Filter artifacts by type"
         value={filters.artifactType}
         onChange={(e) => setFilters({ ...filters, artifactType: e.target.value })}
         className={selectCls}
@@ -462,6 +464,7 @@ function FilterBar({
         {types.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
       <select
+        aria-label="Filter artifacts by pipeline"
         value={filters.pipeline}
         onChange={(e) => setFilters({ ...filters, pipeline: e.target.value })}
         className={selectCls}
@@ -470,6 +473,7 @@ function FilterBar({
         {pipelines.map((p) => <option key={p} value={p}>{p}</option>)}
       </select>
       <select
+        aria-label="Filter artifacts by file kind"
         value={filters.fileKind}
         onChange={(e) => setFilters({ ...filters, fileKind: e.target.value as ArtifactFilters["fileKind"] })}
         className={selectCls}
@@ -479,6 +483,7 @@ function FilterBar({
         <option value="directory">Directories</option>
       </select>
       <select
+        aria-label="Sort artifacts"
         value={filters.sortBy}
         onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as ArtifactSortKey })}
         className={selectCls}

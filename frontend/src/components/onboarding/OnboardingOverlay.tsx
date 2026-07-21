@@ -380,7 +380,14 @@ function WelcomeScreen({
           GitHub
         </a>
         <span>·</span>
-        <span className="text-gray-700">Docs coming soon</span>
+        <a
+          href="https://github.com/SadhanaArivoli/neuroforge/blob/main/docs/quickstart.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-gray-400 transition-colors"
+        >
+          Quick Start
+        </a>
         <span>·</span>
         <span className="text-gray-700">v0.1.0-alpha</span>
       </div>

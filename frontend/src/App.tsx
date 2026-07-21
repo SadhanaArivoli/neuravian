@@ -1,32 +1,43 @@
+import { lazy, Suspense } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
-import ComparisonStudio from "./pages/ComparisonStudio";
 import DatasetDetail from "./pages/DatasetDetail";
 import Datasets from "./pages/Datasets";
 import Pipelines from "./pages/Pipelines";
 import RemoteHosts from "./pages/RemoteHosts";
-import RunDetail from "./pages/RunDetail";
-import ArtifactExplorer from "./pages/ArtifactExplorer";
-import DatasetDashboard from "./pages/DatasetDashboard";
-import MethodsStudio from "./pages/MethodsStudio";
-import WorkflowGraph from "./pages/WorkflowGraph";
 import Runs from "./pages/Runs";
-import ReportStudio from "./pages/ReportStudio";
-import ReportViewer from "./pages/ReportViewer";
-import ReportCompare from "./pages/ReportCompare";
-import StatisticalMapExplorer from "./pages/StatisticalMapExplorer";
-import Projects from "./pages/Projects";
 import ProjectDetail from "./pages/ProjectDetail";
 import Plugins from "./pages/Plugins";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
-import WorkflowBuilder from "./pages/WorkflowBuilder";
 import WorkflowLibrary from "./pages/WorkflowLibrary";
-import WizardDcm2bids from "./pages/WizardDcm2bids";
 import Workspaces from "./pages/Workspaces";
 import { WorkspaceProvider } from "./context/WorkspaceContext";
+
+const ArtifactExplorer = lazy(() => import("./pages/ArtifactExplorer"));
+const ComparisonStudio = lazy(() => import("./pages/ComparisonStudio"));
+const DatasetDashboard = lazy(() => import("./pages/DatasetDashboard"));
+const MethodsStudio = lazy(() => import("./pages/MethodsStudio"));
+const Projects = lazy(() => import("./pages/Projects"));
+const ReportCompare = lazy(() => import("./pages/ReportCompare"));
+const ReportStudio = lazy(() => import("./pages/ReportStudio"));
+const ReportViewer = lazy(() => import("./pages/ReportViewer"));
+const RunDetail = lazy(() => import("./pages/RunDetail"));
+const StatisticalMapExplorer = lazy(() => import("./pages/StatisticalMapExplorer"));
+const WorkflowBuilder = lazy(() => import("./pages/WorkflowBuilder"));
+const WorkflowGraph = lazy(() => import("./pages/WorkflowGraph"));
+const WizardDcm2bids = lazy(() => import("./pages/WizardDcm2bids"));
+
+function RouteLoading() {
+  return (
+    <div role="status" aria-live="polite" className="flex min-h-[50vh] items-center justify-center gap-3 text-sm text-gray-400">
+      <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      Loading workspace…
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -35,7 +46,8 @@ export default function App() {
         <div className="flex min-h-screen flex-col overflow-hidden md:h-screen md:flex-row">
           <Sidebar />
           <main className="min-h-0 flex-1 overflow-y-auto">
-          <Routes>
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
             <Route path="/" element={<Welcome />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/workspaces" element={<Workspaces />} />
@@ -68,7 +80,8 @@ export default function App() {
                 <Link to="/" className="text-sm text-accent hover:underline">← Back to Home</Link>
               </div>
             } />
-          </Routes>
+              </Routes>
+            </Suspense>
           </main>
         </div>
       </WorkspaceProvider>

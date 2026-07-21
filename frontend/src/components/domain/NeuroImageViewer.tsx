@@ -1077,5 +1077,5 @@ export default function NeuroImageViewer({
   );
 
   if (!modal) return content;
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(event) => { if (event.target === event.currentTarget) onClose?.(); }}><div className="mx-4 flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-white/8 bg-[#0d0d0d] shadow-2xl">{content}</div></div>;
+  return <div role="dialog" aria-modal="true" aria-label="NeuroForge image viewer" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(event) => { if (event.target === event.currentTarget) onClose?.(); }}><div className="mx-4 flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-white/8 bg-[#0d0d0d] shadow-2xl">{content}</div></div>;
 }

@@ -109,7 +109,7 @@ export function CloudNiivueViewer({ workspaceId, runId, layers, onClose }: Props
   const hasOverlay = layers.some((l) => l.isOverlay);
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#0d1117]" role="dialog" aria-label="NeuroForge Viewer">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#0d1117]" role="dialog" aria-modal="true" aria-label="NeuroForge Viewer">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 border-b border-white/8 px-4 py-2">
         <div className="flex items-center gap-3">

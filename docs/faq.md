@@ -23,7 +23,9 @@ docker compose logs backend
 ```
 
 Common causes:
-- **SQLite migration failed** — delete `data/neuroforge.db` and restart. This loses all run history.
+- **SQLite migration failed** — preserve `data/neuroforge.db`, capture the
+  migration error, and confirm the current Alembic revision. Restore from a
+  backup or request support; do not delete the database as a routine fix.
 - **Bad `.env` file** — verify that `HOST_DATASETS_DIR` exists on your machine.
 - **Permission denied on Docker socket** — your user must be in the `docker` group (Linux) or Docker Desktop must be running (macOS/Windows).
 
@@ -154,7 +156,9 @@ Yes. Set `enabled: false` in `plugin.yaml`. The plugin is discovered but its pip
 
 ### Does NeuroForge send my data anywhere?
 
-No. NeuroForge is local-first. No data is uploaded unless you explicitly configure remote execution via the Remote Hosts settings. Even then, data transfer requires explicit action on your part for each run.
+NeuroForge is local-first. No data is uploaded unless you explicitly configure
+a cloud workspace and confirm a workflow handoff. The handoff transfers only
+manifest-verified inputs required by the remote node.
 
 ### Is NeuroForge HIPAA-compliant?
 

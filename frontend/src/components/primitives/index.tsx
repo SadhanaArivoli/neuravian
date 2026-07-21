@@ -143,20 +143,28 @@ export function EmptyState({
 
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-3 py-16">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+    <div role="status" aria-live="polite" className="flex items-center justify-center gap-3 py-16">
+      <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       <p className="text-sm text-gray-400">{label}</p>
     </div>
   );
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({
+  message,
+  onRetry,
+  title = "We couldn't load this section",
+}: {
+  message: string;
+  onRetry?: () => void;
+  title?: string;
+}) {
   return (
-    <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-6 text-center">
-      <p className="text-sm font-semibold text-red-300">Something went wrong</p>
+    <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-6 text-center">
+      <p className="text-sm font-semibold text-red-300">{title}</p>
       <p className="mt-1 text-xs text-gray-400">{message}</p>
       {onRetry && (
-        <button onClick={onRetry} className="mt-4 text-xs text-accent hover:text-accent">
+        <button onClick={onRetry} className="mt-4 rounded text-xs text-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/50">
           Try again
         </button>
       )}

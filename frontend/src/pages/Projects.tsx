@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   useCreateProject,
   useDeleteProject,
@@ -80,7 +80,7 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Create a research project">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-surface shadow-2xl p-6 space-y-4">
         <h2 className="text-lg font-semibold text-white">New Research Project</h2>
@@ -201,10 +201,11 @@ function ProjectCard({ project, onDelete }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Projects() {
+  const location = useLocation();
   const { selected, cloudProfiles } = useWorkspace();
   const { data: projects, isLoading, error } = useProjects();
   const deleteProject = useDeleteProject();
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(() => Boolean(location.state?.createProject));
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [pushing, setPushing] = useState<Record<string, boolean>>({});
   const [pushErrors, setPushErrors] = useState<Record<string, string>>({});

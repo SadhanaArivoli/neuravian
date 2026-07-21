@@ -573,6 +573,7 @@ export function CloudRunDetail({
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm"
       role="dialog"
+      aria-modal="true"
       aria-label={`Cloud Run #${run.id} — ${run.pipeline_manifest_id}`}
     >
       <div className="h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-surface p-6 shadow-2xl">

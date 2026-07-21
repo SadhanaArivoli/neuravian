@@ -66,11 +66,11 @@ Projects are organizational containers. They do not affect data storage.
 
 ## Step 4 — Import a dataset
 
-1. Click **Datasets** → **New Dataset**.
-2. Enter a name and select a **Source type**:
-   - **Local path** — paste the path on your machine to a BIDS dataset. NeuroForge translates it to `/host-data/...` inside the container.
-   - **Sample dataset** — downloads a minimal BIDS example for testing.
-3. Click **Import**.
+1. Click **Datasets** → **Import dataset**.
+2. Enter the absolute path to a BIDS dataset inside the configured
+   `HOST_DATASETS_DIR`. NeuroForge translates the host path to `/host-data/...`
+   inside the container.
+3. Click **Import dataset**.
 
 The dataset appears in your list. Its BIDS status is shown as a badge.
 
@@ -78,8 +78,8 @@ The dataset appears in your list. Its BIDS status is shown as a badge.
 
 ## Step 5 — Validate the dataset
 
-1. Open the dataset → **Pipelines** tab.
-2. Find **BIDS Validator** and click **Run**.
+1. Open **Pipelines**.
+2. Find **BIDS Validator** and select it.
 3. Accept the default parameters and click **Start Run**.
 4. Watch progress in the **Runs** log. The run typically takes 10–30 seconds.
 5. Open the completed run to see the validation report.
@@ -127,12 +127,5 @@ docker compose down
 
 Your database and all run outputs are persisted in the `./data/` directory and survive restarts.
 
-To reset completely (deletes all run records and derivatives):
-
-```bash
-docker compose down
-rm -rf data/
-docker compose up
-```
-
-Your source datasets are never touched.
+Back up `data/neuroforge.db` and `data/derivatives/` before any maintenance.
+Your source datasets are never modified by NeuroForge.

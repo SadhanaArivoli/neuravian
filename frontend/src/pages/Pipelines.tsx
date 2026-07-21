@@ -330,6 +330,7 @@ export default function Pipelines() {
             </svg>
             <input
               type="search"
+              aria-label="Search pipelines"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search pipelines…"
@@ -372,6 +373,7 @@ export default function Pipelines() {
             <button
               type="button"
               role="switch"
+              aria-label="Show only pipelines suitable for local execution"
               aria-checked={localOkOnly}
               onClick={() => setLocalOkOnly((v) => !v)}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${

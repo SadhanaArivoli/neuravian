@@ -31,17 +31,18 @@ BIDS dataset
 ## Before you start
 
 - NeuroForge is running at http://localhost:3000 (see [Quickstart](quickstart.md))
-- You have a BIDS-formatted fMRI dataset, or you will use the built-in sample dataset
-- You have fMRIPrep derivatives if you want to run the connectivity steps (the sample dataset includes mock derivatives)
+- You have a BIDS-formatted fMRI dataset inside `HOST_DATASETS_DIR`
+- You have real fMRIPrep derivatives if you want to run the connectivity steps
 
 ---
 
 ## Step 1 — Import the dataset
 
-1. Click **Datasets** → **New Dataset**.
+1. Click **Datasets** → **Import dataset**.
 2. Enter a name (e.g. *Tutorial Dataset*).
-3. For source type, choose **Local path** and enter the path to your BIDS directory. If you do not have one, choose **Sample dataset** — NeuroForge will populate a minimal BIDS example with mock fMRIPrep derivatives.
-4. Click **Import**.
+3. Enter the absolute path to your BIDS directory inside the configured
+   `HOST_DATASETS_DIR`.
+4. Click **Import dataset**.
 
 You will see the dataset card with its BIDS validation status as a badge.
 
@@ -56,8 +57,6 @@ You will see the dataset card with its BIDS validation status as a badge.
 5. Open the completed run. The validation report lists any issues found, with references to the BIDS specification.
 
 If there are errors, fix them in your source data before continuing. NeuroForge treats your source as read-only — it will not modify files.
-
-> **Note:** If you are using the sample dataset, it passes validation without issues.
 
 ---
 

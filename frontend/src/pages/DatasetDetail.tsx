@@ -369,12 +369,14 @@ export default function DatasetDetail() {
           <div className="flex gap-2">
             <input
               type="text"
+              aria-label="Search subjects"
               placeholder="Search subjects…"
               value={subjectSearch}
               onChange={(e) => setSubjectSearch(e.target.value)}
               className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-accent/50 w-48"
             />
             <select
+              aria-label="Filter subjects by modality"
               value={modalityFilter}
               onChange={(e) => setModalityFilter(e.target.value)}
               className="rounded-md border border-white/10 bg-[#1a1a2e] px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-accent/50"
