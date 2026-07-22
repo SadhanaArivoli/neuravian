@@ -230,7 +230,20 @@ async function loadMainApplication(): Promise<void> {
     applicationLoaded = true;
     trace({ attemptId, stage: 19, name: "app URL loaded into main window", detail: FRONTEND_URL, elapsedMs: Date.now() - startedAt });
     trace({ attemptId, stage: 20, name: "startup shell removed", elapsedMs: Date.now() - startedAt });
-    const visible = await mainWindow.webContents.executeJavaScript("Boolean(document.body && document.body.innerText.includes('Neuravian'))", true).catch(() => false) as boolean;
+    // Poll for the React app to hydrate (sidebar renders "Neuravian" once mounted).
+    // A single check at 6 s is unreliable on cold starts; poll every 500 ms for up to 20 s.
+    const visible = await mainWindow.webContents.executeJavaScript(`
+      new Promise(resolve => {
+        const deadline = Date.now() + 20_000;
+        (function check() {
+          if (document.title === 'Neuravian' || (document.body && document.body.innerText.includes('Neuravian'))) {
+            return resolve(true);
+          }
+          if (Date.now() >= deadline) return resolve(false);
+          setTimeout(check, 500);
+        })();
+      })
+    `, true).catch(() => false) as boolean;
     if (!visible) throw new Error("The Neuravian document loaded but its main UI was not visible.");
     trace({ attemptId, stage: 21, name: "main Neuravian UI visible", elapsedMs: Date.now() - startedAt });
   } catch (error) {
