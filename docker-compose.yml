@@ -29,6 +29,9 @@ services:
       # submits docker run commands on behalf of the user.
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      # DATABASE_URL is resolved at startup by startup.py / db_selector.py.
+      # Do not hardcode a filename here; the selector picks the right database
+      # automatically based on what exists in the data directory.
       DATABASE_URL: sqlite:////app/data/neuravian.db
       DATA_DIR: /app/data
       # Tell the backend what host prefix maps to /host-data so it can

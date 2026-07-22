@@ -34,5 +34,7 @@ COPY . .
 # above; --no-deps keeps this step fast.
 RUN uv pip install --system --no-cache --no-deps .
 
-# Run migrations then start the server
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Run the startup script which resolves the correct database, runs migrations,
+# then exec's uvicorn.  Using python directly ensures DATABASE_URL is set in
+# the process environment before Alembic or the app module is imported.
+CMD ["python", "startup.py"]
