@@ -17,12 +17,17 @@ const facts: SystemFacts = {
   dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
 };
 
-function composeMock() {
+function composeMock(packaged = false) {
   return {
+    ctx,
     start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     stop: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
+    pull: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     attachExternal: vi.fn(),
     setDockerPath: vi.fn(),
+    // Allow tests to simulate packaged mode without constructing a real DesktopCompose.
+    get ownsServices() { return false; },
+    _packaged: packaged,
   } as unknown as DesktopCompose;
 }
 

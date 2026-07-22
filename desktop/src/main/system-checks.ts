@@ -58,10 +58,11 @@ export async function runSystemChecks(
 
   if (process.platform !== "darwin") throw new SystemCheckError("system", "This prototype currently supports macOS only.");
 
-  // In packaged mode the source build contexts (backend/, frontend/) are absent;
-  // only the compose files and static pipeline/plugin definitions are bundled.
+  // Packaged mode: only the self-contained packaged compose file is needed —
+  // docker-compose.yml and docker-compose.desktop.yml are not loaded.
+  // Dev mode: the source repo with build contexts must be present.
   const required = ctx.packaged
-    ? ["docker-compose.yml", "desktop/docker-compose.desktop.yml", "desktop/docker-compose.packaged.yml", "pipelines", "plugins"]
+    ? ["desktop/docker-compose.packaged.yml", "pipelines", "plugins"]
     : ["docker-compose.yml", "backend", "frontend", "pipelines", "plugins", "desktop/docker-compose.desktop.yml"];
 
   for (const relative of required) {

@@ -1,31 +1,67 @@
-# Packaged-app overlay for Neuravian.app.
+# Self-contained Compose file for the packaged Neuravian.app.
 #
-# Applied on top of docker-compose.yml and docker-compose.desktop.yml when the
-# Electron app is running from a packaged .app bundle (app.isPackaged = true).
+# Used EXCLUSIVELY when app.isPackaged is true — docker-compose.yml and
+# docker-compose.desktop.yml are NOT loaded alongside this file.
+# This avoids volume-list merge ambiguity and build-context references.
 #
-# What this overlay does:
-#   1. Replaces the build: contexts with image: references so Docker does not
-#      need the source repository on the user's machine.
-#   2. Rewrites the data volume bind-mount to use NEURAVIAN_DATA_DIR (the
-#      writable userData directory set by the Electron main process) instead of
-#      the hardcoded ./data path that requires the repo to exist.
-#   3. Leaves all other settings (ports, healthcheck, env vars) to the base
-#      files so there is no duplication to maintain.
-#
-# Image names must match what build-full.mjs tags and what the user has pulled.
-# The build script is responsible for ensuring these tags exist locally before
-# packaging.
+# Environment variables injected by the Electron main process before compose runs:
+#   NEURAVIAN_DATA_DIR      — writable userData/data directory (database, outputs)
+#   NEURAVIAN_RESOURCES_DIR — Contents/Resources/app-resources (pipelines, plugins)
+#   HOST_DATASETS_DIR       — user's dataset root (default ~/Documents)
+#   HOST_UID / HOST_GID     — host user identity for spawned pipeline containers
+
+name: neuravian-desktop
 
 services:
   backend:
-    build: !reset null
-    image: neuravian-backend:0.1.0
+    image: ghcr.io/sadhanaarivoli/neuravian-backend:0.1.0
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
+      # Writable data: SQLite database, run logs, derivatives output
       - type: bind
         source: ${NEURAVIAN_DATA_DIR}
         target: /app/data
+      # Read-only pipeline manifests from the app bundle
+      - type: bind
+        source: ${NEURAVIAN_RESOURCES_DIR}/pipelines
+        target: /pipelines
+        read_only: true
+      # Bundled core plugins from the app bundle
+      - type: bind
+        source: ${NEURAVIAN_RESOURCES_DIR}/plugins
+        target: /plugins
+        read_only: true
+      # User-installed third-party plugins (empty dir on first launch is fine)
+      - type: bind
+        source: ${NEURAVIAN_DATA_DIR}/plugins-user
+        target: /plugins-user
+        read_only: true
+      # Host datasets directory — read-only, mounted for import
+      - type: bind
+        source: ${HOST_DATASETS_DIR:-~/Documents}
+        target: /host-data
+        read_only: true
+      # Docker socket — lets the backend spawn sibling pipeline containers
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: sqlite:////app/data/neuravian.db
+      DATA_DIR: /app/data
+      HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
+      BACKEND_DATASETS_MOUNT: /host-data
+      HOST_UID: ${HOST_UID:-0}
+      HOST_GID: ${HOST_GID:-0}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
-    build: !reset null
-    image: neuravian-frontend:0.1.0
+    image: ghcr.io/sadhanaarivoli/neuravian-frontend:0.1.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy

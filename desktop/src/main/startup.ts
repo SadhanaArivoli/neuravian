@@ -106,8 +106,23 @@ export class StartupController {
         );
       }
 
+      // In packaged mode pull images first so the user sees progress rather than
+      // a silent hang while Docker downloads neuravian-backend and neuravian-frontend.
+      if (this.compose.ctx.packaged) {
+        failedStage = "image pull";
+        this.update(attemptId, startedAt, {
+          state: "starting",
+          title: "Downloading Neuravian images",
+          detail: "Pulling neuravian-backend and neuravian-frontend from ghcr.io. This may take a few minutes on the first launch.",
+          stage: "image pull",
+        });
+        this.trace(11.5, "image pull started", "ghcr.io/sadhanaarivoli/neuravian-*:0.1.0", attemptId, this.dependencies.now() - startedAt);
+        await this.compose.pull();
+        this.trace(11.6, "image pull complete", undefined, attemptId, this.dependencies.now() - startedAt);
+      }
+
       failedStage = "Compose start";
-      this.update(attemptId, startedAt, { state: "starting", title: "Starting Neuravian", detail: "Starting the existing Docker Compose services on this Mac.", stage: "Compose start" });
+      this.update(attemptId, startedAt, { state: "starting", title: "Starting Neuravian", detail: "Starting the local Docker services.", stage: "Compose start" });
       this.trace(12, "Compose start invoked", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
       await this.compose.start();
 

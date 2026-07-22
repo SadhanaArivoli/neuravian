@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { runCommand } from "./command.js";
 import type { CommandResult } from "./types.js";
@@ -15,23 +16,25 @@ export interface ComposeContext {
 }
 
 /**
- * Build the docker compose arguments for the given context.
+ * Build the docker compose file arguments for the given context.
  *
- * Development: uses the source repo layout with build: contexts.
- * Packaged: uses the pre-built image overlay so Docker never needs source.
+ * Development: base file + localhost-only desktop overlay (build: contexts included).
+ * Packaged:    ONLY the self-contained docker-compose.packaged.yml — no base file,
+ *              no overlay merging, no build: contexts, no source repo references.
  */
 export function composeArguments(ctx: ComposeContext): string[] {
-  const args = [
+  if (ctx.packaged) {
+    // Self-contained file — does not reference docker-compose.yml at all.
+    return [
+      "compose", "--project-name", DESKTOP_PROJECT_NAME,
+      "-f", path.join(ctx.resourcesRoot, "desktop", "docker-compose.packaged.yml"),
+    ];
+  }
+  return [
     "compose", "--project-name", DESKTOP_PROJECT_NAME,
     "-f", path.join(ctx.resourcesRoot, "docker-compose.yml"),
     "-f", path.join(ctx.resourcesRoot, "desktop", "docker-compose.desktop.yml"),
   ];
-  if (ctx.packaged) {
-    // The packaged overlay replaces build: contexts with image: references and
-    // rewrites volume paths to use the writable userData data directory.
-    args.push("-f", path.join(ctx.resourcesRoot, "desktop", "docker-compose.packaged.yml"));
-  }
-  return args;
 }
 
 export class DesktopCompose {
@@ -58,22 +61,36 @@ export class DesktopCompose {
     return this.dockerPath;
   }
 
-  private environment(): NodeJS.ProcessEnv {
+  private async environment(): Promise<NodeJS.ProcessEnv> {
+    if (this.ctx.packaged) {
+      // Ensure the plugins-user directory exists before bind-mounting it.
+      await mkdir(path.join(this.ctx.dataDir, "plugins-user"), { recursive: true });
+    }
     return {
       ...process.env,
       HOST_UID: String(process.getuid?.() ?? 0),
       HOST_GID: String(process.getgid?.() ?? 0),
-      // Tell the backend where its writable data directory is.
       NEURAVIAN_DATA_DIR: this.ctx.dataDir,
+      NEURAVIAN_RESOURCES_DIR: path.join(this.ctx.resourcesRoot),
     };
   }
 
+  async pull(): Promise<CommandResult> {
+    const env = await this.environment();
+    return this.command(
+      this.dockerCommand(),
+      [...composeArguments(this.ctx), "pull", "--quiet"],
+      { cwd: this.ctx.resourcesRoot, env, timeoutMs: STARTUP_TIMEOUTS.composeStartMs },
+    );
+  }
+
   async start(): Promise<CommandResult> {
+    const env = await this.environment();
     const result = await this.command(
       this.dockerCommand(),
       // In packaged mode images are pre-built; --build would fail (no source).
       [...composeArguments(this.ctx), "up", ...(this.ctx.packaged ? [] : ["--build"]), "--detach"],
-      { cwd: this.ctx.resourcesRoot, env: this.environment(), timeoutMs: STARTUP_TIMEOUTS.composeStartMs },
+      { cwd: this.ctx.resourcesRoot, env, timeoutMs: STARTUP_TIMEOUTS.composeStartMs },
     );
     this.ownership = "owned";
     return result;
@@ -81,9 +98,10 @@ export class DesktopCompose {
 
   async stop(): Promise<CommandResult | undefined> {
     if (!this.ownsServices) return undefined;
+    const env = await this.environment();
     const result = await this.command(this.dockerCommand(), [...composeArguments(this.ctx), "stop"], {
       cwd: this.ctx.resourcesRoot,
-      env: this.environment(),
+      env,
       timeoutMs: 2 * 60_000,
     });
     this.ownership = "none";
@@ -91,9 +109,10 @@ export class DesktopCompose {
   }
 
   async logs(): Promise<string> {
+    const env = await this.environment();
     const result = await this.command(this.dockerCommand(), [...composeArguments(this.ctx), "logs", "--tail", "120"], {
       cwd: this.ctx.resourcesRoot,
-      env: this.environment(),
+      env,
       timeoutMs: 20_000,
     });
     return [result.stdout, result.stderr].filter(Boolean).join("\n");
