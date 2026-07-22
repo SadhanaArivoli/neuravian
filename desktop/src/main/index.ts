@@ -35,7 +35,7 @@ import { DesktopCompose } from "./compose.js";
 import { formatDiagnostics } from "./diagnostics.js";
 import { FRONTEND_URL } from "./health.js";
 import { isInternalUrl, shouldOpenExternally } from "./navigation.js";
-import { findRepositoryRoot } from "./paths.js";
+import { resolveRuntimePaths } from "./paths.js";
 import { DOCKER_INSTALL_URL, StartupController } from "./startup.js";
 import type { StartupUpdate } from "./types.js";
 import { loadWindowBounds, saveWindowBounds } from "./window-state.js";
@@ -65,7 +65,8 @@ import { rmdir, rm } from "node:fs/promises";
 let mainWindow: BrowserWindow | null = null;
 let startup: StartupController | null = null;
 let compose: DesktopCompose | null = null;
-let repositoryRoot = "";
+let runtimeResourcesRoot = "";
+let runtimeDataDir = "";
 let allowQuit = false;
 let quitInProgress = false;
 let applicationLoaded = false;
@@ -268,7 +269,7 @@ async function captureWindow(target: string): Promise<void> {
 }
 
 async function openFolder(relative: string): Promise<void> {
-  const target = path.join(repositoryRoot, relative);
+  const target = path.join(runtimeDataDir, relative);
   const error = await shell.openPath(target);
   if (error) await dialog.showMessageBox({ type: "error", title: "Could not open folder", message: error });
 }
@@ -445,10 +446,41 @@ async function createWindow(): Promise<void> {
   });
   await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   publish(startupState.get());
-  repositoryRoot = findRepositoryRoot(__dirname);
-  compose = new DesktopCompose(repositoryRoot);
+
+  // Resolve runtime paths and log the decision so startup failures are diagnosable.
+  let runtimePaths: import("./paths.js").RuntimePaths;
+  try {
+    runtimePaths = resolveRuntimePaths({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      userDataPath: app.getPath("userData"),
+      dirname: __dirname,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[startup] Failed to resolve runtime paths:", message);
+    publish({
+      state: "failed",
+      title: "Application resources missing",
+      detail: message,
+      stage: "path resolution",
+      recoverable: false,
+    });
+    return;
+  }
+
+  runtimeResourcesRoot = runtimePaths.resourcesRoot;
+  runtimeDataDir = runtimePaths.dataDir;
+
+  console.log("[startup] packaged           :", runtimePaths.packaged);
+  console.log("[startup] resourcesRoot      :", runtimeResourcesRoot);
+  console.log("[startup] dataDir            :", runtimeDataDir);
+  console.log("[startup] compose files from :", path.join(runtimeResourcesRoot, "docker-compose.yml"));
+
+  const ctx = { resourcesRoot: runtimeResourcesRoot, dataDir: runtimeDataDir, packaged: runtimePaths.packaged };
+  compose = new DesktopCompose(ctx);
   startup = new StartupController(
-    repositoryRoot,
+    ctx,
     compose,
     publish,
     (stage, name, detail, attemptId, elapsedMs) => trace({ stage, name, detail, attemptId, elapsedMs }),
@@ -1199,9 +1231,9 @@ ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunch
   validateVolumeGeometry([...requested], manifest.artifacts);
   const containerPrefix = "/app/data/";
   const outputRoot = run.output_dir?.startsWith(containerPrefix)
-    ? path.join(repositoryRoot, "data", run.output_dir.slice(containerPrefix.length))
+    ? path.join(runtimeDataDir, run.output_dir.slice(containerPrefix.length))
     : path.resolve(run.output_dir ?? "");
-  const derivativesRoot = path.join(repositoryRoot, "data", "derivatives");
+  const derivativesRoot = path.join(runtimeDataDir, "derivatives");
   if (!outputRoot.startsWith(`${derivativesRoot}${path.sep}`)) throw new Error("Local run output is outside Neuravian derivatives.");
   const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
   if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");

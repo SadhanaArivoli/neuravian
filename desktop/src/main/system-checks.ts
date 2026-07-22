@@ -34,21 +34,42 @@ function versionText(result: CommandResult): string {
   return result.stdout || result.stderr || "available";
 }
 
+export interface SystemCheckContext {
+  /** Directory where docker-compose.yml, pipelines/, plugins/ etc. live. Read-only. */
+  resourcesRoot: string;
+  /** Writable directory for database and run outputs. Created if absent. */
+  dataDir: string;
+  /** True when running from a packaged .app. Adjusts which files are required. */
+  packaged?: boolean;
+}
+
 export async function runSystemChecks(
-  repositoryRoot: string,
+  context: SystemCheckContext | string,
   dependencies: { command?: CommandRunner; portAvailable?: PortChecker; trace?: CheckTrace; resolveDocker?: () => Promise<string | undefined> } = {},
 ): Promise<SystemFacts> {
+  // Accept a plain string for backward compatibility with existing tests.
+  const ctx: SystemCheckContext = typeof context === "string"
+    ? { resourcesRoot: context, dataDir: path.join(context, "data"), packaged: false }
+    : context;
+
   const command = dependencies.command ?? runCommand;
   const portAvailable = dependencies.portAvailable ?? isPortAvailable;
   const trace = dependencies.trace ?? (() => undefined);
 
   if (process.platform !== "darwin") throw new SystemCheckError("system", "This prototype currently supports macOS only.");
-  const required = ["docker-compose.yml", "backend", "frontend", "pipelines", "plugins", "desktop/docker-compose.desktop.yml"];
+
+  // In packaged mode the source build contexts (backend/, frontend/) are absent;
+  // only the compose files and static pipeline/plugin definitions are bundled.
+  const required = ctx.packaged
+    ? ["docker-compose.yml", "desktop/docker-compose.desktop.yml", "desktop/docker-compose.packaged.yml", "pipelines", "plugins"]
+    : ["docker-compose.yml", "backend", "frontend", "pipelines", "plugins", "desktop/docker-compose.desktop.yml"];
+
   for (const relative of required) {
-    try { await access(path.join(repositoryRoot, relative), constants.R_OK); }
-    catch { throw new SystemCheckError("system", `Required repository item is missing or unreadable: ${relative}`); }
+    try { await access(path.join(ctx.resourcesRoot, relative), constants.R_OK); }
+    catch { throw new SystemCheckError("system", `Required ${ctx.packaged ? "app resource" : "repository item"} is missing or unreadable: ${relative}`); }
   }
-  const dataDirectory = path.join(repositoryRoot, "data");
+
+  const dataDirectory = ctx.dataDir;
   await mkdir(dataDirectory, { recursive: true });
   try { await access(dataDirectory, constants.R_OK | constants.W_OK); }
   catch { throw new SystemCheckError("system", "The Neuravian data directory must be readable and writable."); }
@@ -81,7 +102,7 @@ export async function runSystemChecks(
     );
   }
   trace(9, "Compose detected", versionText(compose));
-  trace(10, "Repository/runtime resources resolved");
+  trace(10, ctx.packaged ? "Packaged app resources resolved" : "Repository/runtime resources resolved");
 
   const occupiedPorts: number[] = [];
   for (const port of [8000, 3000]) {
@@ -103,7 +124,7 @@ export async function runSystemChecks(
     dockerVersion: versionText(docker),
     dockerPath,
     composeVersion: versionText(compose),
-    repositoryRoot,
+    repositoryRoot: ctx.resourcesRoot,
     occupiedPorts,
   };
 }

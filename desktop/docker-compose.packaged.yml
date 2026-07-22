@@ -1,0 +1,31 @@
+# Packaged-app overlay for Neuravian.app.
+#
+# Applied on top of docker-compose.yml and docker-compose.desktop.yml when the
+# Electron app is running from a packaged .app bundle (app.isPackaged = true).
+#
+# What this overlay does:
+#   1. Replaces the build: contexts with image: references so Docker does not
+#      need the source repository on the user's machine.
+#   2. Rewrites the data volume bind-mount to use NEURAVIAN_DATA_DIR (the
+#      writable userData directory set by the Electron main process) instead of
+#      the hardcoded ./data path that requires the repo to exist.
+#   3. Leaves all other settings (ports, healthcheck, env vars) to the base
+#      files so there is no duplication to maintain.
+#
+# Image names must match what build-full.mjs tags and what the user has pulled.
+# The build script is responsible for ensuring these tags exist locally before
+# packaging.
+
+services:
+  backend:
+    build: !reset null
+    image: neuravian-backend:0.1.0
+    volumes:
+      - type: bind
+        source: ${NEURAVIAN_DATA_DIR}
+        target: /app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  frontend:
+    build: !reset null
+    image: neuravian-frontend:0.1.0

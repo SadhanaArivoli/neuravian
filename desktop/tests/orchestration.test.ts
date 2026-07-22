@@ -11,6 +11,7 @@ import { DesktopLogger } from "../src/main/logger.js";
 import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 
 const root = path.join(os.tmpdir(), "neuravian-fixture");
+const ctx = { resourcesRoot: root, dataDir: path.join(root, "data"), packaged: false };
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
   dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
@@ -37,15 +38,22 @@ function dependencies(overrides: Partial<StartupDependencies> = {}): StartupDepe
 }
 
 function controller(compose = composeMock(), updates: StartupUpdate[] = [], deps = dependencies()) {
-  return new StartupController(root, compose, (update) => updates.push(update), vi.fn(), deps);
+  return new StartupController(ctx, compose, (update) => updates.push(update), vi.fn(), deps);
 }
 
 describe("Compose orchestration", () => {
   it("uses the canonical Compose file plus localhost-only override", () => {
-    const args = composeArguments(root).join(" ");
+    const args = composeArguments(ctx).join(" ");
     expect(args).toContain(`${root}/docker-compose.yml`);
     expect(args).toContain(`${root}/desktop/docker-compose.desktop.yml`);
     expect(args).toContain("neuravian-desktop");
+  });
+
+  it("includes packaged overlay in packaged mode", () => {
+    const packedCtx = { resourcesRoot: root, dataDir: path.join(root, "data"), packaged: true };
+    const args = composeArguments(packedCtx).join(" ");
+    expect(args).toContain("docker-compose.packaged.yml");
+    expect(args).not.toContain("--build");
   });
 
   it("stops only services owned by this launcher and never removes volumes", async () => {
@@ -54,7 +62,7 @@ describe("Compose orchestration", () => {
       calls.push([...args]);
       return { stdout: "ok", stderr: "", exitCode: 0 };
     });
-    const compose = new DesktopCompose(root, command, "/usr/local/bin/docker");
+    const compose = new DesktopCompose(ctx, command, "/usr/local/bin/docker");
     compose.attachExternal();
     expect(await compose.stop()).toBeUndefined();
     await compose.start();

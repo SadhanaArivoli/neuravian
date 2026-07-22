@@ -1,5 +1,5 @@
 import { BACKEND_HEALTH_URL, FRONTEND_URL, probeService, waitForService, verifyFrontendCommit, type HealthProbe } from "./health.js";
-import { SystemCheckError, runSystemChecks } from "./system-checks.js";
+import { SystemCheckError, runSystemChecks, type SystemCheckContext } from "./system-checks.js";
 import type { DesktopCompose } from "./compose.js";
 import type { StartupUpdate, SystemFacts } from "./types.js";
 import { STARTUP_TIMEOUTS, withTimeout } from "./timeouts.js";
@@ -10,7 +10,7 @@ export const DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/setup/install
 type Trace = (stage: number | string, name: string, detail?: string, attemptId?: string, elapsedMs?: number) => void;
 
 export interface StartupDependencies {
-  systemChecks: (root: string, trace: Trace) => Promise<SystemFacts>;
+  systemChecks: (ctx: SystemCheckContext, trace: Trace) => Promise<SystemFacts>;
   wait: typeof waitForService;
   probe: (url: string) => Promise<HealthProbe>;
   now: () => number;
@@ -18,7 +18,7 @@ export interface StartupDependencies {
 }
 
 const defaults: StartupDependencies = {
-  systemChecks: async (root, trace) => await runSystemChecks(root, {
+  systemChecks: async (ctx, trace) => await runSystemChecks(ctx, {
     trace: (stage, name, detail) => trace(stage, name, detail),
   }),
   wait: waitForService,
@@ -35,7 +35,7 @@ export class StartupController {
   private abortController?: AbortController;
 
   constructor(
-    private readonly repositoryRoot: string,
+    private readonly checkContext: SystemCheckContext,
     private readonly compose: DesktopCompose,
     private readonly onUpdate: (update: StartupUpdate) => void,
     private readonly trace: Trace = () => undefined,
@@ -72,7 +72,7 @@ export class StartupController {
       this.trace(5, "system checks started", undefined, attemptId, 0);
       this.update(attemptId, startedAt, { state: "checking-system", title: "Checking system", detail: "Verifying macOS, storage, Docker, and local services.", stage: "system checks" });
       const facts = await withTimeout(
-        this.dependencies.systemChecks(this.repositoryRoot, (stage, name, detail) => this.trace(stage, name, detail, attemptId, this.dependencies.now() - startedAt)),
+        this.dependencies.systemChecks(this.checkContext, (stage, name, detail) => this.trace(stage, name, detail, attemptId, this.dependencies.now() - startedAt)),
         "System check",
         STARTUP_TIMEOUTS.systemCheckMs,
       );

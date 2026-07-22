@@ -48,7 +48,10 @@ const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot   = resolve(desktopDir, "..");
 const frontendDir = resolve(repoRoot, "frontend");
 const buildDir   = resolve(desktopDir, "build");
-const frontendImage = "neuravian-frontend:latest";
+const VERSION = JSON.parse(await import("node:fs").then(m => m.promises.readFile(resolve(desktopDir, "package.json"), "utf8"))).version;
+const frontendImageLatest = "neuravian-frontend:latest";
+const frontendImageVersioned = `neuravian-frontend:${VERSION}`;
+const backendImageVersioned = `neuravian-backend:${VERSION}`;
 
 // ── Step 1: HEAD commit ───────────────────────────────────────────────────────
 step(1, 7, "Resolving HEAD commit");
@@ -70,16 +73,20 @@ if (dirty) {
 step(2, 7, "React → Vite → frontend/dist");
 run("npm run build", frontendDir);
 
-// ── Step 3: Docker frontend image ─────────────────────────────────────────────
-step(3, 7, "Docker: rebuild nginx frontend image");
-run("docker compose build frontend", repoRoot, { GIT_COMMIT: commit });
+// ── Step 3: Docker images (frontend + backend) ───────────────────────────────
+step(3, 7, "Docker: rebuild frontend and backend images");
+run("docker compose build", repoRoot, { GIT_COMMIT: commit });
+// Tag both services with the versioned tag consumed by docker-compose.packaged.yml.
+run(`docker tag ${frontendImageLatest} ${frontendImageVersioned}`, repoRoot);
+run(`docker tag neuravian-backend:latest ${backendImageVersioned}`, repoRoot);
+console.log(`${GREEN}  Tagged: ${frontendImageVersioned}, ${backendImageVersioned}${RESET}`);
 
 // ── Step 4: Build-time verification ──────────────────────────────────────────
 step(4, 7, "Verifying Docker image commit label");
 let imageLabel;
 try {
   imageLabel = capture(
-    `docker image inspect ${frontendImage} --format '{{index .Config.Labels "org.neuravian.git-commit"}}'`,
+    `docker image inspect ${frontendImageVersioned} --format '{{index .Config.Labels "org.neuravian.git-commit"}}'`,
     repoRoot,
   );
 } catch {
@@ -94,7 +101,7 @@ if (imageLabel !== commit) {
     `\n  Re-run "npm run dist:mac" to rebuild from HEAD.`,
   );
 }
-console.log(`${GREEN}  ✓ Image label matches HEAD${RESET}`);
+console.log(`${GREEN}  ✓ Image label matches HEAD (${frontendImageVersioned})${RESET}`);
 
 // ── Step 5: Write build/commit.json ──────────────────────────────────────────
 step(5, 7, "Writing build/commit.json (included in asar)");
@@ -111,8 +118,32 @@ step(6, 7, "Compiling Electron main + preload");
 run("npm run build", desktopDir);
 
 // ── Step 7: electron-builder ──────────────────────────────────────────────────
-step(7, 7, "Packaging with electron-builder");
-run("electron-builder --mac dir --arm64 --config electron-builder.yml", desktopDir);
+step(7, 7, "Packaging with electron-builder (dir + dmg + zip)");
+run("electron-builder --mac dir dmg zip --arm64 --config electron-builder.yml", desktopDir);
+
+const distDir = resolve(desktopDir, "dist");
+const dmg = `${distDir}/Neuravian-${VERSION}-arm64.dmg`;
+const zip = `${distDir}/Neuravian-${VERSION}-arm64-mac.zip`;
+
+// Generate SHA-256 checksums.
+step(7, 7, "Generating SHA256SUMS.txt");
+const { createHash } = await import("node:crypto");
+const { readFile: rf } = await import("node:fs/promises");
+const lines = [];
+for (const [file, name] of [[dmg, `Neuravian-${VERSION}-arm64.dmg`], [zip, `Neuravian-${VERSION}-arm64-mac.zip`]]) {
+  try {
+    const buf = await rf(file);
+    const hash = createHash("sha256").update(buf).digest("hex");
+    lines.push(`${hash}  ${name}`);
+    console.log(`${GREEN}  ${hash}  ${name}${RESET}`);
+  } catch {
+    console.warn(`${YELLOW}  ⚠ Could not hash ${name} (file may not exist)${RESET}`);
+  }
+}
+if (lines.length) {
+  await writeFile(resolve(distDir, "SHA256SUMS.txt"), lines.join("\n") + "\n", "utf8");
+  console.log(`${GREEN}  ✓ Wrote dist/SHA256SUMS.txt${RESET}`);
+}
 
 console.log(`\n${GREEN}${BOLD}✓ Full build complete at ${commit}${RESET}`);
 console.log(`  Neuravian.app frontend is guaranteed to match HEAD.\n`);
