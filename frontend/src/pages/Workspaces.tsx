@@ -213,6 +213,8 @@ export default function Workspaces() {
   const [ec2Health, setEc2Health] = useState<Ec2ConnectionHealth | null>(null);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "done" | "failed">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [credentialFailed, setCredentialFailed] = useState(false);
+  const [credentialFailedMessage, setCredentialFailedMessage] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<WorkspaceRun | null>(null);
   const [selectedDataset, setSelectedDataset] = useState<(Record<string, unknown> & { id: number; remoteKey: string }) | null>(null);
   const [localData, setLocalData] = useState<LocalWorkspaceData | null>(null);
@@ -266,6 +268,8 @@ export default function Workspaces() {
       if (activeIdRef.current !== profileId) return;
       setSnapshot(result.snapshot);
       setOnline(result.online);
+      setCredentialFailed(result.credentialFailed ?? false);
+      setCredentialFailedMessage(result.credentialFailedMessage ?? null);
       if (result.ec2Health !== undefined) setEc2Health(result.ec2Health ?? null);
       await Promise.all([refreshProfiles(), refreshInspection(profileId, result.snapshot.workspaceId)]);
       if (!quiet) {
@@ -603,6 +607,24 @@ export default function Workspaces() {
               onSelectDataset={setSelectedDataset}
             />
           </div>
+        </div>
+      )}
+
+      {credentialFailed && (
+        <div className="mt-4">
+          <InfoBanner tone="warning" title="Workspace credential needs re-entry">
+            Your saved password for this workspace could not be read. This happens when the
+            application was updated and its system identity changed. Your projects, datasets,
+            runs, and workflows are shown from the last sync. Open{" "}
+            <strong>Settings → Connection</strong> and re-enter your username and password
+            to reconnect.
+            {credentialFailedMessage && (
+              <details className="mt-2 text-xs opacity-70">
+                <summary>Technical detail</summary>
+                {credentialFailedMessage}
+              </details>
+            )}
+          </InfoBanner>
         </div>
       )}
 

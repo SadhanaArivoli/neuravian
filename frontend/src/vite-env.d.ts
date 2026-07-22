@@ -52,6 +52,9 @@ interface NeuravianDesktopBridge {
     profile: WorkspaceProfile;
     snapshot: WorkspaceSnapshot;
     ec2Health?: Ec2ConnectionHealth | null;
+    /** True when the stored credential exists but could not be decrypted (e.g. after a bundle-ID change). Cached data is still returned. The user must re-enter their password. */
+    credentialFailed?: boolean;
+    credentialFailedMessage?: string;
   }>;
   testWorkspace(profileId: string): Promise<{
     workspaceId: string;

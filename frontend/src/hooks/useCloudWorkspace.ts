@@ -7,6 +7,8 @@ interface CloudWorkspaceState {
   online: boolean;
   loading: boolean;
   error: string | null;
+  credentialFailed: boolean;
+  credentialFailedMessage: string | null;
   sync: () => Promise<void>;
 }
 
@@ -23,6 +25,8 @@ export function useCloudWorkspace(): CloudWorkspaceState {
   const [online, setOnline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [credentialFailed, setCredentialFailed] = useState(false);
+  const [credentialFailedMessage, setCredentialFailedMessage] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const desktop = window.neuravianDesktop;
@@ -37,6 +41,8 @@ export function useCloudWorkspace(): CloudWorkspaceState {
       const result = await desktop.syncWorkspace(profileId);
       setSnapshot(result.snapshot);
       setOnline(result.online);
+      setCredentialFailed(result.credentialFailed ?? false);
+      setCredentialFailedMessage(result.credentialFailedMessage ?? null);
     } catch (cause) {
       setOnline(false);
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -65,6 +71,8 @@ export function useCloudWorkspace(): CloudWorkspaceState {
     online,
     loading,
     error,
+    credentialFailed,
+    credentialFailedMessage,
     sync: () => sync(false),
   };
 }

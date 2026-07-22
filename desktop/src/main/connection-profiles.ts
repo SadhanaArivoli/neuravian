@@ -9,6 +9,28 @@ export interface CredentialCipher {
   decrypt(value: Buffer): string;
 }
 
+/**
+ * Thrown by `ConnectionProfileStore.credential()` when a stored ciphertext
+ * exists but cannot be decrypted by the running application identity.
+ *
+ * This happens after a bundle-ID rename (e.g. org.neuroforge.desktop →
+ * org.neuravian.desktop): macOS safeStorage ties ciphertext to the
+ * originating bundle ID, so the new app cannot read what the old one wrote.
+ * All non-secret workspace metadata remains intact and should be shown from
+ * cache. The user only needs to re-enter the affected credential.
+ */
+export class CredentialDecryptionError extends Error {
+  readonly profileId: string;
+  constructor(profileId: string, cause: unknown) {
+    super(`Stored credential for workspace ${profileId} could not be decrypted. ` +
+      `This usually means the credential was saved by a different application identity ` +
+      `(bundle ID changed). Please re-enter your username and password.`);
+    this.name = "CredentialDecryptionError";
+    this.profileId = profileId;
+    this.cause = cause;
+  }
+}
+
 interface StoredCredential {
   profileId: string;
   ciphertext: string;
@@ -152,7 +174,11 @@ export class ConnectionProfileStore {
     const stored = await this.readCredentials();
     const match = stored.find((item) => item.profileId === profileId);
     if (!match) return null;
-    return JSON.parse(this.cipher.decrypt(Buffer.from(match.ciphertext, "base64"))) as WorkspaceCredential;
+    try {
+      return JSON.parse(this.cipher.decrypt(Buffer.from(match.ciphertext, "base64"))) as WorkspaceCredential;
+    } catch (cause) {
+      throw new CredentialDecryptionError(profileId, cause);
+    }
   }
 
   async remove(profileId: string): Promise<void> {

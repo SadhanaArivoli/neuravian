@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -56,6 +56,37 @@ describe("configureUserDataCompatibility", () => {
     writeFileSync(path.join(legacy, "window-state.json"), "{}\n");
     const result = configureUserDataCompatibility(setup.app);
     expect(result.mode).toBe("canonical");
+    expect(setup.selected()).toBe(setup.canonical);
+  });
+
+  it("does not move, copy, or delete the legacy directory", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    mkdirSync(legacy);
+    writeFileSync(path.join(legacy, "workspaces.json"), "[]\n");
+    configureUserDataCompatibility(setup.app);
+    // File must still exist exactly where it was.
+    expect(existsSync(path.join(legacy, "workspaces.json"))).toBe(true);
+    // Canonical directory must NOT have been created by the compatibility shim.
+    expect(existsSync(setup.canonical)).toBe(false);
+  });
+
+  it("reports the legacy path for diagnostic logging", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "NeuroForge");
+    mkdirSync(legacy);
+    writeFileSync(path.join(legacy, "prefs.json"), "{}\n");
+    const result = configureUserDataCompatibility(setup.app);
+    expect(result.legacyPath).toBe(legacy);
+    expect(result.activePath).toBe(legacy);
+    expect(result.canonicalPath).toBe(setup.canonical);
+  });
+
+  it("uses canonical path for a completely fresh installation (no legacy directories)", async () => {
+    const setup = await fixture();
+    const result = configureUserDataCompatibility(setup.app);
+    expect(result.mode).toBe("canonical");
+    expect(result.legacyPath).toBeNull();
     expect(setup.selected()).toBe(setup.canonical);
   });
 });

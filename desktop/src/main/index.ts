@@ -48,7 +48,7 @@ import {
   commandForLocalPreset, commandForPreset, detectViewer, launchViewer, validateVolumeGeometry,
   type DesktopPlatform, type ExternalViewerId, type LocalViewerLaunchRequest, type ViewerLaunchRequest,
 } from "./viewer-manager.js";
-import { ConnectionProfileStore } from "./connection-profiles.js";
+import { ConnectionProfileStore, CredentialDecryptionError } from "./connection-profiles.js";
 import { WorkspaceMetadataCache } from "./workspace-cache.js";
 import { WorkspaceClient, resolveEc2State, startEc2Instance, stopEc2Instance } from "./workspace-client.js";
 import { WorkspaceReplicationEngine } from "./workspace-replication.js";
@@ -555,7 +555,43 @@ ipcMain.handle("workspaces:sync", async (_event, profileId: string) => {
   const { profiles, wre, sessionStore, runHistory } = workspaceServices();
   let profile = (await profiles.list()).find((item) => item.id === profileId);
   if (!profile) throw new Error("Workspace profile not found.");
-  const credential = await profiles.credential(profileId);
+
+  // Retrieve the stored credential. If it was encrypted by a different application
+  // identity (e.g. old bundle ID org.neuroforge.desktop), safeStorage will reject
+  // decryption. We return the cached snapshot instead of crashing so the user still
+  // sees their projects, runs, and datasets — only the credential needs re-entry.
+  let credential: import("./workspace-types.js").WorkspaceCredential | null = null;
+  let credentialFailed = false;
+  try {
+    credential = await profiles.credential(profileId);
+  } catch (err) {
+    if (err instanceof CredentialDecryptionError) {
+      credentialFailed = true;
+      const { WorkspaceMetadataCache } = await import("./workspace-cache.js");
+      const cached = await new WorkspaceMetadataCache(
+        path.join(app.getPath("userData"), "workspace-metadata"),
+      ).read(profileId);
+      const freshProfile = (await profiles.list()).find((item) => item.id === profileId) ?? profile;
+      const updated: WorkspaceProfile = { ...freshProfile, connectionState: "offline" };
+      await profiles.update(updated);
+      console.warn(`[workspaces:sync] Credential decryption failed for profile ${profileId} — returning cached snapshot. User must re-enter credentials.`);
+      return {
+        online: false,
+        profile: updated,
+        credentialFailed: true,
+        credentialFailedMessage: err.message,
+        snapshot: cached ?? {
+          schemaVersion: 1 as const,
+          workspaceId: freshProfile.serverIdentity ?? "",
+          profileId,
+          serverUrl: freshProfile.serverUrl,
+          synchronizedAt: freshProfile.lastSync ?? new Date().toISOString(),
+          projects: [], datasets: [], workflows: [], runs: [], reports: [],
+        },
+      };
+    }
+    throw err;
+  }
 
   // For EC2 instance-id workspaces, resolve state before attempting any connection.
   let ec2Health: import("./workspace-types.js").Ec2ConnectionHealth | null = null;
