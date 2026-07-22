@@ -1,9 +1,9 @@
-# NeuroForge FSL FLIRT wrapper image.
+# Neuravian FSL FLIRT wrapper image.
 #
 # Derives from brainlife/fsl (FSL 6.0.7, Ubuntu 22.04) and adds a thin
-# /usr/local/bin/neuroforge-flirt wrapper script that exposes FLIRT through
+# /usr/local/bin/neuravian-flirt wrapper script that exposes FLIRT through
 # a flag-based CLI (--input, --ref-preset, --ref-file, --output-base)
-# compatible with NeuroForge's generic Docker executor.
+# compatible with Neuravian's generic Docker executor.
 #
 # Built-in MNI templates are available at:
 #   /usr/local/fsl/data/standard/MNI152_T1_1mm.nii.gz
@@ -13,7 +13,7 @@
 #
 # Build locally (needed once before submitting a FLIRT run):
 #   docker build --platform linux/amd64 \
-#     -t ghcr.io/neuroforge/fsl-flirt:6.0.7 \
+#     -t neuravian/fsl-flirt:6.0.7 \
 #     docker/fsl-flirt/
 #
 # Image is x86_64-only. On Apple Silicon, Docker Desktop runs it via
@@ -25,8 +25,8 @@
 
 FROM brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43
 
-COPY neuroforge-flirt.sh /usr/local/bin/neuroforge-flirt
-RUN chmod +x /usr/local/bin/neuroforge-flirt
+COPY neuravian-flirt.sh /usr/local/bin/neuravian-flirt
+RUN chmod +x /usr/local/bin/neuravian-flirt
 
-ENTRYPOINT ["neuroforge-flirt"]
+ENTRYPOINT ["neuravian-flirt"]
 CMD []

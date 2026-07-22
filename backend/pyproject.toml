@@ -7,9 +7,9 @@ where = ["."]
 include = ["app*"]
 
 [project]
-name = "neuroforge-backend"
+name = "neuravian-backend"
 version = "0.1.0"
-description = "Backend service for NeuroForge — a local-first neuroimaging research platform"
+description = "Backend service for Neuravian — a local-first neuroimaging research platform"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 dependencies = [
@@ -35,16 +35,16 @@ dependencies = [
 ]
 
 [project.scripts]
-neuroforge-import-fmriprep-derivatives = "app.tools.import_fmriprep_derivatives:main"
-neuroforge-functional-connectivity = "app.tools.functional_connectivity:main"
-neuroforge-seed-based-connectivity = "app.tools.seed_based_connectivity:main"
-neuroforge-group-functional-connectivity = "app.tools.group_functional_connectivity:main"
-neuroforge-nifti-inspector = "app.tools.nifti_inspector:main"
-neuroforge-atlas-roi-extraction = "app.tools.atlas_roi_extraction:main"
-neuroforge-connectome-graph-analysis = "app.tools.connectome_graph_analysis:main"
-neuroforge-statistical-map-explorer = "app.tools.statistical_map_explorer:main"
-neuroforge-alff-falff = "app.tools.alff_falff:main"
-neuroforge-regional-homogeneity = "app.tools.regional_homogeneity:main"
+neuravian-import-fmriprep-derivatives = "app.tools.import_fmriprep_derivatives:main"
+neuravian-functional-connectivity = "app.tools.functional_connectivity:main"
+neuravian-seed-based-connectivity = "app.tools.seed_based_connectivity:main"
+neuravian-group-functional-connectivity = "app.tools.group_functional_connectivity:main"
+neuravian-nifti-inspector = "app.tools.nifti_inspector:main"
+neuravian-atlas-roi-extraction = "app.tools.atlas_roi_extraction:main"
+neuravian-connectome-graph-analysis = "app.tools.connectome_graph_analysis:main"
+neuravian-statistical-map-explorer = "app.tools.statistical_map_explorer:main"
+neuravian-alff-falff = "app.tools.alff_falff:main"
+neuravian-regional-homogeneity = "app.tools.regional_homogeneity:main"
 
 [project.optional-dependencies]
 dev = [

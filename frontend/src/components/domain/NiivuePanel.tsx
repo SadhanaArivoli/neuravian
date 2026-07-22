@@ -1,4 +1,4 @@
-/** Inline shell for the single shared NeuroForge NIfTI viewer. */
+/** Inline shell for the single shared Neuravian NIfTI viewer. */
 import type { Niivue } from "@niivue/niivue";
 import NeuroImageViewer, { type NiivueLayer } from "./NeuroImageViewer";
 import type { StatMapType } from "../../lib/niivueTheme";

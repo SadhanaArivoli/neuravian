@@ -101,12 +101,12 @@ def test_to_host_path_translates_via_mounts():
     """When in Docker, path is translated using container mount table."""
     mock_mounts = {
         "/host-data": "/Users/alice/Documents",
-        "/app/data": "/Users/alice/neuroforge/data",
+        "/app/data": "/Users/alice/neuravian/data",
     }
     with patch("app.execution.docker_executor._is_running_in_docker", return_value=True), \
          patch("app.execution.docker_executor._resolve_mounts", return_value=mock_mounts):
         assert to_host_path("/host-data/bids-examples/ds001") == "/Users/alice/Documents/bids-examples/ds001"
-        assert to_host_path("/app/data/derivatives/mriqc/1") == "/Users/alice/neuroforge/data/derivatives/mriqc/1"
+        assert to_host_path("/app/data/derivatives/mriqc/1") == "/Users/alice/neuravian/data/derivatives/mriqc/1"
 
 
 # ------------------------------------------------------------------ #
@@ -304,7 +304,7 @@ def test_functional_connectivity_native_command_uses_prefilled_derivatives(tmp_p
         output_dir=str(tmp_path / "out"),
     )
     cmd = NativeExecutor().build_command(ctx)
-    assert cmd[0] == "neuroforge-functional-connectivity"
+    assert cmd[0] == "neuravian-functional-connectivity"
     assert "--fmriprep-dir" in cmd
     assert str(tmp_path / "fmriprep") in cmd
     assert "--output-dir" in cmd
@@ -324,7 +324,7 @@ def test_import_fmriprep_derivatives_native_command_uses_selected_dir(tmp_path):
         output_dir=str(tmp_path / "out"),
     )
     cmd = NativeExecutor().build_command(ctx)
-    assert cmd[0] == "neuroforge-import-fmriprep-derivatives"
+    assert cmd[0] == "neuravian-import-fmriprep-derivatives"
     assert "--fmriprep-dir" in cmd
     assert str(tmp_path / "fmriprep") in cmd
     assert "--output-dir" in cmd

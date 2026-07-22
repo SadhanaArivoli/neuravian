@@ -163,7 +163,7 @@ def collect(evidence_dir: Path, output: Path) -> dict:
         "files": [],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="neuroforge-evidence-") as temp:
+    with tempfile.TemporaryDirectory(prefix="neuravian-evidence-") as temp:
         temp_root = Path(temp)
         stage = temp_root / "stage"
         generated = temp_root / "generated"

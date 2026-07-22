@@ -1,3 +1,5 @@
+name: neuravian
+
 services:
   backend:
     build:
@@ -16,9 +18,9 @@ services:
       # discover them. The Dockerfile only copies backend/ so they cannot be
       # baked into the image; a volume mount is required.
       - ./plugins:/plugins:ro
-      # User-supplied third-party plugins (separate mount point so users can
-      # add their own without interfering with bundled example plugins).
-      - ./plugins:/plugins-user:ro
+      # User-supplied third-party plugins live separately from bundled plugins,
+      # preventing the same plugin from being discovered twice.
+      - ./plugins-user:/plugins-user:ro
       # Mount the host datasets directory read-only at /host-data.
       # Set HOST_DATASETS_DIR in .env (see .env.example).
       - ${HOST_DATASETS_DIR:-~/Documents}:/host-data:ro
@@ -27,7 +29,7 @@ services:
       # submits docker run commands on behalf of the user.
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      DATABASE_URL: sqlite:////app/data/neuroforge.db
+      DATABASE_URL: sqlite:////app/data/neuravian.db
       DATA_DIR: /app/data
       # Tell the backend what host prefix maps to /host-data so it can
       # transparently translate paths the user pastes from their Mac.

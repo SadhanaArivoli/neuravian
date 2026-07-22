@@ -1,6 +1,6 @@
-"""The single CSS theme used by all first-party NeuroForge HTML reports."""
+"""The single CSS theme used by all first-party Neuravian HTML reports."""
 
-REPORT_SYSTEM_MARKER = "neuroforge-report-system-v1"
+REPORT_SYSTEM_MARKER = "neuravian-report-system-v1"
 
 REPORT_CSS = r"""
 :root{color-scheme:dark;--nf-bg:#090d18;--nf-surface:#111827;--nf-surface-2:#172033;

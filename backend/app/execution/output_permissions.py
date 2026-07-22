@@ -27,7 +27,7 @@ class OutputPreparation:
             else f"{self.runtime_uid}:{self.runtime_gid}"
         )
         return (
-            "[neuroforge] Output permissions prepared: "
+            "[neuravian] Output permissions prepared: "
             f"path={self.path} runtime_user={identity} "
             f"action={self.action} mode={self.mode:04o}"
         )

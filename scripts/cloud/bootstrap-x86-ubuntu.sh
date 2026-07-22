@@ -3,13 +3,13 @@ set -euo pipefail
 
 APPLICATION_BASELINE_COMMIT="aec1aea247659f43a92a8f2fc39208d15a68914a"
 COMMIT=""
-FIXTURE_DIR="${FIXTURE_DIR:-${HOME}/neuroforge-fixture}"
-REPO_DIR="${NEUROFORGE_DIR:-${HOME}/neuroforge}"
-REPO_URL="${NEUROFORGE_REPO_URL:-https://github.com/SadhanaArivoli/neuroforge.git}"
+FIXTURE_DIR="${FIXTURE_DIR:-${HOME}/neuravian-fixture}"
+REPO_DIR="${NEURAVIAN_DIR:-${HOME}/neuravian}"
+REPO_URL="${NEURAVIAN_REPO_URL:-https://github.com/SadhanaArivoli/neuravian.git}"
 FS_LICENSE="${FS_LICENSE:-}"
 PREPULL=0
 DRY_RUN=0
-LOG_FILE="${NEUROFORGE_BOOTSTRAP_LOG:-${HOME}/neuroforge-bootstrap.log}"
+LOG_FILE="${NEURAVIAN_BOOTSTRAP_LOG:-${HOME}/neuravian-bootstrap.log}"
 APT_TIMEOUT_SECONDS="${APT_TIMEOUT_SECONDS:-1800}"
 DOWNLOAD_TIMEOUT_SECONDS="${DOWNLOAD_TIMEOUT_SECONDS:-900}"
 BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-3600}"
@@ -17,11 +17,11 @@ BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-3600}"
 usage() {
   cat <<'EOF'
 Usage: bootstrap-x86-ubuntu.sh --commit SHA [options]
-  --commit SHA          Exact NeuroForge commit to check out (required)
+  --commit SHA          Exact Neuravian commit to check out (required)
   --fixture-dir PATH    Transferred fixture root
   --license-file PATH   FreeSurfer license path (contents are never printed)
   --prepull             Pull all digest-pinned verification images once
-  --repo-dir PATH       Checkout destination (default: ~/neuroforge)
+  --repo-dir PATH       Checkout destination (default: ~/neuravian)
   --dry-run             Print mutating commands without executing them
 EOF
 }
@@ -50,7 +50,7 @@ if [[ "${DRY_RUN}" != 1 ]]; then
 else
   echo "DRY-RUN: live bootstrap would log to ${LOG_FILE}"
 fi
-printf '[%s] NeuroForge x86 bootstrap start\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '[%s] Neuravian x86 bootstrap start\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 run() {
   if [[ "${DRY_RUN}" == 1 ]]; then
@@ -196,7 +196,7 @@ if [[ "${DRY_RUN}" != 1 ]]; then
     fi
     sleep 2
   done
-  [[ "${healthy}" == 1 ]] || { echo "NeuroForge health check timed out" >&2; exit 6; }
+  [[ "${healthy}" == 1 ]] || { echo "Neuravian health check timed out" >&2; exit 6; }
   curl -fsS --max-time 5 http://127.0.0.1:8000/api/health | jq .
 fi
 printf '[%s] Bootstrap complete. Log: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${LOG_FILE}"

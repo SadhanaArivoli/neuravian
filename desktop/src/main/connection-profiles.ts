@@ -74,7 +74,7 @@ export class ConnectionProfileStore {
     const connectionMode = input.connectionMode ?? existing?.connectionMode ?? "url";
     const profile: WorkspaceProfile = {
       id,
-      name: input.name.trim() || "NeuroForge Workspace",
+      name: input.name.trim() || "Neuravian Workspace",
       serverUrl: connectionMode === "instance-id" ? input.serverUrl : normalizeServerUrl(input.serverUrl),
       authenticationRef: hasCredential ? `os-credential:${id}` : existing?.authenticationRef ?? null,
       serverIdentity: connectionMode === "instance-id" ? null : (existing?.serverIdentity ?? null),

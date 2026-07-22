@@ -10,7 +10,7 @@ import { StartupStateStore } from "../src/main/state-store.js";
 import { DesktopLogger } from "../src/main/logger.js";
 import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 
-const root = path.join(os.tmpdir(), "neuroforge-fixture");
+const root = path.join(os.tmpdir(), "neuravian-fixture");
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
   dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
@@ -45,7 +45,7 @@ describe("Compose orchestration", () => {
     const args = composeArguments(root).join(" ");
     expect(args).toContain(`${root}/docker-compose.yml`);
     expect(args).toContain(`${root}/desktop/docker-compose.desktop.yml`);
-    expect(args).toContain("neuroforge-desktop");
+    expect(args).toContain("neuravian-desktop");
   });
 
   it("stops only services owned by this launcher and never removes volumes", async () => {
@@ -206,7 +206,7 @@ describe("renderer state replay", () => {
 
 describe("diagnostics privacy", () => {
   it("writes concurrent startup traces in stage order and redacts private values", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "neuroforge-logger-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "neuravian-logger-"));
     try {
       const logger = await DesktopLogger.create(directory);
       const writes = [
@@ -234,7 +234,7 @@ describe("diagnostics privacy", () => {
 
   it("formats a useful diagnostic report", () => {
     const output = formatDiagnostics({ update: { state: "failed", title: "Startup failed", detail: "No daemon" }, facts });
-    expect(output).toContain("NeuroForge desktop diagnostics");
+    expect(output).toContain("Neuravian desktop diagnostics");
     expect(output).toContain("Docker 27");
     expect(output).toContain("dockerPath: /usr/local/bin/docker");
     expect(output).toContain("composeVersion: Compose v2");

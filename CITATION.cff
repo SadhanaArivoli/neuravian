@@ -1,15 +1,16 @@
 cff-version: 1.2.0
-message: "If you use NeuroForge in your research, please cite it as below."
+message: "If you use Neuravian in your research, please cite it as below."
 type: software
-title: "NeuroForge: A Local-First Neuroimaging Research Platform"
-version: 0.1.0-alpha
+title: "Neuravian: A Local-First Neuroimaging Research Platform"
+version: 0.1.0
 license: Apache-2.0
-repository-code: "https://github.com/SadhanaArivoli/neuroforge"
+repository-code: "https://github.com/SadhanaArivoli/neuravian"
 abstract: >
-  NeuroForge is a local-first neuroimaging research platform that connects
+  Neuravian is a local-first neuroimaging research platform that connects
   datasets, pipelines, runs, artifacts, provenance records, and publication
   outputs in a unified workspace. It wraps established neuroimaging tools
-  (FSL, FreeSurfer, fMRIPrep, MRIQC, Nilearn, and others) without
+  (including MRIQC, fMRIPrep, selected FSL tools, FastSurfer, and Nilearn)
+  without
   reimplementing their algorithms, providing artifact-typed pipeline chaining,
   automatic methods generation, citation assembly, and reproducible study
   reports.
@@ -26,4 +27,3 @@ keywords:
   - provenance
   - functional connectivity
   - research software
-date-released: "2026-07-13"

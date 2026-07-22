@@ -26,7 +26,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN playwright install --with-deps chromium
 
 ARG GIT_COMMIT=unknown
-ENV NEUROFORGE_GIT_COMMIT=${GIT_COMMIT}
+ENV NEURAVIAN_GIT_COMMIT=${GIT_COMMIT}
 
 COPY . .
 # Re-install the local package itself (non-editable) so console scripts can

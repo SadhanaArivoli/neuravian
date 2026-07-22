@@ -1,2 +1,2 @@
-"""NeuroForge native pipeline command modules."""
+"""Neuravian native pipeline command modules."""
 

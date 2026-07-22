@@ -1,9 +1,9 @@
-resource "aws_instance" "neuroforge" {
+resource "aws_instance" "neuravian" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   subnet_id              = data.aws_subnet.selected.id
-  vpc_security_group_ids = [aws_security_group.neuroforge.id]
-  key_name               = aws_key_pair.neuroforge.key_name
+  vpc_security_group_ids = [aws_security_group.neuravian.id]
+  key_name               = aws_key_pair.neuravian.key_name
   iam_instance_profile   = aws_iam_instance_profile.instance.name
 
   associate_public_ip_address          = true

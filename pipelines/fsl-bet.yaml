@@ -6,11 +6,11 @@ description: >
   Starting from an estimated brain centre, BET fits a tessellated mesh to the T1w
   volume and outputs a skull-stripped brain and a binary brain mask. It runs in
   under 60 seconds on CPU with no GPU requirement, making it the fastest
-  skull-stripping option in NeuroForge. BET works well on standard 1mm isotropic
+  skull-stripping option in Neuravian. BET works well on standard 1mm isotropic
   T1w scans; for unusual contrasts, pathological anatomy, or very high-resolution
   scans, consider SynthStrip (learning-based, contrast-agnostic).
-  Requires the NeuroForge FSL BET wrapper image — build it once with
-  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7
+  Requires the Neuravian FSL BET wrapper image — build it once with
+  "docker build --platform linux/amd64 -t neuravian/fsl-bet:6.0.7
   docker/fsl-bet/" before submitting a run.
 homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/brain_extraction/index
 category: segmentation
@@ -19,7 +19,7 @@ input_type: nifti
 # BET is fast enough to run under Rosetta 2 emulation on Apple Silicon.
 # Verified: <60 seconds on M-series via Docker Desktop (run 2026-07-19).
 # FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
-# Wrapper image: ghcr.io/neuroforge/fsl-bet:6.0.7
+# Wrapper image: neuravian/fsl-bet:6.0.7
 # Wrapper image digest: sha256:94b78195f01c0aecf85b306a41976a690d76b194af30099a3c0d3a4bd02f2f77
 compute_profile: local-ok
 
@@ -41,12 +41,12 @@ preflight:
     output_space_gb: 1
 
 container:
-  # NeuroForge wrapper image built from docker/fsl-bet/Dockerfile.
+  # Neuravian wrapper image built from docker/fsl-bet/Dockerfile.
   # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
-  # /usr/local/bin/neuroforge-bet wrapper script that translates --input and
+  # /usr/local/bin/neuravian-bet wrapper script that translates --input and
   # --output-base flags into BET's positional argument convention.
-  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7 docker/fsl-bet/
-  image: ghcr.io/neuroforge/fsl-bet
+  # Build locally: docker build --platform linux/amd64 -t neuravian/fsl-bet:6.0.7 docker/fsl-bet/
+  image: neuravian/fsl-bet
   tag: "6.0.7"
   engine: docker
 
@@ -227,7 +227,7 @@ max_runtime_hours: 0.5
 # ── Manual testing reference ──────────────────────────────────────────────────────
 # Test dataset: data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
 # Verified: 2026-07-19, macOS 15 Sequoia, Apple Silicon M-series via Docker Desktop
-# Wrapper image: ghcr.io/neuroforge/fsl-bet:6.0.7 (local build from docker/fsl-bet/)
+# Wrapper image: neuravian/fsl-bet:6.0.7 (local build from docker/fsl-bet/)
 # Base image:    brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43
 # FSL version:   6.0.7.22
 #
@@ -235,7 +235,7 @@ max_runtime_hours: 0.5
 #   docker run --rm --platform linux/amd64 \
 #     -v <host_t1w>:/inputs/input/input.nii.gz:ro \
 #     -v <out_dir>:/out:rw \
-#     ghcr.io/neuroforge/fsl-bet:6.0.7 \
+#     neuravian/fsl-bet:6.0.7 \
 #     --input /inputs/input/input.nii.gz \
 #     --output-base /out/brain \
 #     -m -f 0.5
@@ -257,10 +257,10 @@ known_errors:
       /inputs/input/<filename> inside the container — if the host path is wrong,
       the container receives an empty bind mount and BET cannot find the file.
 
-  - pattern: "neuroforge-bet: error: --input is required"
+  - pattern: "neuravian-bet: error: --input is required"
     explanation: >
       The BET run was submitted without an input file path. This should not
-      happen in normal operation — the NeuroForge pipeline form marks this field
+      happen in normal operation — the Neuravian pipeline form marks this field
       as required.
     fix_hint: >
       Open the pipeline form and fill in the "input" field with the full path
@@ -280,7 +280,7 @@ known_errors:
 
   - pattern: "Run stopped automatically after.*maximum runtime"
     explanation: >
-      The NeuroForge watchdog stopped this BET run after it exceeded the
+      The Neuravian watchdog stopped this BET run after it exceeded the
       30-minute maximum. BET should complete in under 60 seconds on any
       platform including Apple Silicon via Rosetta 2 emulation. An unusually
       long runtime indicates the container may have stalled during image pull
@@ -290,13 +290,13 @@ known_errors:
       initial image pull. Confirm the input file exists on disk. Try resubmitting
       — the image is now cached locally and subsequent runs start immediately.
 
-  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-bet|manifest unknown"
+  - pattern: "pull access denied|not found.*neuravian/fsl-bet|manifest unknown"
     explanation: >
-      Docker could not find the NeuroForge FSL BET wrapper image locally or on
-      any registry. This image is built from the NeuroForge repository and is not
+      Docker could not find the Neuravian FSL BET wrapper image locally or on
+      any registry. This image is built from the Neuravian repository and is not
       published to a public registry — it must be built locally before first use.
     fix_hint: >
-      From the NeuroForge project root, run:
-        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-bet:6.0.7 docker/fsl-bet/
+      From the Neuravian project root, run:
+        docker build --platform linux/amd64 -t neuravian/fsl-bet:6.0.7 docker/fsl-bet/
       This takes ~30 seconds and only needs to be done once per machine.
       After the build completes, resubmit the run.

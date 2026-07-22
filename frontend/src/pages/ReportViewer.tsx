@@ -81,7 +81,7 @@ function OverviewTab({ report, datasetId }: { report: ReportSummary; datasetId: 
 
       <div className="rounded-lg border border-white/5 bg-surface-raised p-4">
         <p className="text-xs text-gray-500">
-          This report was generated automatically by NeuroForge. No AI-generated scientific
+          This report was generated automatically by Neuravian. No AI-generated scientific
           interpretation is included. All values are derived exclusively from recorded
           pipeline outputs.
         </p>

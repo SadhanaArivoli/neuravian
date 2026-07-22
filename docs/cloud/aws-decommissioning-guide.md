@@ -17,11 +17,11 @@ manifest read, and SHA-256 receipt:
 ```bash
 # LOCAL MAC
 infra/aws/scripts/09-collect-evidence.sh \
-  --config .neuroforge-aws/config.env \
-  --identity-file "$HOME/.ssh/neuroforge-x86.pem" \
-  --output-dir "$HOME/neuroforge-evidence" \
+  --config .neuravian-aws/config.env \
+  --identity-file "$HOME/.ssh/neuravian-x86.pem" \
+  --output-dir "$HOME/neuravian-evidence" \
   --apply \
-  --confirmation 'COLLECT NEUROFORGE EVIDENCE'
+  --confirmation 'COLLECT NEURAVIAN EVIDENCE'
 ```
 
 The plan also verifies caller/region, state, DeploymentId, exact resource IDs,
@@ -38,7 +38,7 @@ Pause compute without deleting evidence:
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/07-stop.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
   --confirmation 'STOP <instance-id>'
 ```
@@ -48,10 +48,10 @@ Resume later:
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/08-start.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
   --confirmation 'START <instance-id>'
-infra/aws/scripts/04-wait-and-verify.sh --config .neuroforge-aws/config.env
+infra/aws/scripts/04-wait-and-verify.sh --config .neuravian-aws/config.env
 ```
 
 The public IP can change. Start re-resolves the operator IPv4 `/32` and updates
@@ -74,7 +74,7 @@ Preview:
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/11-decommission-plan.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --volume-mode snapshot-then-delete-volume
 ```
 
@@ -88,7 +88,7 @@ Default plan:
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/11-decommission-plan.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --volume-mode delete-root-volume
 ```
 
@@ -97,32 +97,32 @@ Review its exact IDs and phrases, then—only after reserved live approval—run
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/12-decommission.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --volume-mode delete-root-volume \
   --apply \
   --confirm-termination 'TERMINATE <instance-id>' \
   --confirm-volumes 'DELETE VOLUMES <volume-id>' \
-  --confirm-iam 'DELETE NEUROFORGE IAM <DeploymentId>'
+  --confirm-iam 'DELETE NEURAVIAN IAM <DeploymentId>'
 ```
 
 The local PEM is preserved by default. Delete it only with the additional flag
 and exact phrase:
 
 ```bash
---delete-local-key --confirm-local-key 'DELETE LOCAL KEY neuroforge-x86.pem'
+--delete-local-key --confirm-local-key 'DELETE LOCAL KEY neuravian-x86.pem'
 ```
 
 An optional budget is also preserved unless separately selected and confirmed:
 
 ```bash
---delete-budget --confirm-budget 'DELETE NEUROFORGE BUDGET <budget-name>'
+--delete-budget --confirm-budget 'DELETE NEURAVIAN BUDGET <budget-name>'
 ```
 
 ## Dependency order
 
 1. Verify local evidence and checksum.
 2. Verify no scientific pipeline is active.
-3. Stop NeuroForge services and the exact instance.
+3. Stop Neuravian services and the exact instance.
 4. Apply the selected root-volume policy.
 5. For snapshot mode, create an encrypted snapshot and wait for completion.
 6. Disable termination protection after exact instance confirmation.
@@ -157,7 +157,7 @@ delete response was ambiguous or a resource remains.
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/13-decommission-verify.sh \
-  --config .neuroforge-aws/config.env
+  --config .neuravian-aws/config.env
 ```
 
 It returns nonzero for an unexpected running/stopped instance, public IPv4,
@@ -165,7 +165,7 @@ network interface, security group, key pair, IAM resource, tagged volume,
 snapshot, or other deployment residual. Explicitly retained storage is allowed
 only when it matches the plan and is reported with ongoing cost.
 
-The private machine report stays under `.neuroforge-aws/`. A redacted Markdown
+The private machine report stays under `.neuravian-aws/`. A redacted Markdown
 report is generated under `docs/cloud/decommission-runs/` but ignored by Git
 until manually reviewed.
 
@@ -177,7 +177,7 @@ uncertain configuration:
 ```bash
 # CLOUDSHELL
 infra/aws/scripts/emergency-stop.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
   --confirmation 'EMERGENCY STOP <instance-id>'
 ```

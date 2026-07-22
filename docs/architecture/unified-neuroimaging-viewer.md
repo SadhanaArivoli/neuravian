@@ -2,7 +2,7 @@
 
 ## Scope and scientific contract
 
-The NeuroForge viewer is a run-scoped, artifact-aware inspection workspace. It extends the existing NiiVue volume viewer; it does not alter derivatives, register images, resample overlays, or replace an official pipeline QC report. A file is offered a **View** action only when its format and scientific role have a safe renderer. Transforms, annotations without a surface, and unknown files remain available through metadata and download actions.
+The Neuravian viewer is a run-scoped, artifact-aware inspection workspace. It extends the existing NiiVue volume viewer; it does not alter derivatives, register images, resample overlays, or replace an official pipeline QC report. A file is offered a **View** action only when its format and scientific role have a safe renderer. Transforms, annotations without a surface, and unknown files remain available through metadata and download actions.
 
 The architecture separates ten concerns:
 

@@ -51,7 +51,7 @@ export async function runSystemChecks(
   const dataDirectory = path.join(repositoryRoot, "data");
   await mkdir(dataDirectory, { recursive: true });
   try { await access(dataDirectory, constants.R_OK | constants.W_OK); }
-  catch { throw new SystemCheckError("system", "The NeuroForge data directory must be readable and writable."); }
+  catch { throw new SystemCheckError("system", "The Neuravian data directory must be readable and writable."); }
 
   const dockerPath = await (dependencies.resolveDocker ?? (() => resolveDockerCli({ command })))();
   if (!dockerPath) {

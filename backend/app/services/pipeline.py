@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import json
 import logging
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import jsonschema
 import yaml
+
+from app.services.pipeline_contract import (
+    contract_capabilities,
+    normalized_contract,
+    validate_contract,
+)
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +61,9 @@ def _load_manifest(path: Path, schema: dict[str, Any]) -> dict[str, Any]:
             f"{path.name}: run_as_host_user and run_as_user are mutually exclusive"
         )
     _validate_chaining_fields(path.name, data)
+    contract_errors = validate_contract(data)
+    if contract_errors:
+        raise ManifestError(f"{path.name}: " + "; ".join(contract_errors))
     return data
 
 
@@ -164,9 +174,17 @@ class PipelineService:
                 "compute_profile": m.get("compute_profile"),
                 "category": m.get("category"),
                 "input_type": m.get("input_type"),
+                "contract": normalized_contract(m),
+                "capabilities": contract_capabilities(m),
             }
             for m in self._registry.values()
         ]
 
     def get_by_id(self, pipeline_id: str) -> dict[str, Any] | None:
-        return self._registry.get(pipeline_id)
+        manifest = self._registry.get(pipeline_id)
+        if manifest is None:
+            return None
+        result = deepcopy(manifest)
+        result["contract"] = normalized_contract(manifest)
+        result["capabilities"] = contract_capabilities(manifest)
+        return result

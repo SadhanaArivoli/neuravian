@@ -379,7 +379,7 @@ class TestOutputFiles:
 
     def test_json_cluster_table_has_schema(self, outdir):
         payload = json.loads((outdir / "cluster_table.json").read_text())
-        assert payload["schema"] == "neuroforge-cluster-table-v1"
+        assert payload["schema"] == "neuravian-cluster-table-v1"
         assert "clusters" in payload
         assert len(payload["clusters"]) == 2
 
@@ -387,7 +387,7 @@ class TestOutputFiles:
         meta = json.loads((outdir / "cluster_metadata.json").read_text())
         for field in [
             "input_file", "threshold", "direction", "min_cluster_size",
-            "n_clusters", "generated_at", "nibabel_version", "neuroforge_version",
+            "n_clusters", "generated_at", "nibabel_version", "neuravian_version",
         ]:
             assert field in meta, f"Missing metadata field: {field}"
 
@@ -436,7 +436,7 @@ class TestExporters:
         meta = {"threshold": 2.3, "direction": "positive"}
         export_cluster_json(self._sample_clusters(), meta, p)
         payload = json.loads(p.read_text())
-        assert payload["schema"] == "neuroforge-cluster-table-v1"
+        assert payload["schema"] == "neuravian-cluster-table-v1"
 
     def test_render_html_report_no_clusters(self, tmp_path):
         p = tmp_path / "report.html"

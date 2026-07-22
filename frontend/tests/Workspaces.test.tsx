@@ -37,7 +37,7 @@ const snapshot: WorkspaceSnapshot = {
 
 describe("unified desktop workspaces", () => {
   beforeEach(() => {
-    window.neuroforgeDesktop = {
+    window.neuravianDesktop = {
       detectViewers: vi.fn(async () => []),
       getLocalWorkspaceIdentity: vi.fn(async () => ({
         schemaVersion: 1 as const, workspaceId: "local-5df1dc24-a857-4adf-8908-1f8a7f36d058", createdAt: "2026-07-18T00:00:00Z",
@@ -45,7 +45,7 @@ describe("unified desktop workspaces", () => {
       listWorkspaces: vi.fn(async () => [profile]),
       saveWorkspace: vi.fn(),
       removeWorkspace: vi.fn(),
-      testWorkspace: vi.fn(async () => ({ workspaceId: "workspace-a", product: "NeuroForge", apiVersion: "1", serverVersion: "0.1.0" })),
+      testWorkspace: vi.fn(async () => ({ workspaceId: "workspace-a", product: "Neuravian", apiVersion: "1", serverVersion: "0.1.0" })),
       inspectWorkspace: vi.fn(async (): Promise<WorkspaceInspection> => ({
         cacheSizeBytes: 2, cachedRuns: 0, cacheEntries: 0, legacyCacheEntries: ["run-7"],
         viewers: [
@@ -97,7 +97,7 @@ describe("unified desktop workspaces", () => {
   });
 
   it("shows server datasets and runs even when the server has no project records", async () => {
-    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+    vi.mocked(window.neuravianDesktop!.syncWorkspace).mockResolvedValue({
       online: true,
       profile,
       snapshot: { ...snapshot, projects: [], workflows: [] },
@@ -113,13 +113,13 @@ describe("unified desktop workspaces", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Open in FreeView/ }));
     // selectDefaultViewerScene picks orig_nu.mgz (anatomical-intensity, priority 1)
     // over aseg.auto.mgz (segmentation, excluded from auto-selection).
-    await waitFor(() => expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).toHaveBeenCalledWith({
+    await waitFor(() => expect(window.neuravianDesktop!.syncWorkspaceArtifacts).toHaveBeenCalledWith({
       profileId: "profile-1",
       workspaceId: "workspace-a",
       runId: 7,
       relativePaths: ["sub-01/mri/orig_nu.mgz"],
     }));
-    expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(window.neuravianDesktop!.launchViewer).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId: "workspace-a",
       runId: 7,
       viewerId: "freeview",
@@ -138,7 +138,7 @@ describe("unified desktop workspaces", () => {
         ],
       })),
     };
-    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+    vi.mocked(window.neuravianDesktop!.syncWorkspace).mockResolvedValue({
       online: false,
       profile: { ...profile, connectionState: "offline" },
       snapshot: offlineSnapshot,
@@ -146,13 +146,13 @@ describe("unified desktop workspaces", () => {
 
     renderWorkspace("runs");
     fireEvent.click(await screen.findByText("Run #7"));
-    // Both MGZ artifacts are cached, so NeuroForge Viewer is the primary action.
+    // Both MGZ artifacts are cached, so Neuravian Viewer is the primary action.
     // FreeView appears as a secondary button (text "FreeView") and must still be enabled.
     const button = await screen.findByRole("button", { name: /FreeView/ });
     expect(button).toBeEnabled();
     fireEvent.click(button);
-    await waitFor(() => expect(window.neuroforgeDesktop!.launchViewer).toHaveBeenCalled());
-    expect(window.neuroforgeDesktop!.syncWorkspaceArtifacts).not.toHaveBeenCalled();
+    await waitFor(() => expect(window.neuravianDesktop!.launchViewer).toHaveBeenCalled());
+    expect(window.neuravianDesktop!.syncWorkspaceArtifacts).not.toHaveBeenCalled();
   });
 
   it("keeps duplicate numeric run IDs collision-free in All Workspaces metadata", () => {
@@ -162,7 +162,7 @@ describe("unified desktop workspaces", () => {
     };
     const combined = combineWorkspaceRuns(local, "local-installation", snapshot);
     expect(combined.filter((run) => run.id === 7)).toEqual([
-      expect.objectContaining({ key: "local-installation:run:7", workspace: "Local NeuroForge" }),
+      expect.objectContaining({ key: "local-installation:run:7", workspace: "Local Neuravian" }),
       expect.objectContaining({ key: "workspace-a:run:7", workspace: "Cloud" }),
     ]);
     expect(new Set(combined.map((run) => run.key)).size).toBe(combined.length);
@@ -172,12 +172,12 @@ describe("unified desktop workspaces", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 503 })));
     renderWorkspace("runs");
     expect(await screen.findByText("Run #7")).toBeInTheDocument();
-    expect(window.neuroforgeDesktop!.syncWorkspace).toHaveBeenCalled();
+    expect(window.neuravianDesktop!.syncWorkspace).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
   it("shows cached cloud metadata when synchronization reports the server offline", async () => {
-    vi.mocked(window.neuroforgeDesktop!.syncWorkspace).mockResolvedValue({
+    vi.mocked(window.neuravianDesktop!.syncWorkspace).mockResolvedValue({
       online: false,
       profile: { ...profile, connectionState: "offline" },
       snapshot: {

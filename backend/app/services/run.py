@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.execution.progress_parser import parse_tqdm_line
+from app.execution.progress_parser import parse_progress_line
 from app.execution.docker_executor import (
     DockerExecutor,
     _is_running_in_docker,
@@ -150,7 +151,10 @@ async def recover_interrupted_runs(db: Session) -> None:
         orphans = db.query(Run).filter_by(status="running").all()
     except OperationalError as exc:
         db.rollback()
-        log.warning("Skipping interrupted run recovery because the runs table is unavailable: %s", exc)
+        log.warning(
+            "Skipping interrupted run recovery because the runs table is unavailable: %s",
+            exc,
+        )
         return
     if not orphans:
         return
@@ -158,7 +162,10 @@ async def recover_interrupted_runs(db: Session) -> None:
     try:
         client = docker_sdk.from_env()
     except Exception as exc:
-        log.warning("Docker unavailable during recovery — marking orphaned runs interrupted: %s", exc)
+        log.warning(
+            "Docker unavailable during recovery — marking orphaned runs interrupted: %s",
+            exc,
+        )
         for run in orphans:
             run.status = "interrupted"
             run.finished_at = datetime.now(UTC)
@@ -172,12 +179,13 @@ async def recover_interrupted_runs(db: Session) -> None:
     for run in orphans:
         # Try label first (containers started after the label feature was added)
         containers = client.containers.list(
-            filters={"label": f"neuroforge_run_id={run.id}"}
+            filters={"label": f"neuravian_run_id={run.id}"}
         )
 
         # Fall back: match by /out volume binding (pre-label containers)
         if not containers and run.output_dir:
             from app.execution.docker_executor import to_host_path
+
             host_out = to_host_path(run.output_dir)
             for c in client.containers.list():
                 for m in c.attrs.get("Mounts", []):
@@ -188,13 +196,19 @@ async def recover_interrupted_runs(db: Session) -> None:
                     break
 
         if containers:
-            log.info("Reattaching monitoring for run %d (container %s)", run.id, containers[0].short_id)
+            log.info(
+                "Reattaching monitoring for run %d (container %s)",
+                run.id,
+                containers[0].short_id,
+            )
             run.status = "running"
             run.error_message = None
             db.commit()
             asyncio.create_task(_reattach_run(run.id, containers[0].id))
         else:
-            log.info("No container found for orphaned run %d — marking interrupted", run.id)
+            log.info(
+                "No container found for orphaned run %d — marking interrupted", run.id
+            )
             run.status = "interrupted"
             run.finished_at = datetime.now(UTC)
             run.error_message = (
@@ -227,17 +241,29 @@ async def recover_queued_runs(db: Session) -> None:
         try:
             pipeline_row = db.get(Pipeline, run.pipeline_id)
             if not pipeline_row:
-                log.warning("Queued run %d: pipeline id %d not found — skipping", run.id, run.pipeline_id)
+                log.warning(
+                    "Queued run %d: pipeline id %d not found — skipping",
+                    run.id,
+                    run.pipeline_id,
+                )
                 continue
 
             manifest = registry.get(pipeline_row.name)
             if manifest is None:
-                log.warning("Queued run %d: manifest '%s' not in registry — skipping", run.id, pipeline_row.name)
+                log.warning(
+                    "Queued run %d: manifest '%s' not in registry — skipping",
+                    run.id,
+                    pipeline_row.name,
+                )
                 continue
 
             dataset = db.get(Dataset, run.dataset_id)
             if not dataset:
-                log.warning("Queued run %d: dataset %d not found — skipping", run.id, run.dataset_id)
+                log.warning(
+                    "Queued run %d: dataset %d not found — skipping",
+                    run.id,
+                    run.dataset_id,
+                )
                 continue
 
             params = json.loads(run.params_json or "{}")
@@ -245,6 +271,7 @@ async def recover_queued_runs(db: Session) -> None:
             remote_host_cfg: dict | None = None
             if run.remote_host_id is not None:
                 from app.models.remote_host import RemoteHost
+
                 rh = db.get(RemoteHost, run.remote_host_id)
                 if rh and rh.enabled:
                     remote_host_cfg = {
@@ -257,7 +284,10 @@ async def recover_queued_runs(db: Session) -> None:
                     }
 
             output_dir = run.output_dir or str(
-                Path(settings.data_dir).resolve() / "derivatives" / pipeline_row.name / str(run.id)
+                Path(settings.data_dir).resolve()
+                / "derivatives"
+                / pipeline_row.name
+                / str(run.id)
             )
 
             ctx = RunContext(
@@ -397,11 +427,13 @@ def seed_pipeline_registry(db: Session) -> None:
             existing.version = tag
             existing.manifest_path = f"{manifest_id}.yaml"
         else:
-            db.add(Pipeline(
-                name=manifest_id,
-                version=tag,
-                manifest_path=f"{manifest_id}.yaml",
-            ))
+            db.add(
+                Pipeline(
+                    name=manifest_id,
+                    version=tag,
+                    manifest_path=f"{manifest_id}.yaml",
+                )
+            )
     db.commit()
 
 
@@ -414,6 +446,7 @@ def _get_executor(manifest: dict, remote_host_cfg: dict | None = None) -> Execut
     """Return the appropriate Executor for the manifest's execution type."""
     if remote_host_cfg:
         from app.execution.ssh_executor import SSHExecutor
+
         return SSHExecutor(remote_host_cfg)
     exec_type = manifest.get("execution", {}).get("type", "docker")
     if exec_type == "native":
@@ -428,7 +461,7 @@ def _lineage_seed_source(
     """Return a host/backend-accessible lineage artifact path for output seeding.
 
     Some official tools, notably MRIQC's group mode, expect their output
-    directory to already contain participant-level derivatives. NeuroForge keeps
+    directory to already contain participant-level derivatives. Neuravian keeps
     each run isolated by copying that upstream artifact into this run's fresh
     output_dir before launch.
     """
@@ -527,18 +560,11 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
         _log(line)
 
         # Progress parsing
-        parsed = parse_tqdm_line(line)
-        if parsed:
-            progress_dict = {
-                "percent": parsed.percent,
-                "current": parsed.current,
-                "total": parsed.total,
-                "elapsed_seconds": parsed.elapsed_seconds,
-                "eta_seconds": parsed.eta_seconds,
-                "rate": parsed.rate,
-                "rate_unit": parsed.rate_unit,
-                "last_updated": parsed.last_updated,
-            }
+        progress_dict = parse_progress_line(
+            line,
+            ctx.manifest.get("contract", {}).get("progress"),
+        )
+        if progress_dict:
             _progress_state[run_id] = progress_dict
             loop.call_soon_threadsafe(_broadcast_progress, run_id, progress_dict)
             now = monotonic()
@@ -557,19 +583,23 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
         db.commit()
 
         # Write provenance: execution started
-        db.add(ProvenanceEvent(
-            run_id=run_id,
-            event_type="execution_started",
-            payload_json=json.dumps({
-                "container_image": (
-                    f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}"
-                    if ctx.manifest.get("container") else
-                    f"native:{ctx.manifest.get('execution', {}).get('command', 'unknown')}"
+        db.add(
+            ProvenanceEvent(
+                run_id=run_id,
+                event_type="execution_started",
+                payload_json=json.dumps(
+                    {
+                        "container_image": (
+                            f"{ctx.manifest['container']['image']}:{ctx.manifest['container']['tag']}"
+                            if ctx.manifest.get("container")
+                            else f"native:{ctx.manifest.get('execution', {}).get('command', 'unknown')}"
+                        ),
+                        "command": executor.build_command(ctx),
+                        "output_dir": ctx.output_dir,
+                    }
                 ),
-                "command": executor.build_command(ctx),
-                "output_dir": ctx.output_dir,
-            }),
-        ))
+            )
+        )
         db.commit()
 
     exit_code = 1
@@ -579,7 +609,7 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
         exit_code, digest = await executor.run(ctx, _log_and_collect)
     except Exception as exc:
         log.exception("Executor raised during run %d", run_id)
-        _log_and_collect(f"[neuroforge] Executor error: {exc}")
+        _log_and_collect(f"[neuravian] Executor error: {exc}")
 
     # Some tools write exclusively to an explicitly declared /out file. Keep
     # their report available in the execution log without duplicating stdout.
@@ -596,6 +626,19 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
 
     # Error translation
     full_log_text = "\n".join(log_lines)
+    methods_contract = (ctx.manifest.get("contract") or {}).get("methods") or {}
+    runtime_version_pattern = methods_contract.get("runtime_version_pattern")
+    runtime_version: str | None = None
+    if runtime_version_pattern:
+        try:
+            version_match = re.search(runtime_version_pattern, full_log_text)
+            if version_match:
+                runtime_version = version_match.group("version")
+        except (re.error, IndexError):
+            log.warning(
+                "Invalid runtime version pattern for %s",
+                ctx.manifest.get("id"),
+            )
     known_errors = ctx.manifest.get("known_errors", [])
     translated_error: str | None = None
     if exit_code != 0:
@@ -609,7 +652,6 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             )
 
     # Detect matched error signatures for run_logs record
-    import re
     matched_signatures: list[str] = []
     for entry in known_errors:
         pattern = entry.get("pattern", "")
@@ -623,6 +665,8 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
     with SessionLocal() as db:
         run = db.get(Run, run_id)
         if run:
+            if runtime_version:
+                run.pipeline_version = runtime_version
             if run.cancel_requested:
                 run.status = "cancelled"
                 run.error_message = "Run was cancelled by user request."
@@ -639,28 +683,40 @@ async def _execute_run_background(run_id: int, ctx: RunContext) -> None:
             db.commit()
 
             # RunLog record
-            db.add(RunLog(
-                run_id=run_id,
-                log_file_path=log_file_path,
-                error_signatures_detected=json.dumps(matched_signatures) if matched_signatures else None,
-            ))
+            db.add(
+                RunLog(
+                    run_id=run_id,
+                    log_file_path=log_file_path,
+                    error_signatures_detected=json.dumps(matched_signatures)
+                    if matched_signatures
+                    else None,
+                )
+            )
 
             # Provenance: execution finished
-            db.add(ProvenanceEvent(
-                run_id=run_id,
-                event_type="execution_finished",
-                payload_json=json.dumps({
-                    "exit_code": exit_code,
-                    "container_digest": digest,
-                    "status": run.status,
-                    "error_matched": bool(translated_error),
-                }),
-            ))
+            db.add(
+                ProvenanceEvent(
+                    run_id=run_id,
+                    event_type="execution_finished",
+                    payload_json=json.dumps(
+                        {
+                            "exit_code": exit_code,
+                            "container_digest": digest,
+                            "status": run.status,
+                            "error_matched": bool(translated_error),
+                        }
+                    ),
+                )
+            )
             db.commit()
 
-            # Auto-register dcm2bids output as a NeuroForge Dataset so MRIQC
+            # Auto-register dcm2bids output as a Neuravian Dataset so MRIQC
             # and fMRIPrep can pick it up via the dataset selector immediately.
-            if exit_code == 0 and ctx.manifest.get("id") == "dcm2bids" and run.output_dir:
+            if (
+                exit_code == 0
+                and ctx.manifest.get("id") == "dcm2bids"
+                and run.output_dir
+            ):
                 _auto_register_dcm2bids_output(run_id, run.output_dir, ctx.params, db)
 
     loop.call_soon_threadsafe(_broadcast_done, run_id)
@@ -672,7 +728,7 @@ _run_logger = logging.getLogger(__name__)
 def _auto_register_dcm2bids_output(
     run_id: int, output_dir: str, params: dict[str, Any], db: Session
 ) -> None:
-    """Register the dcm2bids output directory as a NeuroForge Dataset.
+    """Register the dcm2bids output directory as a Neuravian Dataset.
 
     Idempotent: if a dataset with the same path already exists (e.g. run was
     reprocessed), update its name and source_run_id rather than creating a
@@ -717,7 +773,8 @@ def _auto_register_dcm2bids_output(
         db.commit()
         _run_logger.info(
             "Auto-registered dcm2bids output as Dataset id=%s name=%r",
-            dataset.id, name,
+            dataset.id,
+            name,
         )
     except Exception:
         _run_logger.exception(
@@ -738,7 +795,9 @@ class RunService:
         row = self.db.get(Pipeline, pipeline_db_id)
         return row.name if row else "unknown"
 
-    def _run_to_read(self, run: Run, resource_warnings: list[ResourceWarningSchema] | None = None) -> RunRead:
+    def _run_to_read(
+        self, run: Run, resource_warnings: list[ResourceWarningSchema] | None = None
+    ) -> RunRead:
         params = json.loads(run.params_json or "{}")
         progress = json.loads(run.progress_json) if run.progress_json else None
         return RunRead(
@@ -778,7 +837,9 @@ class RunService:
         # Resolve pipeline DB record (seeded at startup)
         pipeline_row = self.db.query(Pipeline).filter_by(name=body.pipeline_id).first()
         if not pipeline_row:
-            raise ValueError(f"Pipeline '{body.pipeline_id}' not in DB registry. Is the manifest loaded?")
+            raise ValueError(
+                f"Pipeline '{body.pipeline_id}' not in DB registry. Is the manifest loaded?"
+            )
 
         # Pre-flight: validate required file_path/directory_path params that
         # need a mount exist on disk NOW, before we create a DB record or touch
@@ -861,16 +922,17 @@ class RunService:
             effective_params["work-dir"] = str(work_dir)
             log.info(
                 "Auto-mounting persistent work-dir for pipeline %s / dataset %d: %s",
-                body.pipeline_id, body.dataset_id, work_dir,
+                body.pipeline_id,
+                body.dataset_id,
+                work_dir,
             )
 
         # For group-functional-connectivity: resolve input-run-ids to matrix-dirs
         # before the executor sees the params. Each run ID is looked up in the DB
         # and its output_dir is appended to a comma-separated list injected as
         # matrix-dirs. This keeps the NativeExecutor generic.
-        if (
-            body.pipeline_id == "group-functional-connectivity"
-            and effective_params.get("input-run-ids")
+        if body.pipeline_id == "group-functional-connectivity" and effective_params.get(
+            "input-run-ids"
         ):
             raw_ids = str(effective_params["input-run-ids"])
             resolved_dirs: list[str] = []
@@ -881,12 +943,16 @@ class RunService:
                 try:
                     rid = int(part)
                 except ValueError:
-                    raise ValueError(f"input-run-ids contains non-integer value: '{part}'")
+                    raise ValueError(
+                        f"input-run-ids contains non-integer value: '{part}'"
+                    )
                 src_run = self.db.get(Run, rid)
                 if src_run is None:
                     raise ValueError(f"Run {rid} not found (from input-run-ids)")
                 if not src_run.output_dir:
-                    raise ValueError(f"Run {rid} has no output directory — did it succeed?")
+                    raise ValueError(
+                        f"Run {rid} has no output directory — did it succeed?"
+                    )
                 resolved_dirs.append(src_run.output_dir)
             if not resolved_dirs:
                 raise ValueError("input-run-ids produced no resolvable run directories")
@@ -908,6 +974,7 @@ class RunService:
         remote_host_cfg: dict | None = None
         if body.remote_host_id is not None:
             from app.models.remote_host import RemoteHost
+
             rh = self.db.get(RemoteHost, body.remote_host_id)
             if not rh:
                 raise ValueError(f"Remote host {body.remote_host_id} not found")
@@ -927,11 +994,16 @@ class RunService:
         run = Run(
             dataset_id=body.dataset_id,
             pipeline_id=pipeline_row.id,
-            pipeline_version=(manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command", "native"),
+            pipeline_version=(manifest.get("container") or {}).get("tag")
+            or manifest.get("execution", {}).get("command", "native"),
             params_json=json.dumps(effective_params),
             status="queued",
-            source_run_id=body.lineage.upstream_run_id if body.lineage and not body.lineage.external else None,
-            source_artifacts_json=json.dumps(body.lineage.model_dump()) if body.lineage else None,
+            source_run_id=body.lineage.upstream_run_id
+            if body.lineage and not body.lineage.external
+            else None,
+            source_artifacts_json=json.dumps(body.lineage.model_dump())
+            if body.lineage
+            else None,
             remote_host_id=body.remote_host_id,
         )
         self.db.add(run)
@@ -950,9 +1022,7 @@ class RunService:
             _seed_output_from_lineage(lineage_seed_source, output_dir)
         except Exception as exc:
             run.status = "failed"
-            run.error_message = (
-                f"Could not prepare upstream artifact for {manifest['display_name']}: {exc}"
-            )
+            run.error_message = f"Could not prepare upstream artifact for {manifest['display_name']}: {exc}"
             self.db.commit()
             raise ValueError(run.error_message) from exc
 
@@ -981,28 +1051,34 @@ class RunService:
         self.db.commit()
 
         # Provenance: run created
-        self.db.add(ProvenanceEvent(
-            run_id=run.id,
-            event_type="run_created",
-            payload_json=json.dumps({
-                "pipeline_id": body.pipeline_id,
-                "pipeline_version": (manifest.get("container") or {}).get("tag") or manifest.get("execution", {}).get("command"),
-                "container_image": (
-                    f"{manifest['container']['image']}:{manifest['container']['tag']}"
-                    if manifest.get("container") else
-                    f"native:{manifest.get('execution', {}).get('command', 'unknown')}"
+        self.db.add(
+            ProvenanceEvent(
+                run_id=run.id,
+                event_type="run_created",
+                payload_json=json.dumps(
+                    {
+                        "pipeline_id": body.pipeline_id,
+                        "pipeline_version": (manifest.get("container") or {}).get("tag")
+                        or manifest.get("execution", {}).get("command"),
+                        "container_image": (
+                            f"{manifest['container']['image']}:{manifest['container']['tag']}"
+                            if manifest.get("container")
+                            else f"native:{manifest.get('execution', {}).get('command', 'unknown')}"
+                        ),
+                        "dataset_id": body.dataset_id,
+                        "dataset_path": dataset.path,
+                        "dataset_hash": dataset.dataset_hash,
+                        "params": effective_params,
+                        "command_preview": command_preview,
+                    }
                 ),
-                "dataset_id": body.dataset_id,
-                "dataset_path": dataset.path,
-                "dataset_hash": dataset.dataset_hash,
-                "params": effective_params,
-                "command_preview": command_preview,
-            }),
-        ))
+            )
+        )
         self.db.commit()
 
         # Enqueue for sequential execution
         from app.services.execution_queue import enqueue
+
         enqueue(run.id, ctx)
 
         return self._run_to_read(run, resource_warnings)
@@ -1034,6 +1110,7 @@ class RunService:
     def rerun(self, source_run_id: int) -> RunRead:
         """Create a new run with the same pipeline, dataset, and params as source_run_id."""
         from app.models.pipeline import Pipeline as PipelineModel
+
         source = self.db.get(Run, source_run_id)
         if not source:
             raise KeyError(source_run_id)
@@ -1065,6 +1142,7 @@ class RunService:
             )
         # Cascade: remove associated logs and provenance events
         from app.models.run import RunLog, ProvenanceEvent
+
         self.db.query(RunLog).filter_by(run_id=run_id).delete()
         self.db.query(ProvenanceEvent).filter_by(run_id=run_id).delete()
         self.db.delete(run)

@@ -1,7 +1,7 @@
 # Desktop startup-state fix verification
 
 Verified on macOS Apple Silicon on 2026-07-14 with the exact unsigned bundle at
-`desktop/dist/mac-arm64/NeuroForge.app`.
+`desktop/dist/mac-arm64/Neuravian.app`.
 
 ## Root cause
 
@@ -9,7 +9,7 @@ The visible launcher shell depended on a transient main-to-renderer Ready event.
 If the event preceded renderer listener registration, the renderer had no query
 or replay path and could remain on its static initial “Checking system” state.
 The launcher also treated occupied ports as a fatal preflight conflict before it
-could recognize an already-healthy NeuroForge stack, so it had no valid warm
+could recognize an already-healthy Neuravian stack, so it had no valid warm
 attach path or external-ownership state.
 
 The current desktop source and packaged ASAR already used the canonical backend
@@ -27,7 +27,7 @@ or `none`).
 
 ## Instrumentation and timeouts
 
-`~/Library/Logs/NeuroForge/startup.log` records the requested 21 named stages,
+`~/Library/Logs/Neuravian/startup.log` records the requested 21 named stages,
 ISO timestamps, attempt ID, app version, architecture, endpoints/status, and
 elapsed durations. Writes are serialized to preserve transition order and pass
 through the desktop diagnostics redactor before persistence.
@@ -51,7 +51,7 @@ default.
 Warm start used an already-healthy backend and frontend. The bundle detected
 HTTP 200 from `/api/health` and port 3000, attached with external ownership,
 emitted and received Ready at 649 ms, loaded the application URL at 708 ms, and
-confirmed the visible NeuroForge UI. It did not invoke Compose. Normal quit left
+confirmed the visible Neuravian UI. It did not invoke Compose. Normal quit left
 both existing containers healthy.
 
 Cold start began with both desktop services stopped and an empty run queue. The

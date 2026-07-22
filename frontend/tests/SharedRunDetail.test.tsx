@@ -35,9 +35,9 @@ describe("shared Run Detail", () => {
   });
 
   it("renders cloud execution as metadata through the same component", () => {
-    render(<SharedRunDetail model={{ ...base, executionLocation: "EC2", executionTarget: "AWS NeuroForge" }} />);
+    render(<SharedRunDetail model={{ ...base, executionLocation: "EC2", executionTarget: "AWS Neuravian" }} />);
     expect(screen.getByTestId("shared-run-detail")).toHaveTextContent("EC2");
-    expect(screen.getByText("AWS NeuroForge")).toBeInTheDocument();
+    expect(screen.getByText("AWS Neuravian")).toBeInTheDocument();
   });
 
   it("handles missing optional metadata without hiding core run state", () => {

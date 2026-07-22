@@ -1,14 +1,15 @@
-# NeuroForge desktop prototype
+# Neuravian desktop application
 
-This directory contains a thin Electron launcher for the existing NeuroForge
-Docker Compose deployment. It does not contain a replacement frontend, backend,
-database, or scientific execution system.
+Neuravian is an open-source desktop workspace for reproducible neuroimaging
+research. This directory packages the canonical React workspace and Docker
+Compose services in an Electron shell; it does not duplicate the frontend,
+backend, database, or scientific execution system.
 
-## Prototype prerequisites
+## Desktop prerequisites
 
 - macOS on Apple Silicon
 - Docker Desktop with Docker Compose 2.24.4 or newer
-- the NeuroForge source checkout and its existing `.env`
+- the Neuravian source checkout and its existing `.env`
 - Node.js/npm for development builds
 
 Docker is not installed automatically. If it is missing or stopped, the startup
@@ -36,14 +37,14 @@ The launcher checks the system, starts the repository's canonical
 `docker-compose.yml` with `docker-compose.desktop.yml` as a localhost-only
 override, waits for the backend and frontend, and then loads the existing React
 application in the native window. It uses the Compose project name
-`neuroforge-desktop` so it never assumes ownership of a manually started stack.
+`neuravian-desktop` so it never assumes ownership of a manually started stack.
 If both services are already healthy, the launcher attaches immediately and
 marks them external; quitting that launcher process leaves them running.
 
 The main process owns the canonical startup state. The startup renderer queries
 that state when it loads and also subscribes to later changes, so a Ready event
 that occurred before listener registration cannot strand the window. Timestamped,
-sanitized stage logs are written to `~/Library/Logs/NeuroForge/startup.log`.
+sanitized stage logs are written to `~/Library/Logs/Neuravian/startup.log`.
 
 Startup operations have centralized hard limits: system checks 10 seconds,
 Docker daemon 10 seconds, Compose start 30 seconds, backend health 60 seconds,
@@ -64,7 +65,7 @@ The original logo remains outside the repository and is never modified. Generate
 the checked desktop derivatives with:
 
 ```bash
-./scripts/generate-icons.sh /absolute/path/to/neuroforge-logo.001-removebg-preview.png
+./scripts/generate-icons.sh /absolute/path/to/neuravian-logo.001-removebg-preview.png
 ```
 
 ## Development commands
@@ -78,10 +79,10 @@ npm run dist:mac
 ```
 
 `npm run dist:mac` produces the unsigned development bundle under
-`desktop/dist/mac-arm64/NeuroForge.app`.
+`desktop/dist/mac-arm64/Neuravian.app`.
 
 Double-clicking that bundle is the prototype user flow. The first launch may
-take several minutes while Docker builds or pulls images. NeuroForge shows real
+take several minutes while Docker builds or pulls images. Neuravian shows real
 startup states rather than a synthetic percentage.
 
 Because this development build is unsigned and not notarized, macOS Gatekeeper
@@ -109,8 +110,8 @@ execution, plugin development, or server deployment.
 The launcher queries `/api/runs/queue` and `/api/runs` before stopping services.
 When execution is idle, it runs Compose `stop` only for services launched by
 that app process. It never runs `down -v` or removes data. When a run is active,
-Quit offers **Cancel**, **Leave NeuroForge services running**, or **Return to
-NeuroForge**; stopping an active run is never the default.
+Quit offers **Cancel**, **Leave Neuravian services running**, or **Return to
+Neuravian**; stopping an active run is never the default.
 
 See [prototype-verification.md](../docs/desktop/prototype-verification.md) for
 the regression matrix, output hashes, screenshots, and test totals.

@@ -1,13 +1,29 @@
 id: mriqc
 display_name: MRIQC
 description: >
-  Automatic quality assessment of structural and functional MRI data.
-  Extracts image quality metrics (IQMs) and produces individual and group
-  visual reports — no manual scoring required.
+  Runs the established MRIQC research tool to calculate image quality metrics
+  and participant reports. Neuravian orchestrates and records the run; you
+  remain responsible for interpreting the quality-control results.
 homepage: https://mriqc.readthedocs.io/en/24.0.2/
 compute_profile: local-ok
 category: quality_control
 input_type: bids_dataset
+preflight:
+  empirical_status: verified
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: true
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 6
+    recommended_ram_gb: 16
+    min_cpu_count: 1
+    recommended_cpu_count: 4
+    min_disk_free_gb: 10
+    working_space_gb: 5
+    output_space_gb: 5
 container:
   image: nipreps/mriqc
   tag: "24.0.2"
@@ -28,11 +44,9 @@ parameters:
     positional_index: 1
     options:
       - participant
-      - group
     help: >
-      Run quality metrics per subject ("participant") or aggregate them
-      into a group-level report ("group"; run after all participant runs
-      are complete).
+      Calculate metrics and reports for each selected participant. Use the
+      dedicated MRIQC Group Report pipeline after participant processing.
 
   - name: participant-label
     type: string
@@ -147,6 +161,15 @@ parameters:
       Skip metric computation and only regenerate HTML reports from a
       previous run's outputs.
 
+  - name: no-sub
+    type: boolean
+    required: false
+    default: true
+    advanced: true
+    help: >
+      Keep MRIQC's optional anonymized metrics submission disabled. Neuravian
+      enables this by default so no metrics leave your machine unexpectedly.
+
 accepts:
   - type: bids_dataset
     dataset_slot: true
@@ -165,7 +188,69 @@ produces:
 
 max_runtime_hours: 6
 
+contract:
+  version: 1
+  unit_of_work: participant
+  lifecycle:
+    expected_duration_minutes: 120
+    heartbeat_timeout_minutes: 20
+    cancellation_grace_seconds: 30
+    retry_mode: fresh
+    resume_strategy: none
+    preserve_work_directory: true
+  progress:
+    strategy: stages
+    stages:
+      - id: initialize
+        label: Preparing MRIQC workflow
+        pattern: "(Building MRIQC|Initializing|BIDS layout)"
+        weight: 1
+      - id: process
+        label: Calculating image quality metrics
+        pattern: "(Computing|Running node|nipype.workflow|Estimating initial transform|Retry #[0-9]+|Successful spatial normalization)"
+        weight: 6
+      - id: reports
+        label: Writing participant reports
+        pattern: "(Generating visual report|Generating report|Writing report|Reports generated)"
+        weight: 2
+  bids_app:
+    analysis_levels: [participant]
+    analysis_level_parameter: analysis_level
+    derivative_name: mriqc
+    participant_parameter: participant-label
+    session_parameter: session-id
+    task_parameter: task-id
+    work_directory_parameter: work-dir
+    input_mount: /data
+    output_mount: /out
+    work_mount: /work
+  reporting:
+    html_globs: ["**/*.html"]
+    figure_globs: ["**/*.svg", "**/*.png"]
+    metric_globs: ["sub-*/**/*.json"]
+    qc_artifact_types: [mriqc_report]
+  methods:
+    runtime_version_pattern: 'Running MRIQC version (?P<version>\S+)'
+    summary: >
+      Image quality metrics and visual quality-control reports were generated
+      with {display_name} {version}, executed by Neuravian using {execution}.
+    citations:
+      - key: mriqc
+        authors: Esteban et al.
+        year: 2017
+        title: "MRIQC: Advancing the Automatic Prediction of Image Quality in MRI from Unseen Sites"
+        journal: PLOS ONE
+        volume: "12"
+        issue: "9"
+        pages: e0184661
+        doi: 10.1371/journal.pone.0184661
+        rrid: SCR_022942
+
 known_errors:
+  - pattern: "participant labels were not found.*: (?P<labels>[^.]+)"
+    explanation: MRIQC could not find one or more selected participants in this BIDS dataset.
+    fix_hint: Choose a participant shown in the dataset and use the label with or without the sub- prefix.
+
   - pattern: "No such file or directory.*dataset_description\\.json"
     explanation: The selected folder is not a valid BIDS dataset — it is missing dataset_description.json at the root.
     fix_hint: Make sure you selected the top-level BIDS directory (the one that contains dataset_description.json, not a subdirectory).

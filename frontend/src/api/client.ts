@@ -730,7 +730,7 @@ export function fetchDatasetArtifacts(datasetId: number): Promise<DatasetArtifac
 // Saved Workflows                                                      //
 // ------------------------------------------------------------------ //
 
-export const WORKFLOW_SCHEMA_VERSION = "neuroforge-workflow-v1";
+export const WORKFLOW_SCHEMA_VERSION = "neuravian-workflow-v1";
 
 export interface WorkflowSummary {
   id: number;
@@ -1079,7 +1079,7 @@ export interface PluginInfo {
   description: string;
   homepage: string | null;
   license: string | null;
-  neuroforge_version: string | null;
+  neuravian_version: string | null;
   dependencies: string[];
   enabled: boolean;
   status: "ok" | "disabled" | "error";

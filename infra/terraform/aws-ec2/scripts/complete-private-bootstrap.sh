@@ -2,11 +2,11 @@
 
 set -euo pipefail
 
-exec > >(tee -a /var/log/neuroforge-private-bootstrap.log) 2>&1
+exec > >(tee -a /var/log/neuravian-private-bootstrap.log) 2>&1
 
-readonly REPOSITORY_URL="https://github.com/SadhanaArivoli/neuroforge.git"
-readonly REPOSITORY_DIR="/opt/neuroforge"
-readonly MARKER_DIR="/var/lib/neuroforge"
+readonly REPOSITORY_URL="https://github.com/SadhanaArivoli/neuravian.git"
+readonly REPOSITORY_DIR="/opt/neuravian"
+readonly MARKER_DIR="/var/lib/neuravian"
 
 fail() {
   printf '[REMOTE VM] ERROR: %s\n' "$*" >&2
@@ -40,8 +40,8 @@ git -C "${REPOSITORY_DIR}" checkout --detach "${GIT_COMMIT}"
 git -C "${REPOSITORY_DIR}" remote set-url origin "${REPOSITORY_URL}"
 [[ "$(git -C "${REPOSITORY_DIR}" rev-parse HEAD)" == "${GIT_COMMIT}" ]] || fail "Exact Git commit verification failed"
 
-install -d -o ubuntu -g ubuntu -m 0750 /srv/neuroforge/datasets
-install -d -o ubuntu -g ubuntu -m 0700 /srv/neuroforge/secrets
+install -d -o ubuntu -g ubuntu -m 0750 /srv/neuravian/datasets
+install -d -o ubuntu -g ubuntu -m 0700 /srv/neuravian/secrets
 install -d -o ubuntu -g ubuntu -m 0750 "${REPOSITORY_DIR}/data"
 
 cat >"${REPOSITORY_DIR}/compose.aws-loopback.yaml" <<'COMPOSE'
@@ -55,18 +55,18 @@ services:
 COMPOSE
 chmod 0644 "${REPOSITORY_DIR}/compose.aws-loopback.yaml"
 
-install -d -m 0755 /etc/neuroforge
-cat >/etc/neuroforge/environment <<EOF
+install -d -m 0755 /etc/neuravian
+cat >/etc/neuravian/environment <<EOF
 GIT_COMMIT=${GIT_COMMIT}
-HOST_DATASETS_DIR=/srv/neuroforge/datasets
+HOST_DATASETS_DIR=/srv/neuravian/datasets
 HOST_UID=1000
 HOST_GID=1000
 EOF
-chmod 0644 /etc/neuroforge/environment
+chmod 0644 /etc/neuravian/environment
 
-cat >/etc/systemd/system/neuroforge.service <<'UNIT'
+cat >/etc/systemd/system/neuravian.service <<'UNIT'
 [Unit]
-Description=NeuroForge Docker Compose application
+Description=Neuravian Docker Compose application
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -74,8 +74,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/neuroforge
-EnvironmentFile=/etc/neuroforge/environment
+WorkingDirectory=/opt/neuravian
+EnvironmentFile=/etc/neuravian/environment
 ExecStart=/usr/bin/docker compose -f docker-compose.yml -f compose.aws-loopback.yaml up -d --build --remove-orphans
 ExecStop=/usr/bin/docker compose -f docker-compose.yml -f compose.aws-loopback.yaml down
 TimeoutStartSec=0
@@ -86,7 +86,7 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now neuroforge.service
+systemctl enable --now neuravian.service
 
 backend_ready=false
 frontend_ready=false
@@ -138,4 +138,4 @@ os.chmod(temporary, 0o644)
 os.replace(temporary, path)
 PY
 
-printf '[REMOTE VM] NeuroForge private-repository deployment complete\n'
+printf '[REMOTE VM] Neuravian private-repository deployment complete\n'

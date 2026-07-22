@@ -13,7 +13,7 @@ input_type: bids_dataset
 # native arm64 Python when the backend is local.
 execution:
   type: native
-  command: neuroforge-functional-connectivity
+  command: neuravian-functional-connectivity
 
 dataset_positional: false
 compute_profile: local-ok

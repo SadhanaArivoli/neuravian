@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[3]
 HELPER = ROOT / "infra/aws/scripts/lib/decommission_plan.py"
 DEPLOYMENT = "nf-x86-test0001"
 TAGS = [
-    {"Key": "Project", "Value": "NeuroForge"},
+    {"Key": "Project", "Value": "Neuravian"},
     {"Key": "Purpose", "Value": "x86-verification"},
-    {"Key": "ManagedBy", "Value": "NeuroForgeProvisioner"},
+    {"Key": "ManagedBy", "Value": "NeuravianProvisioner"},
     {"Key": "DeploymentId", "Value": DEPLOYMENT},
 ]
 
@@ -39,7 +39,7 @@ def fixture(tmp_path: Path) -> dict[str, Path]:
         "instance_id": "i-abc123",
         "root_volume_id": "vol-abc123",
         "security_group_id": "sg-abc123",
-        "key_pair_name": f"neuroforge-{DEPLOYMENT}",
+        "key_pair_name": f"neuravian-{DEPLOYMENT}",
         "cloudshell_key_path": str(tmp_path / "key.pem"),
     }
     state["cloudshell_key_path"] = str(tmp_path / "key.pem")
@@ -53,7 +53,7 @@ def fixture(tmp_path: Path) -> dict[str, Path]:
         ),
         "volumes": write(tmp_path / "volumes.json", {"Volumes": [{"VolumeId": "vol-abc123", "Tags": TAGS}]}),
         "security-group": write(tmp_path / "sg.json", {"SecurityGroups": [{"GroupId": "sg-abc123", "Tags": TAGS}]}),
-        "key-pairs": write(tmp_path / "keys.json", {"KeyPairs": [{"KeyName": f"neuroforge-{DEPLOYMENT}", "Tags": TAGS}]}),
+        "key-pairs": write(tmp_path / "keys.json", {"KeyPairs": [{"KeyName": f"neuravian-{DEPLOYMENT}", "Tags": TAGS}]}),
         "remote-status": write(tmp_path / "remote.json", {"services_running": False, "scientific_pipeline_active": False}),
         "evidence-receipt": write(tmp_path / "receipt.json", receipt),
     }
@@ -175,7 +175,7 @@ def test_confirmation_and_emergency_stop_source_guards() -> None:
     emergency = (ROOT / "infra/aws/scripts/emergency-stop.sh").read_text()
     assert "TERMINATE ${INSTANCE_ID}" in decommission
     assert "DELETE VOLUMES ${VOLUME_ID}" in decommission
-    assert "DELETE NEUROFORGE IAM ${RESOLVED_DEPLOYMENT_ID}" in decommission
+    assert "DELETE NEURAVIAN IAM ${RESOLVED_DEPLOYMENT_ID}" in decommission
     assert "DELETE LOCAL KEY" in decommission
     assert 'phase_complete "instance-terminated"' in decommission
     assert 'phase_complete "volume-policy-complete"' in decommission

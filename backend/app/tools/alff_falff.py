@@ -11,7 +11,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-_cache = Path(tempfile.gettempdir()) / "neuroforge-cache" / "matplotlib"
+_cache = Path(tempfile.gettempdir()) / "neuravian-cache" / "matplotlib"
 _cache.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_cache))
 
@@ -184,7 +184,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "detrending": "linear" if args.detrend else "none", "timeseries_standardization": "none", "normalization": args.normalization,
         "mask_voxel_count": int(mask.sum()), "alff_statistics": _stats(alff), "falff_statistics": _stats(falff),
         "software_versions": {"python": platform.python_version(), "numpy": np.__version__, "scipy": scipy.__version__, "nibabel": nib.__version__},
-        "pipeline_version": PIPELINE_VERSION, "runtime_seconds": perf_counter()-started, "command": "neuroforge-alff-falff", "warnings": warnings,
+        "pipeline_version": PIPELINE_VERSION, "runtime_seconds": perf_counter()-started, "command": "neuravian-alff-falff", "warnings": warnings,
         "citations": ["Zang et al. (2007), doi:10.1016/j.braindev.2006.07.002", "Zou et al. (2008), doi:10.1016/j.jneumeth.2008.04.012"]
     }
     (out / "alff_falff_metadata.json").write_text(json.dumps(metadata, indent=2))

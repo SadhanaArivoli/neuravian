@@ -25,7 +25,7 @@ def list_plugins() -> list[dict[str, Any]]:
                 "description": p.description,
                 "homepage": p.homepage,
                 "license": p.license,
-                "neuroforge_version": p.neuroforge_version,
+                "neuravian_version": p.neuravian_version,
                 "dependencies": p.dependencies,
                 "enabled": p.enabled,
                 "status": p.status,

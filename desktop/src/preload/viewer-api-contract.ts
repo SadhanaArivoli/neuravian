@@ -13,7 +13,7 @@ export interface ReadArtifactRequest {
 }
 
 export interface DefaultViewerSceneRequest {
-  viewerId: "neuroforge-viewer" | "freeview" | "mricrogl";
+  viewerId: "neuravian-viewer" | "freeview" | "mricrogl";
   workspaceId: string;
   runId: number;
   files: Array<{

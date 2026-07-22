@@ -18,11 +18,11 @@ def test_workspace_identity_is_stable_and_opaque(monkeypatch):
     assert first.json() == second.json()
     assert uuid.UUID(first.json()["workspace_id"]).version == 5
     assert "private-machine-id" not in first.text
-    assert first.json()["product"] == "NeuroForge"
+    assert first.json()["product"] == "Neuravian"
 
 
 def test_configured_server_identity_does_not_leak(monkeypatch):
-    monkeypatch.setenv("NEUROFORGE_SERVER_ID", "lab-secret-identifier")
+    monkeypatch.setenv("NEURAVIAN_SERVER_ID", "lab-secret-identifier")
 
     response = client.get("/api/workspace/identity")
 

@@ -64,9 +64,9 @@ describe("workspace metadata synchronization", () => {
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith("/api/workspace/identity")) {
-        return body({ workspace_id: "workspace-a", product: "NeuroForge", api_version: "1" });
+        return body({ workspace_id: "workspace-a", product: "Neuravian", api_version: "1" });
       }
-      return body({ version: "0.1.0-alpha" });
+      return body({ version: "0.1.0" });
     });
     const client = new WorkspaceClient(
       new WorkspaceMetadataCache(path.join(root, "metadata")),
@@ -74,8 +74,8 @@ describe("workspace metadata synchronization", () => {
       fetcher as typeof fetch,
     );
     await expect(client.testConnection(profile, null)).resolves.toEqual({
-      workspaceId: "workspace-a", product: "NeuroForge", apiVersion: "1",
-      serverVersion: "0.1.0-alpha",
+      workspaceId: "workspace-a", product: "Neuravian", apiVersion: "1",
+      serverVersion: "0.1.0",
     });
   });
   it("builds stable remote identities and preserves workflow metadata", async () => {
@@ -164,7 +164,7 @@ describe("workflow input handoff", () => {
       if (url.endsWith("/api/workflow-executions/11111111-1111-1111-1111-111111111111/inputs")) return body([]);
       if (url.endsWith("/api/runs/8/files/brain.nii.gz")) return new Response(payload);
       if (url.endsWith("/inputs/brain") && init?.method === "PUT") {
-        expect(new Headers(init.headers).get("X-NeuroForge-Sha256")).toBe(sha256);
+        expect(new Headers(init.headers).get("X-Neuravian-Sha256")).toBe(sha256);
         expect(new Headers(init.headers).get("Authorization")).toMatch(/^Basic /);
         return body({ staged_path: "/cloud/inputs/brain.nii.gz" });
       }

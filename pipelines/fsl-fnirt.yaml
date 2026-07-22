@@ -19,8 +19,8 @@ description: >
   the container — no template or config files need to be manually located.
   For the standard structural pipeline, run FLIRT first to produce an affine
   matrix, then supply it to FNIRT via the "aff-mat" parameter.
-  Requires the NeuroForge FSL FNIRT wrapper image — build it once with
-  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7
+  Requires the Neuravian FSL FNIRT wrapper image — build it once with
+  "docker build --platform linux/amd64 -t neuravian/fsl-fnirt:6.0.7
   docker/fsl-fnirt/" before submitting a run.
 homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/registration/fnirt
 category: registration
@@ -31,7 +31,7 @@ input_type: nifti
 # FNIRT to 1mm is significantly slower in both cases.
 # Classified as local-slow to trigger the preflight warning dialog.
 # FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
-# Wrapper image: ghcr.io/neuroforge/fsl-fnirt:6.0.7
+# Wrapper image: neuravian/fsl-fnirt:6.0.7
 compute_profile: local-slow
 
 preflight:
@@ -52,13 +52,13 @@ preflight:
     output_space_gb: 2
 
 container:
-  # NeuroForge wrapper image built from docker/fsl-fnirt/Dockerfile.
+  # Neuravian wrapper image built from docker/fsl-fnirt/Dockerfile.
   # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
-  # /usr/local/bin/neuroforge-fnirt wrapper script that resolves reference image
+  # /usr/local/bin/neuravian-fnirt wrapper script that resolves reference image
   # presets and FNIRT config files, then calls fnirt with the native key=value CLI.
   # MNI152 templates and FNIRT config files are bundled inside the FSL base image.
-  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
-  image: ghcr.io/neuroforge/fsl-fnirt
+  # Build locally: docker build --platform linux/amd64 -t neuravian/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+  image: neuravian/fsl-fnirt
   tag: "6.0.7"
   engine: docker
 
@@ -251,14 +251,14 @@ max_runtime_hours: 6
 #   2. registered.mat from FSL FLIRT (T1→MNI152 2mm, dof=12)
 #   3. FNIRT with aff-mat=registered.mat, ref-preset=mni152_2mm
 #
-# Build: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+# Build: docker build --platform linux/amd64 -t neuravian/fsl-fnirt:6.0.7 docker/fsl-fnirt/
 #
 # CLI verified (example):
 #   docker run --rm --platform linux/amd64 \
 #     -v <brain.nii.gz>:/inputs/input/brain.nii.gz:ro \
 #     -v <registered.mat>:/inputs/aff-mat/registered.mat:ro \
 #     -v <out_dir>:/out:rw \
-#     ghcr.io/neuroforge/fsl-fnirt:6.0.7 \
+#     neuravian/fsl-fnirt:6.0.7 \
 #     --input /inputs/input/brain.nii.gz \
 #     --aff-mat /inputs/aff-mat/registered.mat \
 #     --ref-preset mni152_2mm \
@@ -268,7 +268,7 @@ max_runtime_hours: 6
 # ──────────────────────────────────────────────────────────────────────────────
 
 known_errors:
-  - pattern: "neuroforge-fnirt: error: --input is required"
+  - pattern: "neuravian-fnirt: error: --input is required"
     explanation: >
       The FNIRT run was submitted without an input file path. The input parameter
       is required for all FNIRT runs.
@@ -276,7 +276,7 @@ known_errors:
       Open the pipeline form and fill in the "input" field with the full path
       to your skull-stripped structural NIfTI file, then resubmit.
 
-  - pattern: "neuroforge-fnirt: error: --ref-file is required when --ref-preset=custom"
+  - pattern: "neuravian-fnirt: error: --ref-file is required when --ref-preset=custom"
     explanation: >
       The ref-preset was set to "custom" but no ref-file path was provided.
     fix_hint: >
@@ -284,7 +284,7 @@ known_errors:
       MNI152 template, or fill in the "ref-file" field with the path to your
       custom reference NIfTI image.
 
-  - pattern: "neuroforge-fnirt: error: --config-file is required when --config-preset=custom"
+  - pattern: "neuravian-fnirt: error: --config-file is required when --config-preset=custom"
     explanation: >
       The config-preset was set to "custom" but no config-file path was provided.
     fix_hint: >
@@ -304,8 +304,8 @@ known_errors:
       FNIRT could not find the MNI152 template inside the container. This indicates
       the container image was built incorrectly or the FSL data directory is missing.
     fix_hint: >
-      Rebuild the FNIRT wrapper image from the NeuroForge repository:
-        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+      Rebuild the FNIRT wrapper image from the Neuravian repository:
+        docker build --platform linux/amd64 -t neuravian/fsl-fnirt:6.0.7 docker/fsl-fnirt/
       The brainlife/fsl base image includes the FSL standard templates and config
       files. If the build still fails, check that the FSL base image digest matches
       the one in the Dockerfile.
@@ -338,20 +338,20 @@ known_errors:
       at least 16 GB and retry. For 1mm registration, allocate 32 GB if possible.
       Alternatively, register to MNI152 2mm first and submit the 1mm run on EC2.
 
-  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-fnirt|manifest unknown"
+  - pattern: "pull access denied|not found.*neuravian/fsl-fnirt|manifest unknown"
     explanation: >
-      Docker could not find the NeuroForge FSL FNIRT wrapper image locally or on
-      any registry. This image must be built locally from the NeuroForge repository
+      Docker could not find the Neuravian FSL FNIRT wrapper image locally or on
+      any registry. This image must be built locally from the Neuravian repository
       before first use.
     fix_hint: >
-      From the NeuroForge project root, run:
-        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 docker/fsl-fnirt/
+      From the Neuravian project root, run:
+        docker build --platform linux/amd64 -t neuravian/fsl-fnirt:6.0.7 docker/fsl-fnirt/
       This takes ~30 seconds and only needs to be done once per machine.
       After the build completes, resubmit the run.
 
   - pattern: "Run stopped automatically after.*maximum runtime"
     explanation: >
-      The NeuroForge watchdog stopped this FNIRT run after it exceeded the
+      The Neuravian watchdog stopped this FNIRT run after it exceeded the
       6-hour maximum. FNIRT to MNI152 2mm should complete in 3-15 minutes on
       native x86_64. An extremely long runtime indicates the container stalled,
       insufficient memory (causing swap), or the run is executing under Rosetta 2

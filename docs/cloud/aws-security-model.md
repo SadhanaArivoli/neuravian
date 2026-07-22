@@ -5,7 +5,7 @@ Status: **design only; no live AWS execution has occurred**.
 This threat model applies to the one-instance native Linux x86_64 verification
 workflow described in
 [`aws-automated-deployment-architecture.md`](aws-automated-deployment-architecture.md).
-It does not expand NeuroForge's scientific scope and does not establish
+It does not expand Neuravian's scientific scope and does not establish
 regulatory compliance.
 
 ## Assets and trust boundaries
@@ -18,7 +18,7 @@ regulatory compliance.
 | EC2 private key | Temporary CloudShell file and local Mac | `umask 077`, mode 400, never printed, ignored from Git, separate deletion confirmation |
 | Public verification fixture | Local Mac and VM | Manifest allow-list, SHA-256 validation, no participant data |
 | FreeSurfer license | Local Mac and VM secret directory | Separate transfer, mode 600, no content logging, excluded from evidence and user-data |
-| NeuroForge evidence | VM then local Mac | Sanitizing collector, integrity manifest, SHA-256, evidence gate before teardown |
+| Neuravian evidence | VM then local Mac | Sanitizing collector, integrity manifest, SHA-256, evidence gate before teardown |
 | Deployment state | CloudShell/local checkout | Mode 600, atomic JSON, no secrets, state plus live-tag ownership checks |
 
 CloudShell is inside the AWS console trust boundary. It uses the permissions of
@@ -57,7 +57,7 @@ to be enabled manually, and never creates root or IAM-user access keys.
 
 - The deployer role trusts one normalized IAM principal, not `*` and not the
   account root principal as a shortcut.
-- `iam:PassRole` targets only the exact NeuroForge instance-role ARN and uses
+- `iam:PassRole` targets only the exact Neuravian instance-role ARN and uses
   `iam:PassedToService=ec2.amazonaws.com`.
 - EC2 resource actions use required ownership tags where AWS supports tag
   authorization, plus service-specific identifier checks.
@@ -149,7 +149,7 @@ for transfer. The automation never uploads user datasets.
 
 - CloudShell command logs must redact account identifiers in public mode and
   must never enable `set -x` around credentials or key creation.
-- VM bootstrap writes `/var/log/neuroforge-bootstrap.log`; secret scans are part
+- VM bootstrap writes `/var/log/neuravian-bootstrap.log`; secret scans are part
   of verification.
 - Scientific evidence is collected only by the existing sanitized evidence
   workflow. Approved screenshots use redacted names and require review.
@@ -166,9 +166,9 @@ for transfer. The automation never uploads user datasets.
 All supported resources carry, where tagging is supported:
 
 ```text
-Project=NeuroForge
+Project=Neuravian
 Purpose=x86-verification
-ManagedBy=NeuroForgeProvisioner
+ManagedBy=NeuravianProvisioner
 DeploymentId=<unique-id>
 ```
 
@@ -235,7 +235,7 @@ prove:
   --check` pass.
 
 Even after those tests, no IAM or EC2 action is authorized until the user says
-exactly `APPROVE NEUROFORGE AWS AUTOMATION`.
+exactly `APPROVE NEURAVIAN AWS AUTOMATION`.
 
 ## Remaining limitations
 

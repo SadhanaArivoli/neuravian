@@ -2,7 +2,7 @@
 
 ## Our Pledge
 
-We are committed to making participation in NeuroForge a respectful and harassment-free experience for everyone, regardless of background, experience level, or identity.
+We are committed to making participation in Neuravian a respectful and harassment-free experience for everyone, regardless of background, experience level, or identity.
 
 ## Our Standards
 
@@ -20,7 +20,7 @@ We are committed to making participation in NeuroForge a respectful and harassme
 
 ## Scope
 
-This applies to all project spaces: GitHub issues, pull requests, discussions, and any other venue where NeuroForge contributors interact.
+This applies to all project spaces: GitHub issues, pull requests, discussions, and any other venue where Neuravian contributors interact.
 
 ## Enforcement
 

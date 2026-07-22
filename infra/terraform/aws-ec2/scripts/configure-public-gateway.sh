@@ -3,7 +3,7 @@
 set -euo pipefail
 
 readonly CADDY_TAG="caddy:2.10.2-alpine"
-readonly GATEWAY_DIR="/srv/neuroforge/public-gateway"
+readonly GATEWAY_DIR="/srv/neuravian/public-gateway"
 readonly CADDYFILE="${GATEWAY_DIR}/Caddyfile"
 
 fail() {
@@ -69,18 +69,18 @@ docker run --rm \
   --volume "${CADDYFILE}:/etc/caddy/Caddyfile:ro" \
   "${CADDY_IMAGE}" caddy validate --config /etc/caddy/Caddyfile
 
-cat >/etc/systemd/system/neuroforge-public-gateway.service <<EOF
+cat >/etc/systemd/system/neuravian-public-gateway.service <<EOF
 [Unit]
-Description=Authenticated HTTPS gateway for NeuroForge
-Requires=docker.service neuroforge.service
-After=docker.service neuroforge.service network-online.target
+Description=Authenticated HTTPS gateway for Neuravian
+Requires=docker.service neuravian.service
+After=docker.service neuravian.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStartPre=-/usr/bin/docker rm -f neuroforge-public-gateway
-ExecStart=/usr/bin/docker run --rm --name neuroforge-public-gateway --network host --volume ${CADDYFILE}:/etc/caddy/Caddyfile:ro --volume ${GATEWAY_DIR}/data:/data --volume ${GATEWAY_DIR}/config:/config ${CADDY_IMAGE}
-ExecStop=/usr/bin/docker stop --time 30 neuroforge-public-gateway
+ExecStartPre=-/usr/bin/docker rm -f neuravian-public-gateway
+ExecStart=/usr/bin/docker run --rm --name neuravian-public-gateway --network host --volume ${CADDYFILE}:/etc/caddy/Caddyfile:ro --volume ${GATEWAY_DIR}/data:/data --volume ${GATEWAY_DIR}/config:/config ${CADDY_IMAGE}
+ExecStop=/usr/bin/docker stop --time 30 neuravian-public-gateway
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45
@@ -90,6 +90,6 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now neuroforge-public-gateway.service
+systemctl enable --now neuravian-public-gateway.service
 
 printf '[REMOTE VM] Public gateway enabled at https://%s using %s\n' "${PUBLIC_HOSTNAME}" "${CADDY_IMAGE}"

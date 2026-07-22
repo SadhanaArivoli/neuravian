@@ -716,13 +716,13 @@ def test_translate_fmriprep_unrecognized_argument_any_flag():
 # ── fMRIPrep: ANTs/Rosetta watchdog timeout (runs 9 and 15) ─────────
 
 def test_translate_fmriprep_ants_watchdog_timeout():
-    """NeuroForge watchdog line must match the ANTs/Rosetta entry.
+    """Neuravian watchdog line must match the ANTs/Rosetta entry.
     Exact text injected by docker_executor.py watchdog — seen in runs 9 and 15."""
     log = (
         "260705-06:25:05,354 nipype.workflow INFO:\n"
         '\t [Node] Executing "registration"'
         " <niworkflows.interfaces.norm.SpatialNormalization>\n"
-        "[neuroforge] Run stopped automatically after 24h maximum runtime.\n"
+        "[neuravian] Run stopped automatically after 24h maximum runtime.\n"
     )
     result = translate_errors(log, _fmriprep_errors())
     assert result is not None, "Watchdog timeout must be detected"
@@ -731,7 +731,7 @@ def test_translate_fmriprep_ants_watchdog_timeout():
 
 def test_translate_fmriprep_ants_watchdog_12h():
     """Watchdog with 12h limit (run 9 original max_runtime_hours) must also match."""
-    log = "[neuroforge] Run stopped automatically after 12h maximum runtime.\n"
+    log = "[neuravian] Run stopped automatically after 12h maximum runtime.\n"
     result = translate_errors(log, _fmriprep_errors())
     assert result is not None
 
@@ -918,12 +918,12 @@ def test_translate_fmriprep_unrecognized_argument_any_flag():
 # ── fMRIPrep: ANTs/Rosetta watchdog timeout (runs 9 and 15) ─────────
 
 def test_translate_fmriprep_ants_watchdog_timeout():
-    """NeuroForge watchdog line (injected when max_runtime_hours exceeded) must match.
+    """Neuravian watchdog line (injected when max_runtime_hours exceeded) must match.
     Exact text injected by docker_executor.py watchdog — seen in runs 9 and 15."""
     log = (
         "260705-06:25:05,354 nipype.workflow INFO:\n"
         '\t [Node] Executing "registration" <niworkflows.interfaces.norm.SpatialNormalization>\n'
-        "[neuroforge] Run stopped automatically after 24h maximum runtime.\n"
+        "[neuravian] Run stopped automatically after 24h maximum runtime.\n"
     )
     result = translate_errors(log, _fmriprep_errors())
     assert result is not None, "Watchdog timeout must be detected"
@@ -932,7 +932,7 @@ def test_translate_fmriprep_ants_watchdog_timeout():
 
 def test_translate_fmriprep_ants_watchdog_12h():
     """Watchdog with 12h limit (run 9 original max_runtime_hours) must also match."""
-    log = "[neuroforge] Run stopped automatically after 12h maximum runtime.\n"
+    log = "[neuravian] Run stopped automatically after 12h maximum runtime.\n"
     result = translate_errors(log, _fmriprep_errors())
     assert result is not None
 
@@ -1778,11 +1778,11 @@ def test_bids_validator_cloud_path_uses_host_bind_and_child_command(tmp_path):
         output_dir=str(tmp_path / "out"),
     )
 
-    with patch.object(settings, "host_datasets_mount", "/srv/neuroforge/datasets"), \
+    with patch.object(settings, "host_datasets_mount", "/srv/neuravian/datasets"), \
          patch.object(settings, "backend_datasets_mount", str(tmp_path)):
         sdk = DockerExecutor()._build_sdk_params(ctx)
 
-    source = "/srv/neuroforge/datasets/x86-minimal-bids"
+    source = "/srv/neuravian/datasets/x86-minimal-bids"
     child = "/inputs/bids-dir/x86-minimal-bids"
     assert sdk.volumes[source] == {"bind": child, "mode": "ro"}
     assert sdk.command[-1] == child
@@ -1866,7 +1866,7 @@ def test_missing_cloud_dataset_error_does_not_leak_host_root(
     backend_root = tmp_path / "backend-host-data"
     backend_root.mkdir()
     logical_path = backend_root / "missing-dataset"
-    host_root = Path("/srv/private-neuroforge-datasets")
+    host_root = Path("/srv/private-neuravian-datasets")
     dataset = _make_dataset(db_session_for_runs, str(logical_path))
 
     with patch.object(settings, "host_datasets_mount", str(host_root)), \
@@ -1942,7 +1942,7 @@ def test_functional_connectivity_manifest_loads_and_validates():
     assert manifest["category"] == "connectivity"
     assert manifest["compute_profile"] == "local-ok"
     assert manifest["execution"]["type"] == "native"
-    assert manifest["execution"]["command"] == "neuroforge-functional-connectivity"
+    assert manifest["execution"]["command"] == "neuravian-functional-connectivity"
     assert manifest["accepts"][0]["type"] == "fmriprep_derivatives"
     atlas_param = next(p for p in manifest["parameters"] if p["name"] == "atlas-name")
     assert atlas_param["default"] == "schaefer100_7"
@@ -2035,7 +2035,7 @@ def test_functional_connectivity_builds_roi_statistics_from_atlas(tmp_path):
 def test_functional_connectivity_run_writes_roi_statistics_files(tmp_path):
     """Regression: the entry point must write roi_statistics.csv and .json.
 
-    This test invokes the real neuroforge-functional-connectivity CLI using the
+    This test invokes the real neuravian-functional-connectivity CLI using the
     checked-in fixture derivatives so that the full execution path (atlas load →
     time-series extraction → stats → file write) is exercised.  It will be
     skipped automatically if the fixture is absent (CI without large data).
@@ -2061,7 +2061,7 @@ def test_functional_connectivity_run_writes_roi_statistics_files(tmp_path):
         timeout=300,
     )
     assert result.returncode == 0, (
-        f"neuroforge-functional-connectivity exited {result.returncode}.\n"
+        f"neuravian-functional-connectivity exited {result.returncode}.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
@@ -2146,7 +2146,7 @@ def test_import_fmriprep_derivatives_manifest_loads_and_validates():
     assert manifest["category"] == "preprocessing"
     assert manifest["compute_profile"] == "local-ok"
     assert manifest["execution"]["type"] == "native"
-    assert manifest["execution"]["command"] == "neuroforge-import-fmriprep-derivatives"
+    assert manifest["execution"]["command"] == "neuravian-import-fmriprep-derivatives"
     assert manifest["accepts"][0]["type"] == "bids_dataset"
     assert manifest["accepts"][0]["dataset_slot"] is True
     assert manifest["produces"][0]["type"] == "fmriprep_derivatives"
@@ -2253,7 +2253,7 @@ def test_fsl_bet_manifest_loads_without_error():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
     assert manifest["id"] == "fsl-bet"
-    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-bet"
+    assert manifest["container"]["image"] == "neuravian/fsl-bet"
     assert manifest["container"]["tag"] == "6.0.7"
     assert manifest["container"]["engine"] == "docker"
 
@@ -2432,7 +2432,7 @@ def test_fsl_bet_known_errors_include_image_not_found():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-bet.yaml", schema)
     patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
-    assert any("ghcr.io/neuroforge/fsl-bet" in p or "not found" in p for p in patterns), (
+    assert any("neuravian/fsl-bet" in p or "not found" in p for p in patterns), (
         "At least one known_error pattern must match the 'image not found' case"
     )
 
@@ -2447,7 +2447,7 @@ def test_fsl_fast_manifest_loads_without_error():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
     assert manifest["id"] == "fsl-fast"
-    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-fast"
+    assert manifest["container"]["image"] == "neuravian/fsl-fast"
     assert manifest["container"]["tag"] == "6.0.7"
     assert manifest["container"]["engine"] == "docker"
 
@@ -2670,7 +2670,7 @@ def test_fsl_fast_known_errors_include_image_not_found():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-fast.yaml", schema)
     patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
-    assert any("ghcr.io/neuroforge/fsl-fast" in p or "not found" in p for p in patterns)
+    assert any("neuravian/fsl-fast" in p or "not found" in p for p in patterns)
 
 
 # ------------------------------------------------------------------ #
@@ -2683,7 +2683,7 @@ def test_fsl_flirt_manifest_loads_without_error():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
     assert manifest["id"] == "fsl-flirt"
-    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-flirt"
+    assert manifest["container"]["image"] == "neuravian/fsl-flirt"
     assert manifest["container"]["tag"] == "6.0.7"
     assert manifest["container"]["engine"] == "docker"
 
@@ -2973,7 +2973,7 @@ def test_fsl_flirt_known_errors_include_image_not_found():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-flirt.yaml", schema)
     patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
-    assert any("ghcr.io/neuroforge/fsl-flirt" in p or "not found" in p for p in patterns)
+    assert any("neuravian/fsl-flirt" in p or "not found" in p for p in patterns)
 
 
 def test_fsl_flirt_known_errors_include_missing_ref_file():
@@ -2992,7 +2992,7 @@ def test_fsl_fnirt_manifest_loads_without_error():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
     assert manifest["id"] == "fsl-fnirt"
-    assert manifest["container"]["image"] == "ghcr.io/neuroforge/fsl-fnirt"
+    assert manifest["container"]["image"] == "neuravian/fsl-fnirt"
     assert manifest["container"]["tag"] == "6.0.7"
     assert manifest["container"]["engine"] == "docker"
 
@@ -3110,7 +3110,7 @@ def test_fsl_fnirt_produces_optional_warp_and_jacobian():
 
 
 def test_fsl_fnirt_path_hints_match_wrapper_output_names():
-    """Path hints must match the filenames written by neuroforge-fnirt.sh."""
+    """Path hints must match the filenames written by neuravian-fnirt.sh."""
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
     hints = {p["type"]: p["path_hint"] for p in manifest["produces"]}
@@ -3296,7 +3296,7 @@ def test_fsl_fnirt_known_errors_include_missing_wrapper_image():
     schema = _load_schema()
     manifest = _load_manifest(PIPELINES_DIR / "fsl-fnirt.yaml", schema)
     patterns = [e["pattern"] for e in manifest.get("known_errors", [])]
-    assert any("ghcr.io/neuroforge/fsl-fnirt" in p or "manifest unknown" in p for p in patterns)
+    assert any("neuravian/fsl-fnirt" in p or "manifest unknown" in p for p in patterns)
 
 
 def test_fsl_fnirt_known_errors_include_missing_ref_file():

@@ -21,7 +21,7 @@ describe("desktop viewer launch security", () => {
       viewerId: "freeview",
       executable: "/opt/freesurfer/bin/freeview",
       args: ["-v", "/etc/passwd"],
-    }, "/cache")).toThrow("NeuroForge cache");
+    }, "/cache")).toThrow("Neuravian cache");
   });
 
   it("rejects relative executables", () => {

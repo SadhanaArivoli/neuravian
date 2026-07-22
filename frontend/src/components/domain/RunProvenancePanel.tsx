@@ -132,7 +132,7 @@ function buildProvenanceBundle(
   prov: RunProvenance | undefined,
 ): string {
   const bundle = {
-    neuroforge_provenance: {
+    neuravian_provenance: {
       schema_version: "1.0",
       generated_at: new Date().toISOString(),
     },

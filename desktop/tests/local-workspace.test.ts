@@ -6,7 +6,7 @@ import { LocalWorkspaceStore, localResourceKey } from "../src/main/local-workspa
 
 describe("LocalWorkspaceStore", () => {
   it("creates a stable persisted identity with private permissions", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "neuroforge-local-workspace-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "neuravian-local-workspace-"));
     const store = new LocalWorkspaceStore(root, () => "5df1dc24-a857-4adf-8908-1f8a7f36d058");
     const first = await store.get();
     const second = await new LocalWorkspaceStore(root).get();

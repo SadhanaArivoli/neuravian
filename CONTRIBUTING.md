@@ -1,10 +1,15 @@
-# Contributing to NeuroForge
+# Contributing to Neuravian
 
-Thank you for your interest in contributing. NeuroForge is an early-stage open-source project and welcomes contributions from neuroimaging researchers, software engineers, and students at all experience levels.
+Thank you for your interest in contributing. Neuravian is an Early Access
+open-source project and welcomes contributions from neuroimaging researchers,
+software engineers, and students at all experience levels.
 
 ## Before You Start
 
-Read [CLAUDE.md](CLAUDE.md) for the project philosophy and [README.md](README.md) for the current architecture. The most important constraint: NeuroForge wraps and connects existing neuroimaging tools — it does not reimplement their algorithms.
+Read [AGENTS.md](AGENTS.md) for the project philosophy, [README.md](README.md) for
+the product overview, and [docs/architecture.md](docs/architecture.md) for the
+current architecture. The most important constraint: Neuravian wraps and
+connects existing neuroimaging tools—it does not reimplement their algorithms.
 
 ## Ways to Contribute
 
@@ -21,8 +26,8 @@ Read [CLAUDE.md](CLAUDE.md) for the project philosophy and [README.md](README.md
 ## Development Setup
 
 ```bash
-git clone https://github.com/SadhanaArivoli/neuroforge.git
-cd neuroforge
+git clone https://github.com/SadhanaArivoli/neuravian.git
+cd neuravian
 
 # Backend (Python 3.12, uv)
 cd backend
@@ -59,7 +64,9 @@ GitHub Actions runs these on every push. Both must pass before a PR is merged.
 3. If Docker-based, define the `execution.type: docker` block in the manifest.
 4. Add at least one test in `backend/tests/test_<id>.py`.
 5. Update the frontend test mock in `frontend/tests/workflowTemplates.test.ts` if your pipeline's artifact types are used in workflow templates.
-6. Update `README.md` Current Capabilities table.
+6. Update the canonical [`docs/pipeline-status.md`](docs/pipeline-status.md)
+   table and link qualification evidence. Do not claim qualification from tests
+   alone.
 
 ## Pull Request Guidelines
 
@@ -75,7 +82,7 @@ GitHub Actions runs these on every push. Both must pass before a PR is merged.
 Use the imperative mood in the subject line (`Add`, `Fix`, `Remove`, not `Added` or `Fixes`). Include the scope when useful:
 
 ```
-feat(pipeline): add QSIPrep manifest and Docker executor
+feat(pipeline): integrate an upstream BIDS App
 fix(ci): install Playwright browser binary before running backend tests
 docs: update pipeline table for ALFF and ReHo
 ```

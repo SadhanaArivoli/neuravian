@@ -48,10 +48,10 @@ trusted copy:
 
 ```bash
 VM_PREPARATION_COMMIT=8b9614c328463c9dfcb5337303cadde447985299
-FS_LICENSE="$HOME/.neuroforge-secrets/freesurfer-license.txt" \
+FS_LICENSE="$HOME/.neuravian-secrets/freesurfer-license.txt" \
   ./scripts/cloud/bootstrap-x86-ubuntu.sh \
   --commit "$VM_PREPARATION_COMMIT" \
-  --fixture-dir "$HOME/neuroforge-fixture" \
+  --fixture-dir "$HOME/neuravian-fixture" \
   --license-file "$FS_LICENSE" \
   --prepull
 ```
@@ -60,8 +60,8 @@ If bootstrap reports that docker-group membership is not active, reconnect once.
 Then set these for the remaining commands:
 
 ```bash
-cd "$HOME/neuroforge"
-export FIXTURE_DIR="$HOME/neuroforge-fixture"
+cd "$HOME/neuravian"
+export FIXTURE_DIR="$HOME/neuravian-fixture"
 export FS_LICENSE="/secure/license.txt"
 ```
 
@@ -73,12 +73,12 @@ export FS_LICENSE="/secure/license.txt"
 - [ ] SSH and run bootstrap at the exact final commit.
 - [ ] Transfer only the prepared fixture and license; never transfer private MRI data.
 - [ ] Run `verification/x86/commands/00-system-check.sh`.
-- [ ] Run `verification/x86/commands/01-neuroforge-health.sh`.
+- [ ] Run `verification/x86/commands/01-neuravian-health.sh`.
 - [ ] Confirm all three inspected images match `image-lock.json`.
 - [ ] Run script 02; stop if pydeface validation later fails.
 - [ ] Run script 03 in smoke mode, then full mode.
 - [ ] Run script 04; accept timeout only when required progress markers exist.
-- [ ] Run script 05 and wait for a clean NeuroForge completion state.
+- [ ] Run script 05 and wait for a clean Neuravian completion state.
 - [ ] Run script 06; require `all_valid: true` for every pipeline.
 - [ ] Add only reviewed, identifier-free `approved-redacted-*.png` screenshots if needed.
 - [ ] Run script 07 and download the small evidence ZIP.

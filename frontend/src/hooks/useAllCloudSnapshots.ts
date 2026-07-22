@@ -18,7 +18,7 @@ const REFRESH_MS = 30_000;
  */
 export function useAllCloudSnapshots(): AllCloudSnapshot[] {
   const { selected, cloudProfiles } = useWorkspace();
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
   const isAll = selected === "all";
   const [snapshots, setSnapshots] = useState<Map<string, Omit<AllCloudSnapshot, "profile" | "sync">>>(new Map());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);

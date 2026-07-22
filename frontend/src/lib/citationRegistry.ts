@@ -1,5 +1,5 @@
 /**
- * Citation registry for NeuroForge-supported pipelines.
+ * Citation registry for Neuravian-supported pipelines.
  *
  * Every entry uses verified, peer-reviewed sources. DOIs and RRIDs are taken
  * from published papers and SciCrunch. No citations are fabricated.

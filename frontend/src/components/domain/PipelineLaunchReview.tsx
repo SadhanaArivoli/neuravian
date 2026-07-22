@@ -158,7 +158,7 @@ export function PipelineLaunchReview({
       </div>
 
       <div>
-        <h2 className="text-xl font-semibold text-gray-100">Review Job</h2>
+        <h2 className="text-xl font-semibold text-gray-100">Review Run</h2>
         <p className="text-sm text-gray-500 mt-0.5">
           Confirm the details below, then submit.
         </p>
@@ -168,7 +168,7 @@ export function PipelineLaunchReview({
       <div className="rounded-xl border border-white/10 bg-surface-raised overflow-hidden">
         <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Job Summary
+            Run Summary
           </h3>
         </div>
         <div className="px-4 py-1 divide-y divide-white/5">
@@ -310,7 +310,7 @@ export function PipelineLaunchReview({
           disabled={launching || !canLaunch}
           className="rounded-lg bg-accent px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-accent/15 transition-all hover:-translate-y-px hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {launching ? "Submitting…" : "Launch Job"}
+          {launching ? "Starting run…" : "Start Run"}
         </button>
         <button
           type="button"

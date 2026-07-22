@@ -1,0 +1,13 @@
+599660dc82a3f180f73b7e515c5088d6bb24f5c31d3da6eabef3d80295d14840  data/derivatives/mriqc-group/125/.bids_db/layout_index.sqlite
+652d1d9fbd01754238c0b921e28fc6e39ebdf17416cf6b331c8e802bfe4dce71  data/derivatives/mriqc-group/125/.bidsignore
+86bccf6b6379c6f68f9fc1d0e35f36f184a83fe998928adebafb3e7208eafb33  data/derivatives/mriqc-group/125/dataset_description.json
+3a145a14ab2bae0baa4c11128a2c44ed4f814573de0b2821b13a367d8f924d66  data/derivatives/mriqc-group/125/group_T1w.html
+0c4d4c0d4949bd69a13d273e91a87d303b6a6c78f4fd4ef8d3df510365d93056  data/derivatives/mriqc-group/125/group_T1w.tsv
+bef0f89a21d1fc99de04909d2ebf156b9df8c00792cbb622492b7675802dec5e  data/derivatives/mriqc-group/125/logs/config-20260721-220422_d7e4a48c-f0c8-4729-aebc-d81e9c0df4df.toml
+1ca96be856aaeaf35d6894faa520891f6d6baa0f8ae9bd9ef77bafabf79bced4  data/derivatives/mriqc-group/125/logs/config-20260721-231527_9ffd4ae3-46e7-4951-89cb-f43fc749a333.toml
+5b5dd4004a50bf12e6d91682a46bf0ae374b1d78c3d1038cd419cb014de2fb95  data/derivatives/mriqc-group/125/logs/mriqc-20260721-220422_d7e4a48c-f0c8-4729-aebc-d81e9c0df4df.log
+3606c069a0dbbc8882e4805a94f45aff3686f3ed3d14d60a9e1fcf862d25f66f  data/derivatives/mriqc-group/125/logs/mriqc-20260721-231527_9ffd4ae3-46e7-4951-89cb-f43fc749a333.log
+7169535e47d6a5533ed16cf2ebe7118e86f2d84b37788c7d074aaa6f9acf7266  data/derivatives/mriqc-group/125/sub-13/anat/sub-13_T1w.json
+d46e796399638b0f4ae712c0a1ba062aacd9b8ef9bb90b7592aa0159c90d3c24  data/derivatives/mriqc-group/125/sub-13/figures/sub-13_desc-background_T1w.svg
+5751f1993b447909d07c2b77e5ac96bb78d7aad5d187d06a0dfd9dfc59988e74  data/derivatives/mriqc-group/125/sub-13/figures/sub-13_desc-zoomed_T1w.svg
+83c5c81f97648995201066fd1e9b9899185d957b5a587acf457b6f700a03e891  data/derivatives/mriqc-group/125/sub-13_T1w.html

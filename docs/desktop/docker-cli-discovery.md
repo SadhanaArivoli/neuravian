@@ -1,7 +1,7 @@
 # Desktop Docker CLI discovery verification
 
 Verified on macOS Apple Silicon on 2026-07-14 with the exact unsigned bundle at
-`desktop/dist/mac-arm64/NeuroForge.app`.
+`desktop/dist/mac-arm64/Neuravian.app`.
 
 ## Root cause and fix
 
@@ -34,7 +34,7 @@ to `/usr/bin:/bin:/usr/sbin:/sbin` and restored immediately after process
 creation. The packaged app resolved `/usr/local/bin/docker`, reported Docker
 29.6.1 and Compose v5.3.0, detected the existing backend and frontend at HTTP
 200, attached with external ownership in 629 ms, and rendered the main
-NeuroForge UI inside Electron. No browser interaction was used. The attempt had
+Neuravian UI inside Electron. No browser interaction was used. The attempt had
 no renderer warning, renderer error, or failed-stage log entries.
 
 The same bundle was also launched directly from Terminal with
@@ -42,7 +42,7 @@ The same bundle was also launched directly from Terminal with
 attached the healthy stack in 593 ms, and confirmed the visible UI 89 ms after
 the renderer Ready acknowledgement.
 
-![Finder-launched NeuroForge UI](screenshots/docker-discovery-finder.png)
+![Finder-launched Neuravian UI](screenshots/docker-discovery-finder.png)
 
 Focused tests cover inherited PATH priority, Finder PATH without `/usr/local`,
 the `/usr/local`, Apple Silicon Homebrew, and Docker Desktop fallbacks, both

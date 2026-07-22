@@ -2,7 +2,7 @@
 deployment_id     = "nf-tf-20260714-example1"
 instance_type     = "m7i.2xlarge"
 operator_ssh_cidr = "203.0.113.10/32"
-ssh_public_key    = "ssh-ed25519 REPLACE_WITH_YOUR_PUBLIC_KEY neuroforge-terraform"
+ssh_public_key    = "ssh-ed25519 REPLACE_WITH_YOUR_PUBLIC_KEY neuravian-terraform"
 git_commit        = "REPLACE_WITH_EXACT_40_CHARACTER_COMMIT_SHA"
 
 # Optional: open ports 80/443 only after configuring an authenticated HTTPS

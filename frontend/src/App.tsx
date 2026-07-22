@@ -3,17 +3,7 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/primitives/Sidebar";
-import DatasetDetail from "./pages/DatasetDetail";
-import Datasets from "./pages/Datasets";
-import Pipelines from "./pages/Pipelines";
-import RemoteHosts from "./pages/RemoteHosts";
-import Runs from "./pages/Runs";
-import ProjectDetail from "./pages/ProjectDetail";
-import Plugins from "./pages/Plugins";
-import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
-import WorkflowLibrary from "./pages/WorkflowLibrary";
-import Workspaces from "./pages/Workspaces";
 import { WorkspaceProvider } from "./context/WorkspaceContext";
 
 const ArtifactExplorer = lazy(() => import("./pages/ArtifactExplorer"));
@@ -29,12 +19,22 @@ const StatisticalMapExplorer = lazy(() => import("./pages/StatisticalMapExplorer
 const WorkflowBuilder = lazy(() => import("./pages/WorkflowBuilder"));
 const WorkflowGraph = lazy(() => import("./pages/WorkflowGraph"));
 const WizardDcm2bids = lazy(() => import("./pages/WizardDcm2bids"));
+const DatasetDetail = lazy(() => import("./pages/DatasetDetail"));
+const Datasets = lazy(() => import("./pages/Datasets"));
+const Pipelines = lazy(() => import("./pages/Pipelines"));
+const RemoteHosts = lazy(() => import("./pages/RemoteHosts"));
+const Runs = lazy(() => import("./pages/Runs"));
+const ProjectDetail = lazy(() => import("./pages/ProjectDetail"));
+const Plugins = lazy(() => import("./pages/Plugins"));
+const Settings = lazy(() => import("./pages/Settings"));
+const WorkflowLibrary = lazy(() => import("./pages/WorkflowLibrary"));
+const Workspaces = lazy(() => import("./pages/Workspaces"));
 
 function RouteLoading() {
   return (
     <div role="status" aria-live="polite" className="flex min-h-[50vh] items-center justify-center gap-3 text-sm text-gray-400">
       <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      Loading workspace…
+      Loading Neuravian…
     </div>
   );
 }
@@ -76,8 +76,9 @@ export default function App() {
             <Route path="*" element={
               <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
                 <p className="text-5xl font-bold text-gray-700">404</p>
-                <p className="text-lg text-gray-400">Page not found</p>
-                <Link to="/" className="text-sm text-accent hover:underline">← Back to Home</Link>
+                <p className="text-lg text-gray-300">This page isn’t available</p>
+                <p className="max-w-sm text-sm text-gray-500">The link may be outdated, or the page may have moved.</p>
+                <Link to="/" className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-gray-950">Return home</Link>
               </div>
             } />
               </Routes>
@@ -85,7 +86,7 @@ export default function App() {
           </main>
         </div>
       </WorkspaceProvider>
-      {!window.neuroforgeDesktop && <OnboardingOverlay />}
+      {!window.neuravianDesktop && <OnboardingOverlay />}
     </OnboardingProvider>
   );
 }

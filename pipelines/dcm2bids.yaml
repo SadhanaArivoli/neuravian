@@ -3,7 +3,7 @@ display_name: dcm2bids
 description: >
   Converts raw DICOM scanner output to a BIDS-organized dataset using a
   dcm2bids configuration file. Takes a DICOM directory, a participant label,
-  and a series-mapping config produced by the NeuroForge DICOM Mapping Wizard,
+  and a series-mapping config produced by the Neuravian DICOM Mapping Wizard,
   and writes a standards-compliant BIDS directory ready for BIDS Validator,
   MRIQC, and fMRIPrep. The configuration file controls which DICOM series are
   converted, their BIDS filenames, and optional sidecar overrides.
@@ -59,7 +59,7 @@ parameters:
     mount: true
     help: >
       Path to the dcm2bids configuration JSON file that maps DICOM series to
-      BIDS descriptions. Generate this file using the NeuroForge DICOM Mapping
+      BIDS descriptions. Generate this file using the Neuravian DICOM Mapping
       Wizard (Steps 1–2) and download it, or point to an existing config.json
       you have prepared. The file must be accessible inside your configured data
       directory.
@@ -84,7 +84,7 @@ parameters:
     help: >
       Output directory inside the container. The default /out maps to the
       run's output folder on your machine — do not change this. Changing this
-      will cause NeuroForge to lose track of the BIDS output.
+      will cause Neuravian to lose track of the BIDS output.
 
   # ── Advanced ──────────────────────────────────────────────────────────
   - name: skip-dcm2niix
@@ -123,7 +123,7 @@ max_runtime_hours: 1.0
 
 # ── Manual testing reference ─────────────────────────────────────────────────
 # Test using the structural DICOM test dataset via the DICOM Mapping Wizard:
-#   1. Open /wizard/dcm2bids in NeuroForge
+#   1. Open /wizard/dcm2bids in Neuravian
 #   2. Set DICOM folder to:
 #      backend/tests/data/dicom-structural/dicoms
 #   3. Scout → review mapping → generate config
@@ -177,6 +177,6 @@ known_errors:
       dcm2bids cannot write to the output directory. This is uncommon inside
       Docker but can occur if the volume mount has incorrect permissions.
     fix_hint: >
-      Check that the NeuroForge data directory is writable. If you are
-      running NeuroForge inside a restricted environment, ensure the data
+      Check that the Neuravian data directory is writable. If you are
+      running Neuravian inside a restricted environment, ensure the data
       volume is mounted with rw permissions.

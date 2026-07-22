@@ -1,11 +1,11 @@
 variable "aws_region" {
-  description = "AWS region for the single NeuroForge verification instance."
+  description = "AWS region for the single Neuravian verification instance."
   type        = string
   default     = "us-east-1"
 
   validation {
     condition     = var.aws_region == "us-east-1"
-    error_message = "The reviewed NeuroForge x86 deployment is restricted to us-east-1."
+    error_message = "The reviewed Neuravian x86 deployment is restricted to us-east-1."
   }
 }
 
@@ -55,7 +55,7 @@ variable "ssh_public_key" {
 }
 
 variable "git_commit" {
-  description = "Exact 40-character NeuroForge Git commit deployed to the instance."
+  description = "Exact 40-character Neuravian Git commit deployed to the instance."
   type        = string
 
   validation {
@@ -65,13 +65,13 @@ variable "git_commit" {
 }
 
 variable "repository_url" {
-  description = "Public NeuroForge repository cloned by cloud-init."
+  description = "Public Neuravian repository cloned by cloud-init."
   type        = string
-  default     = "https://github.com/SadhanaArivoli/neuroforge.git"
+  default     = "https://github.com/SadhanaArivoli/neuravian.git"
 
   validation {
-    condition     = var.repository_url == "https://github.com/SadhanaArivoli/neuroforge.git"
-    error_message = "This reviewed module deploys only SadhanaArivoli/neuroforge."
+    condition     = var.repository_url == "https://github.com/SadhanaArivoli/neuravian.git"
+    error_message = "This reviewed module deploys only SadhanaArivoli/neuravian."
   }
 }
 
@@ -115,6 +115,6 @@ variable "additional_tags" {
       toset(keys(var.additional_tags)),
       toset(["Name", "Project", "Purpose", "ManagedBy", "DeploymentId"])
     )) == 0
-    error_message = "additional_tags cannot override NeuroForge ownership tags."
+    error_message = "additional_tags cannot override Neuravian ownership tags."
   }
 }

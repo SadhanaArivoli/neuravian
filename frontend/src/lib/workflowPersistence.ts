@@ -6,14 +6,14 @@
  * interrupted mixed-location execution can resume after an app restart. Large
  * resolved artifact payloads remain runtime-only and are reconstructed from runs.
  *
- * Schema version: "neuroforge-workflow-v1"
+ * Schema version: "neuravian-workflow-v1"
  * Backward compat: only one version exists today. If the schema evolves, bump to
- * "neuroforge-workflow-v2" and add a migration shim in deserializeWorkflowState.
+ * "neuravian-workflow-v2" and add a migration shim in deserializeWorkflowState.
  */
 
 import type { ComputeProfile, PipelineCategory, PipelineProduceSlot } from "../api/client";
 
-export const WORKFLOW_SCHEMA_VERSION = "neuroforge-workflow-v1";
+export const WORKFLOW_SCHEMA_VERSION = "neuravian-workflow-v1";
 const DEFAULT_FUNCTIONAL_CONNECTIVITY_ATLAS = "schaefer100_7";
 
 // ── Serializable types ────────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ export function deserializeWorkflowState(raw: Record<string, unknown>): Workflow
 // ── Import / Export ───────────────────────────────────────────────────────────
 
 export interface WorkflowExportEnvelope {
-  export_format: "neuroforge-workflow-export-v1";
+  export_format: "neuravian-workflow-export-v1";
   exported_at: string;
   name: string;
   description: string | null;
@@ -201,7 +201,7 @@ export function buildExportEnvelope(
   state: WorkflowState,
 ): WorkflowExportEnvelope {
   return {
-    export_format: "neuroforge-workflow-export-v1",
+    export_format: "neuravian-workflow-export-v1",
     exported_at: new Date().toISOString(),
     name,
     description,
@@ -230,12 +230,12 @@ export function parseWorkflowImport(jsonText: string): ImportResult {
 
   const obj = parsed as Record<string, unknown>;
 
-  if (obj.export_format !== "neuroforge-workflow-export-v1") {
+  if (obj.export_format !== "neuravian-workflow-export-v1") {
     return {
       valid: false,
       errors: [
         `Unrecognised export format "${String(obj.export_format ?? "missing")}". ` +
-          `Expected "neuroforge-workflow-export-v1".`,
+          `Expected "neuravian-workflow-export-v1".`,
       ],
     };
   }
@@ -252,7 +252,7 @@ export function parseWorkflowImport(jsonText: string): ImportResult {
   return {
     valid: true,
     envelope: {
-      export_format: "neuroforge-workflow-export-v1",
+      export_format: "neuravian-workflow-export-v1",
       exported_at: typeof obj.exported_at === "string" ? obj.exported_at : new Date().toISOString(),
       name,
       description,

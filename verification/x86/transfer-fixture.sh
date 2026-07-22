@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE_DIR="${ROOT_DIR}/verification/fixtures/prepared/x86-minimal-bids"
 MANIFEST="${ROOT_DIR}/verification/fixtures/fixture-manifest.json"
 REMOTE_HOST=""
-REMOTE_DIR='neuroforge-fixture'
-REMOTE_REPO='neuroforge'
+REMOTE_DIR='neuravian-fixture'
+REMOTE_REPO='neuravian'
 IDENTITY_FILE=""
 SSH_PORT=22
 DRY_RUN=0
@@ -23,8 +23,8 @@ Usage: transfer-fixture.sh --host USER@HOST [options]
   --host USER@HOST       SSH destination (required)
   --source PATH          Prepared fixture root
   --manifest PATH        Fixture manifest
-  --destination PATH     VM fixture destination relative to home (default: neuroforge-fixture)
-  --repo-dir PATH        VM checkout relative to home (default: neuroforge)
+  --destination PATH     VM fixture destination relative to home (default: neuravian-fixture)
+  --repo-dir PATH        VM checkout relative to home (default: neuravian)
   --identity-file PATH   SSH private key
   --port NUMBER          SSH port (default: 22)
   --dry-run              Validate locally and print commands without connecting
@@ -62,7 +62,7 @@ command -v jq >/dev/null || { echo "jq is required" >&2; exit 3; }
 
 FILE_COUNT="$(jq -er '.transfer.file_count' "${MANIFEST}")"
 TOTAL_BYTES="$(jq -er '.transfer.total_bytes' "${MANIFEST}")"
-LIST_FILE="$(mktemp "${TMPDIR:-/tmp}/neuroforge-fixture-files.XXXXXX")"
+LIST_FILE="$(mktemp "${TMPDIR:-/tmp}/neuravian-fixture-files.XXXXXX")"
 trap 'rm -f "${LIST_FILE}"' EXIT
 jq -er '.files[].path' "${MANIFEST}" >"${LIST_FILE}"
 [[ "$(wc -l <"${LIST_FILE}" | tr -d ' ')" == "${FILE_COUNT}" ]] || {

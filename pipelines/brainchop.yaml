@@ -3,7 +3,7 @@ display_name: BrainChop (MindGrab skull-strip)
 description: >
   Removes the skull and non-brain tissue from structural MRI scans using the
   MindGrab deep learning model. Produces a skull-stripped brain volume and a
-  binary brain mask. Runs natively inside the NeuroForge backend as a Python
+  binary brain mask. Runs natively inside the Neuravian backend as a Python
   subprocess — no Docker container, no Rosetta 2 emulation, no FSL. Measured
   at 21 seconds on a sub-millimetre T1w (274×384×384 @ 0.7mm) on Apple
   Silicon (2026-07-09, run against dcm2niix run 26 output).
@@ -26,7 +26,7 @@ compute_profile: local-ok
 # brainchop is installed in the backend image via:
 #   pip install brainchop==0.2.5
 # which pulls native aarch64 Linux wheels for all compiled dependencies.
-# This is architecturally different from all other NeuroForge pipelines.
+# This is architecturally different from all other Neuravian pipelines.
 # See backend/app/execution/native_executor.py for the implementation.
 execution:
   type: native
@@ -55,7 +55,7 @@ parameters:
       or .nii.gz. The file is read directly — no mounting, no copying.
       brainchop handles any MRI modality (T1w, T2w, FLAIR, PD, etc.) via
       the MindGrab model. Example:
-      /Users/you/neuroforge/data/derivatives/dcm2niix/26/anat-T1w.nii.gz
+      /Users/you/neuravian/data/derivatives/dcm2niix/26/anat-T1w.nii.gz
 
   # ── Output control ────────────────────────────────────────────────────
   - name: output
@@ -150,13 +150,13 @@ max_runtime_hours: 0.5
 #   Note: most of this was model download; actual inference was ~5s.
 #         macOS Python uses Apple's Accelerate framework for vectorized ops.
 #
-# Run B — Linux aarch64 inside backend container (NeuroForge API run 33):
+# Run B — Linux aarch64 inside backend container (Neuravian API run 33):
 #   Wall-clock time: 547 seconds (~9 minutes) — status: success
 #   Run C (cached kernel): 545 seconds — confirming JIT cache has no impact.
 #   Gap vs macOS: ~26x slower, due to Docker Desktop Linux VM not exposing
 #   Apple's Accelerate framework. tinygrad C kernels run on virtualized ARM
 #   cores rather than bare-metal Apple Silicon. This is the expected runtime
-#   for NeuroForge users.
+#   for Neuravian users.
 #
 # Output (both runs — bitwise equivalent results):
 #   Stripped output: 5.7 MB (6,135,042 / 40,402,944 voxels = 15.2%)
@@ -172,7 +172,7 @@ max_runtime_hours: 0.5
 #   No qemu-x86_64 processes — zero Rosetta 2 emulation.
 #
 # UI test path for input-file:
-#   /Users/<you>/Documents/neuroforge/data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
+#   /Users/<you>/Documents/neuravian/data/derivatives/dcm2niix/26/anat-T1w_20130717141500_401.nii.gz
 # ─────────────────────────────────────────────────────────────────────────────
 
 known_errors:
@@ -182,7 +182,7 @@ known_errors:
       issue — the backend Dockerfile should include 'pip install brainchop==0.2.5'.
     fix_hint: >
       Rebuild the backend container: run 'docker compose build backend' in
-      the NeuroForge project directory, then restart with 'docker compose up -d'.
+      the Neuravian project directory, then restart with 'docker compose up -d'.
 
   - pattern: "FileNotFoundError.*nii|cannot open|No such file"
     explanation: >

@@ -1,6 +1,6 @@
-# Plugin Tutorial: Building Your First NeuroForge Plugin
+# Plugin Tutorial: Building Your First Neuravian Plugin
 
-This tutorial walks through building a complete NeuroForge plugin. You will create a plugin that computes a simple histogram of NIfTI voxel intensities and saves it as a PNG — a realistic example that exercises every plugin feature.
+This tutorial walks through building a complete Neuravian plugin. You will create a plugin that computes a simple histogram of NIfTI voxel intensities and saves it as a PNG — a realistic example that exercises every plugin feature.
 
 For the complete SDK reference, see [`docs/plugin-development.md`](plugin-development.md).
 
@@ -8,7 +8,7 @@ For the complete SDK reference, see [`docs/plugin-development.md`](plugin-develo
 
 ## What a plugin is
 
-A plugin is a directory with a specific layout. It adds pipelines, artifact types, and native executables to NeuroForge without modifying any core code.
+A plugin is a directory with a specific layout. It adds pipelines, artifact types, and native executables to Neuravian without modifying any core code.
 
 ```
 my-plugin/
@@ -25,7 +25,7 @@ my-plugin/
 
 ## Step 1 — Create the plugin directory
 
-During local development, put your plugin in the `plugins/` directory at the repository root. NeuroForge discovers it automatically.
+During local development, put your plugin in the `plugins/` directory at the repository root. Neuravian discovers it automatically.
 
 ```bash
 mkdir -p plugins/voxel-histogram/pipelines
@@ -45,9 +45,9 @@ name: "Voxel Histogram"
 version: "0.1.0"
 author: "Your Name"
 description: "Computes a voxel intensity histogram from any NIfTI image."
-homepage: "https://github.com/yourname/neuroforge-voxel-histogram"
+homepage: "https://github.com/yourname/neuravian-voxel-histogram"
 license: "Apache-2.0"
-neuroforge_version: ">=0.1.0"
+neuravian_version: ">=0.1.0"
 dependencies: []
 enabled: true
 ```
@@ -89,7 +89,7 @@ compute_profile: local-ok
 
 execution:
   type: native
-  command: neuroforge-voxel-histogram
+  command: neuravian-voxel-histogram
 
 accepts:
   - type: nifti_raw
@@ -120,7 +120,7 @@ parameters:
 ```
 
 Key points:
-- `execution.type: native` means NeuroForge runs the `command` as a subprocess, with the plugin's `backend/` directory prepended to `PATH`.
+- `execution.type: native` means Neuravian runs the `command` as a subprocess, with the plugin's `backend/` directory prepended to `PATH`.
 - `accepts[]` lists the artifact types this pipeline can consume. Multiple entries mean *any one* of these types is accepted (they all map to the same `param`).
 - `produces[]` declares what the pipeline writes.
 - `category` must be one of: `conversion`, `validation`, `quality_control`, `segmentation`, `preprocessing`, `deidentification`, `connectivity`.
@@ -131,8 +131,8 @@ Key points:
 
 ```python
 #!/usr/bin/env python3
-# plugins/voxel-histogram/backend/neuroforge-voxel-histogram
-"""Voxel intensity histogram for NeuroForge."""
+# plugins/voxel-histogram/backend/neuravian-voxel-histogram
+"""Voxel intensity histogram for Neuravian."""
 
 import argparse
 import sys
@@ -183,10 +183,10 @@ if __name__ == "__main__":
 Make it executable:
 
 ```bash
-chmod +x plugins/voxel-histogram/backend/neuroforge-voxel-histogram
+chmod +x plugins/voxel-histogram/backend/neuravian-voxel-histogram
 ```
 
-> **Dependencies:** This script uses `nibabel`, `numpy`, and `matplotlib`. These are already available in the NeuroForge backend container. If your plugin requires packages that are not, list them in `dependencies[]` in `plugin.yaml` and document the installation step in your plugin's README.
+> **Dependencies:** This script uses `nibabel`, `numpy`, and `matplotlib`. These are already available in the Neuravian backend container. If your plugin requires packages that are not, list them in `dependencies[]` in `plugin.yaml` and document the installation step in your plugin's README.
 
 ---
 
@@ -225,9 +225,9 @@ If you see `Plugin in ... failed to load`, the logs will include the validation 
 
 ## Distributing your plugin
 
-A NeuroForge plugin is just a directory. You can distribute it as:
+A Neuravian plugin is just a directory. You can distribute it as:
 
-- **A Git repository** — users clone it into their local `plugins/` directory or set `NEUROFORGE_PLUGINS_DIRS` to point at it.
+- **A Git repository** — users clone it into their local `plugins/` directory or set `NEURAVIAN_PLUGINS_DIRS` to point at it.
 - **A zip archive** — users extract it into `plugins/`.
 - **A Docker volume** — advanced deployments can mount the plugin directory as `/plugins-user` (already configured in `docker-compose.yml`).
 
@@ -243,7 +243,7 @@ There is no registry or package manager yet. Plugins are discovered by directory
 | Pipeline not appearing | Wrong `category` value (hyphen instead of underscore) | Use `quality_control`, not `quality-control` |
 | Command not found at runtime | Executable not in PATH | Confirm `backend/` dir exists and file is `chmod +x` |
 | Artifact type not available in Run Next | Type not declared in `produces[]` or `accepts[]` | Check pipeline manifest spelling matches `artifact_types.yaml` |
-| Plugin loads but run fails immediately | Script import error | Run the script directly: `python3 plugins/voxel-histogram/backend/neuroforge-voxel-histogram --help` |
+| Plugin loads but run fails immediately | Script import error | Run the script directly: `python3 plugins/voxel-histogram/backend/neuravian-voxel-histogram --help` |
 
 ---
 

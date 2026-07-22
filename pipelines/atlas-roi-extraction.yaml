@@ -13,7 +13,7 @@ inputs: []
 
 execution:
   type: native
-  command: neuroforge-atlas-roi-extraction
+  command: neuravian-atlas-roi-extraction
 
 dataset_positional: false
 compute_profile: local-ok

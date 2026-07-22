@@ -23,7 +23,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-_cache = Path(tempfile.gettempdir()) / "neuroforge-cache" / "matplotlib"
+_cache = Path(tempfile.gettempdir()) / "neuravian-cache" / "matplotlib"
 _cache.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_cache))
 
@@ -303,7 +303,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "pipeline_version": PIPELINE_VERSION,
         "runtime_seconds": perf_counter() - started,
-        "command": "neuroforge-regional-homogeneity",
+        "command": "neuravian-regional-homogeneity",
         "warnings": warnings,
         "citations": [
             "Zang et al. (2004). Regional homogeneity approach to fMRI data analysis. "

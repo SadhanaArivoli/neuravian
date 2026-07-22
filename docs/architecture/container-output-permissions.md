@@ -1,6 +1,6 @@
 # Container output permissions
 
-NeuroForge creates a separate derivatives directory for every run and bind-mounts
+Neuravian creates a separate derivatives directory for every run and bind-mounts
 that directory at `/out`. The backend normally runs as root inside its own
 container. Without preparation, a directory created through the backend's data
 mount is therefore owned by root on the host.
@@ -34,7 +34,7 @@ backend container. The policy does not use world-writable modes.
 
 Containers using the image's default user retain the previous behavior. This is
 appropriate for the existing root-running pipelines. An image whose default user
-is non-root must declare its runtime identity explicitly so NeuroForge can prepare
+is non-root must declare its runtime identity explicitly so Neuravian can prepare
 the bind mount deterministically.
 
 ## Manifest declarations
@@ -67,8 +67,8 @@ standard output mount.
 Generic deployment examples:
 
 ```console
-docker exec neuroforge-backend-1 id
-docker exec neuroforge-backend-1 printenv HOST_UID HOST_GID
+docker exec neuravian-backend-1 id
+docker exec neuravian-backend-1 printenv HOST_UID HOST_GID
 stat -c '%n uid=%u gid=%g mode=%a' /deployment/data/derivatives/tool/run-id
 docker inspect pipeline-container --format '{{json .Config.User}} {{json .Mounts}}'
 ```
@@ -76,16 +76,16 @@ docker inspect pipeline-container --format '{{json .Config.User}} {{json .Mounts
 The execution log should contain an entry similar to:
 
 ```text
-[neuroforge] Output permissions prepared: path=/app/data/derivatives/tool/7 runtime_user=1000:1000 action=owner-updated mode=0755
+[neuravian] Output permissions prepared: path=/app/data/derivatives/tool/7 runtime_user=1000:1000 action=owner-updated mode=0755
 ```
 
 If preparation cannot safely create, open, change, or verify the directory,
-NeuroForge fails the run before `containers.run()` and records a clear executor
+Neuravian fails the run before `containers.run()` and records a clear executor
 error.
 
 ## Limitations
 
-- NeuroForge cannot infer a deterministic numeric identity from an arbitrary
+- Neuravian cannot infer a deterministic numeric identity from an arbitrary
   image username. Non-root images must use `run_as_host_user` or `run_as_user`.
 - Existing child files are intentionally not recursively changed. A pipeline
   that must modify seeded files needs a separately reviewed group or copy policy.

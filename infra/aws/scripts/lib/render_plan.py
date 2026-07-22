@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate read-only AWS responses and render NeuroForge deployment plans."""
+"""Validate read-only AWS responses and render Neuravian deployment plans."""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from typing import Any
 
 CANONICAL_OWNER_SHA256 = "2bf6b89161f25119eb9937dd6beec8c86b9c354e32fdd85411f10173d537468c"
 REQUIRED_TAGS = {
-    "Project": "NeuroForge",
+    "Project": "Neuravian",
     "Purpose": "x86-verification",
-    "ManagedBy": "NeuroForgeProvisioner",
+    "ManagedBy": "NeuravianProvisioner",
 }
 BOOTSTRAP_IAM_ACTIONS = {
     "access-analyzer:ValidatePolicy",
@@ -310,7 +310,7 @@ def render_preflight(args: argparse.Namespace) -> dict[str, Any]:
             "pricing_is_live_account_query": True,
         },
         "commits": {
-            "vm": expected_env("NEUROFORGE_VM_COMMIT"),
+            "vm": expected_env("NEURAVIAN_VM_COMMIT"),
             "application_baseline": expected_env("APPLICATION_BASELINE_COMMIT"),
         },
         "required_tags": {**REQUIRED_TAGS, "DeploymentId": expected_env("RESOLVED_DEPLOYMENT_ID")},
@@ -338,10 +338,10 @@ def render_resource_plan(preflight: dict[str, Any]) -> dict[str, Any]:
         "mutations_performed": False,
         "deployment_id": deployment_id,
         "resources": [
-            {"type": "iam-deployer-role", "count": 1, "name": f"NeuroForgeDeployer-{deployment_id}"},
-            {"type": "iam-instance-role", "count": 1, "name": f"NeuroForgeInstance-{deployment_id}", "permissions": []},
-            {"type": "iam-instance-profile", "count": 1, "name": f"NeuroForgeInstance-{deployment_id}"},
-            {"type": "ec2-key-pair", "count": 1, "name": f"neuroforge-{deployment_id}"},
+            {"type": "iam-deployer-role", "count": 1, "name": f"NeuravianDeployer-{deployment_id}"},
+            {"type": "iam-instance-role", "count": 1, "name": f"NeuravianInstance-{deployment_id}", "permissions": []},
+            {"type": "iam-instance-profile", "count": 1, "name": f"NeuravianInstance-{deployment_id}"},
+            {"type": "ec2-key-pair", "count": 1, "name": f"neuravian-{deployment_id}"},
             {
                 "type": "ec2-security-group",
                 "count": 1,

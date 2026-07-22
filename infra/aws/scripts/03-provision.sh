@@ -55,7 +55,7 @@ done
 
 [[ -n "${CONFIG_PATH}" ]] || die "--config is required"
 if [[ "${APPLY}" == "true" ]]; then
-  [[ "${NEUROFORGE_AWS_LIVE_APPROVAL:-}" == "APPROVE NEUROFORGE AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
+  [[ "${NEURAVIAN_AWS_LIVE_APPROVAL:-}" == "APPROVE NEURAVIAN AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
   if [[ -z "${CONFIRMATION}" && -t 0 ]]; then
     read -r -p 'Type LAUNCH ONE M7I.2XLARGE: ' CONFIRMATION
   fi
@@ -92,7 +92,7 @@ import base64, json, sys
 request = json.load(open(sys.argv[1]))
 preflight = json.load(open(sys.argv[2]))
 request["UserData"] = f"<base64 user-data: {len(base64.b64decode(request['UserData']))} bytes>"
-print("NeuroForge EC2 provisioning plan: GO")
+print("Neuravian EC2 provisioning plan: GO")
 print(json.dumps(request, indent=2, sort_keys=True))
 print(f"Compute hourly: ${preflight['cost']['compute_hourly']:.4f}")
 print(f"200 GiB gp3 monthly: ${preflight['cost']['gp3_200_gib_month']:.2f}")
@@ -116,10 +116,10 @@ print(f"arn:aws:iam::{account}:role/{iam['deployer_role_name']}", account)
 PY
 )
 
-CREDENTIALS_FILE="$(mktemp "${TMPDIR:-/tmp}/neuroforge-sts.XXXXXX")"
+CREDENTIALS_FILE="$(mktemp "${TMPDIR:-/tmp}/neuravian-sts.XXXXXX")"
 chmod 600 "${CREDENTIALS_FILE}"
 aws sts assume-role --role-arn "${DEPLOYER_ROLE_ARN}" \
-  --role-session-name "neuroforge-${RESOLVED_DEPLOYMENT_ID}" \
+  --role-session-name "neuravian-${RESOLVED_DEPLOYMENT_ID}" \
   --duration-seconds 3600 --output json >"${CREDENTIALS_FILE}"
 read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN < <(python3 - "${CREDENTIALS_FILE}" <<'PY'
 import json, sys
@@ -130,8 +130,8 @@ PY
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 rm -f "${CREDENTIALS_FILE}"
 
-KEY_NAME="neuroforge-${RESOLVED_DEPLOYMENT_ID}"
-SG_NAME="neuroforge-${RESOLVED_DEPLOYMENT_ID}"
+KEY_NAME="neuravian-${RESOLVED_DEPLOYMENT_ID}"
+SG_NAME="neuravian-${RESOLVED_DEPLOYMENT_ID}"
 KEY_DIR="${STATE_ROOT}/keys"
 KEY_PATH="${KEY_DIR}/${KEY_NAME}.pem"
 install -d -m 0700 "${KEY_DIR}"
@@ -162,16 +162,16 @@ trap rollback_partial_create EXIT
 
 VPC_ID_RESOLVED="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["network"]["vpc_id"])' "${PREFLIGHT_PATH}")"
 SSH_CIDR="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["network"]["ssh_allowed_cidr"])' "${PREFLIGHT_PATH}")"
-TAG_SPEC="ResourceType=security-group,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=NeuroForge},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuroForgeProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
+TAG_SPEC="ResourceType=security-group,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=Neuravian},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuravianProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
 SG_ID="$(aws ec2 create-security-group --region "${AWS_REGION}" --vpc-id "${VPC_ID_RESOLVED}" \
-  --group-name "${SG_NAME}" --description "NeuroForge x86 SSH from one IPv4" \
+  --group-name "${SG_NAME}" --description "Neuravian x86 SSH from one IPv4" \
   --tag-specifications "${TAG_SPEC}" --query GroupId --output text)"
 [[ "${SG_ID}" =~ ^sg-[0-9a-f]+$ ]] || die "AWS returned an invalid security-group ID"
 CREATED_SG=true
 aws ec2 authorize-security-group-ingress --region "${AWS_REGION}" --group-id "${SG_ID}" \
-  --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${SSH_CIDR},Description=NeuroForge-x86-operator}]" >/dev/null
+  --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${SSH_CIDR},Description=Neuravian-x86-operator}]" >/dev/null
 
-KEY_TAG_SPEC="ResourceType=key-pair,Tags=[{Key=Name,Value=${KEY_NAME}},{Key=Project,Value=NeuroForge},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuroForgeProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
+KEY_TAG_SPEC="ResourceType=key-pair,Tags=[{Key=Name,Value=${KEY_NAME}},{Key=Project,Value=Neuravian},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuravianProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
 aws ec2 create-key-pair --region "${AWS_REGION}" --key-name "${KEY_NAME}" \
   --key-type ed25519 --tag-specifications "${KEY_TAG_SPEC}" \
   --query KeyMaterial --output text >"${KEY_PATH}"

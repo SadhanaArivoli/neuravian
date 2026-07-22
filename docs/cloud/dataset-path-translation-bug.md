@@ -2,11 +2,11 @@
 
 ## Root cause
 
-NeuroForge has three filesystem namespaces during a containerized pipeline run:
+Neuravian has three filesystem namespaces during a containerized pipeline run:
 
 | Namespace | Dataset path for the verification fixture | Purpose |
 | --- | --- | --- |
-| EC2 host | `/srv/neuroforge/datasets/x86-minimal-bids` | Docker bind source |
+| EC2 host | `/srv/neuravian/datasets/x86-minimal-bids` | Docker bind source |
 | Backend container | `/host-data/x86-minimal-bids` | Import, indexing, preflight, and database record |
 | Scientific child container | `/data` or `/inputs/bids-dir/x86-minimal-bids` | Tool command argument |
 
@@ -51,7 +51,7 @@ as `/host-data/x86-minimal-bids` are already in the canonical form.
    the translated host path from inside the backend container.
 6. **Docker SDK bind** — `DockerExecutor` resolves the same logical dataset path
    to the configured host form, such as
-   `/srv/neuroforge/datasets/x86-minimal-bids`, for the bind source.
+   `/srv/neuravian/datasets/x86-minimal-bids`, for the bind source.
 7. **Scientific command** — the executor passes only the manifest's child path.
    Positional dataset pipelines receive `/data`; BIDS Validator receives
    `/inputs/bids-dir/x86-minimal-bids`.

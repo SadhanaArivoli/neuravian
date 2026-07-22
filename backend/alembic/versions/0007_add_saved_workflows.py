@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column("dataset_id", sa.Integer, sa.ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True),
         sa.Column("tags_json", sa.Text, nullable=True),
         sa.Column("state_json", sa.Text, nullable=False),
-        sa.Column("schema_version", sa.String(32), nullable=False, server_default="neuroforge-workflow-v1"),
+        sa.Column("schema_version", sa.String(32), nullable=False, server_default="neuravian-workflow-v1"),
         sa.Column("is_template", sa.Boolean, nullable=False, server_default="0"),
         sa.Column("is_favorite", sa.Boolean, nullable=False, server_default="0"),
         sa.Column("is_archived", sa.Boolean, nullable=False, server_default="0"),

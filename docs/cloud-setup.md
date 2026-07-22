@@ -1,6 +1,6 @@
 # Cloud Setup Guide
 
-Cloud execution is optional. NeuroForge remains local-first and transfers only
+Cloud execution is optional. Neuravian remains local-first and transfers only
 the verified artifact required by the next remote workflow node.
 
 ## Before connecting
@@ -13,7 +13,7 @@ the verified artifact required by the next remote workflow node.
 
 ## Add a workspace
 
-1. Open **Workspace** in NeuroForge Desktop.
+1. Open **Workspace** in Neuravian Desktop.
 2. Choose **Add workspace**.
 3. Select **EC2 instance ID** for managed start/stop behavior, or **Server URL**
    for an already managed server.
@@ -23,7 +23,7 @@ the verified artifact required by the next remote workflow node.
 
 ## Mixed local/cloud workflow
 
-When the execution planner reaches a cloud-recommended node, NeuroForge pauses
+When the execution planner reaches a cloud-recommended node, Neuravian pauses
 after the last successful local node. The handoff panel lists the remote nodes
 and required artifact type. Selecting **Continue in Cloud** creates or resumes
 one idempotent execution, uploads the verified input, launches the remote node,

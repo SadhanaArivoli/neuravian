@@ -33,16 +33,16 @@ def write_private(path: Path, data: bytes) -> None:
 def tags(deployment_id: str, name: str) -> list[dict[str, str]]:
     return [
         {"Key": "Name", "Value": name},
-        {"Key": "Project", "Value": "NeuroForge"},
+        {"Key": "Project", "Value": "Neuravian"},
         {"Key": "Purpose", "Value": "x86-verification"},
-        {"Key": "ManagedBy", "Value": "NeuroForgeProvisioner"},
+        {"Key": "ManagedBy", "Value": "NeuravianProvisioner"},
         {"Key": "DeploymentId", "Value": deployment_id},
     ]
 
 
 def render_user_data(template: str, vm_commit: str, baseline: str, prepull: bool) -> str:
     replacements = {
-        "__NEUROFORGE_VM_COMMIT__": vm_commit,
+        "__NEURAVIAN_VM_COMMIT__": vm_commit,
         "__APPLICATION_BASELINE_COMMIT__": baseline,
         "__PREPULL_IMAGES__": str(prepull).lower(),
     }
@@ -131,7 +131,7 @@ def main() -> int:
         if not re.fullmatch(r"sg-(?:planned|[0-9a-f])[0-9a-f]*", args.security_group_id):
             raise ProvisionError("invalid security-group identifier")
         deployment_id = preflight["deployment_id"]
-        name = f"neuroforge-{deployment_id}"
+        name = f"neuravian-{deployment_id}"
         rendered_user_data = render_user_data(
             args.user_data_template.read_text(),
             preflight["commits"]["vm"],

@@ -62,5 +62,5 @@ def citation_block(citations: Iterable[str]) -> str:
     return f'<section><h2>References</h2><ol class="nf-citations">{items}</ol></section>'
 
 
-def footer(text: str = "Generated locally by NeuroForge. Research use only.") -> str:
+def footer(text: str = "Generated locally by Neuravian. Research use only.") -> str:
     return f'<footer class="nf-footer">{safe_display_value(text)}</footer>'

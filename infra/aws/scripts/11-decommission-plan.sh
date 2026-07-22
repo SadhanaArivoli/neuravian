@@ -104,8 +104,8 @@ else
 import json, subprocess
 def output(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout.strip()
-scientific = output("docker", "ps", "-q", "--filter", "label=neuroforge.run_id")
-services = output("docker", "ps", "-q", "--filter", "name=neuroforge")
+scientific = output("docker", "ps", "-q", "--filter", "label=neuravian.run_id")
+services = output("docker", "ps", "-q", "--filter", "name=neuravian")
 print(json.dumps({
     "services_running": bool(services),
     "scientific_pipeline_active": bool(scientific),
@@ -129,7 +129,7 @@ python3 "${SCRIPT_DIR}/lib/decommission_plan.py" "${ARGS[@]}" >/dev/null
 python3 - "${STATE_ROOT}/decommission-plan.json" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-print("NeuroForge decommission plan: GO")
+print("Neuravian decommission plan: GO")
 print(f"  Instance: {p['instance_id']} ({p['instance_state']})")
 print(f"  Volume mode: {p['volume_mode']}")
 print(f"  Evidence verified: {p['evidence']['verified']}")

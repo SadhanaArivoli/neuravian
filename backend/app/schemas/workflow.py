@@ -9,7 +9,7 @@ class WorkflowCreate(BaseModel):
     dataset_id: int | None = None
     tags: list[str] = Field(default_factory=list)
     state: dict = Field(...)  # raw WorkflowState object from the builder
-    schema_version: str = "neuroforge-workflow-v1"
+    schema_version: str = "neuravian-workflow-v1"
     is_template: bool = False
     is_favorite: bool = False
     is_archived: bool = False

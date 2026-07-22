@@ -169,10 +169,10 @@ describe("generateMethodsParagraphs", () => {
 // ── generateMethodsSection ────────────────────────────────────────────────────
 
 describe("generateMethodsSection", () => {
-  it("includes NeuroForge preamble", () => {
+  it("includes Neuravian preamble", () => {
     const runs = [makeRun({ run_id: 1, pipeline_id: "mriqc" })];
     const section = generateMethodsSection(runs, null);
-    expect(section).toContain("NeuroForge");
+    expect(section).toContain("Neuravian");
   });
 
   it("includes dataset name when provided", () => {
@@ -230,7 +230,7 @@ describe("findReproducibilityConcerns", () => {
 describe("buildProvenanceExport", () => {
   it("includes schema field", () => {
     const prov = buildProvenanceExport([], null);
-    expect(prov.schema).toBe("neuroforge-provenance-v1");
+    expect(prov.schema).toBe("neuravian-provenance-v1");
   });
 
   it("maps run fields correctly", () => {

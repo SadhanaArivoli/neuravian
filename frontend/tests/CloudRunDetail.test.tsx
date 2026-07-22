@@ -56,7 +56,7 @@ function renderDetail(run: WorkspaceRun, insp: WorkspaceInspection, online = tru
 
 describe("CloudRunDetail viewer priority", () => {
   beforeEach(() => {
-    window.neuroforgeDesktop = {
+    window.neuravianDesktop = {
       detectViewers: vi.fn(async () => []),
       getLocalWorkspaceIdentity: vi.fn(async () => ({ schemaVersion: 1 as const, workspaceId: "local", createdAt: "" })),
       listWorkspaces: vi.fn(async () => []),
@@ -97,15 +97,15 @@ describe("CloudRunDetail viewer priority", () => {
     };
   });
 
-  it("picks NeuroForge Viewer as primary when FastSurfer artifacts are cached", () => {
+  it("picks Neuravian Viewer as primary when FastSurfer artifacts are cached", () => {
     const run = makeRun({
       cacheState: "fully-cached",
       cachedArtifacts: ["sub-01/mri/orig_nu.mgz", "sub-01/mri/aseg.auto.mgz"],
     });
     renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
-    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
-    // Primary reasoning should mention NeuroForge Viewer
-    expect(screen.getByText(/Primary action: Open in NeuroForge Viewer/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open in Neuravian Viewer/ })).toBeInTheDocument();
+    // Primary reasoning should mention Neuravian Viewer
+    expect(screen.getByText(/Primary action: Open in Neuravian Viewer/)).toBeInTheDocument();
   });
 
   it("renders synchronized cloud progress instead of dropping it", () => {
@@ -120,14 +120,14 @@ describe("CloudRunDetail viewer priority", () => {
     expect(screen.getByText(/54 \/ 256 · ETA 4 min/)).toBeInTheDocument();
   });
 
-  it("FreeView is accessible as secondary when NeuroForge Viewer is primary", () => {
+  it("FreeView is accessible as secondary when Neuravian Viewer is primary", () => {
     const run = makeRun({
       cacheState: "fully-cached",
       cachedArtifacts: ["sub-01/mri/orig_nu.mgz", "sub-01/mri/aseg.auto.mgz"],
     });
     renderDetail(run, inspection([freeviewDetected]));
-    // Primary button should say NeuroForge Viewer
-    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
+    // Primary button should say Neuravian Viewer
+    expect(screen.getByRole("button", { name: /Open in Neuravian Viewer/ })).toBeInTheDocument();
     // Secondary grid should also show FreeView as an option (not hidden)
     const freeviewButtons = screen.getAllByRole("button", { name: /FreeView/ });
     expect(freeviewButtons.length).toBeGreaterThanOrEqual(1);
@@ -140,14 +140,14 @@ describe("CloudRunDetail viewer priority", () => {
     expect(screen.getByText(/Primary action: Open in FreeView/)).toBeInTheDocument();
   });
 
-  it("falls through to Cloud Browser when offline and artifacts are not cached", () => {
+  it("falls through to the shared artifact browser when offline and artifacts are not cached", () => {
     const run = makeRun({ cacheState: "cloud-only", cachedArtifacts: [] });
     renderDetail(run, inspection([freeviewDetected]), false);
-    expect(screen.getByRole("button", { name: /Open in Cloud Browser/ })).toBeInTheDocument();
-    expect(screen.getByText(/Primary action: Open in Cloud Browser/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Browse artifacts/ })).toBeInTheDocument();
+    expect(screen.getByText(/Primary action: Browse artifacts/)).toBeInTheDocument();
   });
 
-  it("falls through to Cloud Browser for non-FastSurfer pipelines without compatible artifacts", () => {
+  it("falls through to the shared artifact browser for runs without compatible artifacts", () => {
     const run = makeRun({
       pipeline_manifest_id: "mriqc",
       cacheState: "fully-cached",
@@ -155,8 +155,8 @@ describe("CloudRunDetail viewer priority", () => {
       artifacts: [{ artifactId: 1, relativePath: "sub-01/mriqc_output.html", url: "/r", sha256: "x", sizeBytes: 1 }],
     });
     renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
-    expect(screen.getByRole("button", { name: /Open in Cloud Browser/ })).toBeInTheDocument();
-    expect(screen.getByText(/Primary action: Open in Cloud Browser/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Browse artifacts/ })).toBeInTheDocument();
+    expect(screen.getByText(/Primary action: Browse artifacts/)).toBeInTheDocument();
   });
 
   it("MRIcroGL is secondary option and enabled when cached and installed", () => {
@@ -197,7 +197,7 @@ describe("CloudRunDetail viewer priority", () => {
       artifacts: [{ artifactId: 1, relativePath: "defaced.nii.gz", url: "/defaced", sha256: "x", sizeBytes: 1 }],
     });
     renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
-    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open in Neuravian Viewer/ })).toBeInTheDocument();
   });
 
   it("shows synchronized fMRIPrep reports and local viewer actions", () => {
@@ -212,7 +212,7 @@ describe("CloudRunDetail viewer priority", () => {
       ],
     });
     renderDetail(run, inspection([freeviewDetected, mricroglDetected]));
-    expect(screen.getByRole("button", { name: /Open in NeuroForge Viewer/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open in Neuravian Viewer/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "reports" }));
     expect(screen.getByRole("button", { name: "Open sub-01" })).toBeInTheDocument();
   });

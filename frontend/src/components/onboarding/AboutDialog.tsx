@@ -15,7 +15,7 @@ interface AboutInfo {
 
 async function fetchAbout(): Promise<AboutInfo> {
   const r = await fetch("/api/about");
-  if (!r.ok) throw new Error("Failed to fetch about info");
+  if (!r.ok) throw new Error("Version details are temporarily unavailable.");
   return r.json() as Promise<AboutInfo>;
 }
 
@@ -33,7 +33,7 @@ interface Props {
 }
 
 export function AboutDialog({ onClose }: Props) {
-  const { data, isLoading } = useQuery<AboutInfo>({
+  const { data, isLoading, isError, refetch } = useQuery<AboutInfo>({
     queryKey: ["about"],
     queryFn: fetchAbout,
     staleTime: 60_000,
@@ -55,7 +55,7 @@ export function AboutDialog({ onClose }: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="About NeuroForge"
+      aria-label="About Neuravian"
     >
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -74,13 +74,18 @@ export function AboutDialog({ onClose }: Props) {
             </svg>
           </div>
           <div>
-            <h2 className="text-base font-bold text-white">NeuroForge</h2>
+            <h2 className="text-base font-bold text-white">Neuravian</h2>
             <p className="text-xs text-gray-500">Local-first neuroimaging research platform</p>
           </div>
         </div>
 
         {isLoading ? (
           <p className="text-xs text-gray-500 animate-pulse py-4 text-center">Loading…</p>
+        ) : isError ? (
+          <div className="mb-5 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-center">
+            <p className="text-xs text-amber-200">Version details are temporarily unavailable.</p>
+            <button onClick={() => void refetch()} className="mt-2 text-xs font-medium text-accent hover:underline">Retry</button>
+          </div>
         ) : (
           <div className="rounded-lg border border-white/8 bg-surface-raised px-3 py-1 mb-5">
             <Row label="Version"          value={data?.version} />
@@ -95,7 +100,7 @@ export function AboutDialog({ onClose }: Props) {
 
         <div className="flex items-center justify-between">
           <a
-            href="https://github.com/SadhanaArivoli/neuroforge"
+            href="https://github.com/SadhanaArivoli/neuravian"
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-accent hover:text-accent-hover transition-colors flex items-center gap-1"

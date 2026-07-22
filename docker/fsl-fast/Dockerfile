@@ -1,13 +1,13 @@
-# NeuroForge FSL FAST wrapper image.
+# Neuravian FSL FAST wrapper image.
 #
 # Derives from brainlife/fsl (FSL 6.0.7, Ubuntu 22.04) and adds a thin
-# /usr/local/bin/neuroforge-fast wrapper script that exposes FAST through
-# a flag-based CLI (--input, --output-base) compatible with NeuroForge's
+# /usr/local/bin/neuravian-fast wrapper script that exposes FAST through
+# a flag-based CLI (--input, --output-base) compatible with Neuravian's
 # generic Docker executor.
 #
 # Build locally (needed once before submitting a FAST run):
 #   docker build --platform linux/amd64 \
-#     -t ghcr.io/neuroforge/fsl-fast:6.0.7 \
+#     -t neuravian/fsl-fast:6.0.7 \
 #     docker/fsl-fast/
 #
 # Image is x86_64-only. On Apple Silicon, Docker Desktop runs it via
@@ -19,8 +19,8 @@
 
 FROM brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43
 
-COPY neuroforge-fast.sh /usr/local/bin/neuroforge-fast
-RUN chmod +x /usr/local/bin/neuroforge-fast
+COPY neuravian-fast.sh /usr/local/bin/neuravian-fast
+RUN chmod +x /usr/local/bin/neuravian-fast
 
-ENTRYPOINT ["neuroforge-fast"]
+ENTRYPOINT ["neuravian-fast"]
 CMD []

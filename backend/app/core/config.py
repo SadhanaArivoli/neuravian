@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
-    app_name: str = "NeuroForge"
-    database_url: str = "sqlite:///./neuroforge.db"
+    app_name: str = "Neuravian"
+    database_url: str = "sqlite:///./neuravian.db"
     # Allow frontend dev server and docker compose origins
     cors_origins: list[str] = [
         "http://localhost:5173",

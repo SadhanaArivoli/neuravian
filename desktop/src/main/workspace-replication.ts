@@ -1,7 +1,7 @@
 /**
  * WorkspaceReplicationEngine (WRE)
  *
- * Single source of truth for every synchronization operation in NeuroForge.
+ * Single source of truth for every synchronization operation in Neuravian.
  * All push, pull, artifact download, and shutdown-fence operations flow
  * through this class — nowhere else.
  *
@@ -32,11 +32,11 @@ import {
   type SyncResult,
 } from "./run-cache.js";
 import {
-  type NeuroForgeObject,
-  type NeuroForgeObjectType,
+  type NeuravianObject,
+  type NeuravianObjectType,
   type ReplicationSnapshot,
   type WREEvent,
-  isNeuroForgeObject,
+  isNeuravianObject,
 } from "./workspace-types.js";
 import type { WorkspaceClient } from "./workspace-client.js";
 import type { WorkspaceCredential, WorkspaceProfile } from "./workspace-types.js";
@@ -169,7 +169,7 @@ export class WorkspaceReplicationEngine {
   async pushObjects(
     profile: WorkspaceProfile,
     credential: WorkspaceCredential | null,
-    objects: NeuroForgeObject[],
+    objects: NeuravianObject[],
   ): Promise<PushResult> {
     const result: PushResult = { pushed: [], skipped: [], errors: [] };
     if (objects.length === 0) return result;
@@ -221,17 +221,17 @@ export class WorkspaceReplicationEngine {
   }
 
   /**
-   * Build a NeuroForgeObject from a plain payload.
+   * Build a NeuravianObject from a plain payload.
    * The caller supplies the objectId (desktop-assigned UUID), objectType,
    * and current revision. The WRE computes the contentHash.
    */
   buildObject(
     objectId: string,
-    objectType: NeuroForgeObjectType,
+    objectType: NeuravianObjectType,
     revision: number,
     payload: unknown,
     timestamps?: { createdAt?: string; modifiedAt?: string },
-  ): NeuroForgeObject {
+  ): NeuravianObject {
     const now = new Date().toISOString();
     return {
       objectId,
@@ -240,7 +240,7 @@ export class WorkspaceReplicationEngine {
       contentHash: contentHash(payload),
       createdAt: timestamps?.createdAt ?? now,
       modifiedAt: timestamps?.modifiedAt ?? now,
-      payload: payload as NeuroForgeObject["payload"],
+      payload: payload as NeuravianObject["payload"],
     };
   }
 
@@ -325,8 +325,8 @@ export class WorkspaceReplicationEngine {
         method: "PUT",
         headers: {
           "Content-Type": "application/octet-stream",
-          "X-NeuroForge-Sha256": artifact.sha256,
-          "X-NeuroForge-Relative-Path": artifact.relativePath,
+          "X-Neuravian-Sha256": artifact.sha256,
+          "X-Neuravian-Relative-Path": artifact.relativePath,
         },
         body: bytes,
       });

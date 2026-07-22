@@ -40,7 +40,7 @@ unavoidable bootstrap trust boundary:
    policy. No script enrolls MFA, creates a root key, creates an IAM user, or
    attaches `AdministratorAccess`.
 3. **CLOUDSHELL:** the current authorized console identity runs
-   `02-bootstrap-iam.sh --apply` and types `CREATE NEUROFORGE IAM`.
+   `02-bootstrap-iam.sh --apply` and types `CREATE NEURAVIAN IAM`.
 4. The bootstrap creates one customer-managed deployer policy, one deployer
    role trusted only by the normalized current IAM principal, one EC2 role, and
    one instance profile. If the current principal cannot be represented safely
@@ -60,7 +60,7 @@ manual-administrator integration checkpoint, not a reason to widen trust.
 ### Bootstrap authority
 
 The signed-in console identity is responsible only for creating and updating
-the named NeuroForge-owned IAM resources. The implementation will print its
+the named Neuravian-owned IAM resources. The implementation will print its
 IAM plan before mutation and use exact names incorporating a non-secret
 `DeploymentId`. Destroying owned IAM is a separate, confirmed phase.
 
@@ -86,8 +86,8 @@ The deployer policy will allow the following categories only:
 
 Tag conditions are used where the service and action support them. They cannot
 be the only ownership proof: scripts require both saved state and the complete
-tag set `Project=NeuroForge`, `Purpose=x86-verification`,
-`ManagedBy=NeuroForgeProvisioner`, and `DeploymentId=<id>`. AWS documents that
+tag set `Project=Neuravian`, `Purpose=x86-verification`,
+`ManagedBy=NeuravianProvisioner`, and `DeploymentId=<id>`. AWS documents that
 resource-tag conditions are not reliable for constraining `iam:PassRole`, so
 PassRole is scoped to the exact role ARN instead.
 
@@ -119,7 +119,7 @@ environment does not match that location.
 | `03-provision.sh` | **CLOUDSHELL** | Only with `--apply` plus `LAUNCH ONE M7I.2XLARGE` | One key pair, one security group, one encrypted volume, and exactly one EC2 instance. |
 | Download PEM | **CLOUDSHELL → LOCAL MAC**, human-mediated | No AWS mutation | PEM saved on the Mac with mode 400; CloudShell copy retained until download is confirmed. CloudShell cannot write to the Mac directly. |
 | `04-wait-and-verify.sh` | **CLOUDSHELL**, SSH to **REMOTE VM** | Read-only | AWS status, immutable configuration, bootstrap marker, Docker, commit, and absence of scientific execution verified. |
-| `05-deploy-neuroforge.sh` | **LOCAL MAC** or **CLOUDSHELL**, SSH to **REMOTE VM** | No infrastructure mutation | Canonical stack plus loopback-only Compose override; health checks; tunnel command. Stops before inputs or pipelines. |
+| `05-deploy-neuravian.sh` | **LOCAL MAC** or **CLOUDSHELL**, SSH to **REMOTE VM** | No infrastructure mutation | Canonical stack plus loopback-only Compose override; health checks; tunnel command. Stops before inputs or pipelines. |
 | Fixture/license transfer | **LOCAL MAC → REMOTE VM** | No AWS mutation | Six-file public fixture and license transferred separately, permissions/checksums verified without printing license content. |
 | Evidence retrieval | **REMOTE VM → LOCAL MAC** | No AWS mutation | Small sanitized evidence ZIP copied and verified locally. No CloudShell-to-Mac assumption. |
 | Stop/start/status | **CLOUDSHELL** | Yes for start/stop | Exact owned instance only; IP and SSH rule are revalidated after start. |
@@ -211,15 +211,15 @@ VM it:
 5. prepares restricted fixture, secret, work, and evidence directories;
 6. prepares, but does not execute, the canonical Compose deployment;
 7. optionally pre-pulls only digest-pinned Linux/amd64 images;
-8. writes `/var/lib/neuroforge/bootstrap-complete.json` atomically.
+8. writes `/var/lib/neuravian/bootstrap-complete.json` atomically.
 
-Logs go to `/var/log/neuroforge-bootstrap.log` and are scanned for secrets.
+Logs go to `/var/log/neuravian-bootstrap.log` and are scanned for secrets.
 Re-entry verifies completed steps rather than recloning or changing the frozen
 commit. It never runs pydeface, fMRIPrep, or FastSurfer.
 
 ## State, ownership, and repeatability
 
-Generated state lives under `.neuroforge-aws/`, is excluded from Git, uses mode
+Generated state lives under `.neuravian-aws/`, is excluded from Git, uses mode
 600, contains no credentials, and is written atomically. `state.json` records
 region, caller identity hash, DeploymentId, exact resource identifiers, tags,
 configuration digest, AMI, commit, and lifecycle choices. It does not contain

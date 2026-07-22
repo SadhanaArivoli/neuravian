@@ -63,10 +63,10 @@ export function PipelinePreflightPanel({ result, loading, error, remote }: Props
   if (remote) {
     return (
       <section className="rounded-xl border border-white/10 bg-white/[0.035] p-4" aria-label="Pipeline preflight">
-        <p className="text-sm font-medium text-gray-200">Remote target selected</p>
+        <p className="text-sm font-medium text-gray-200">Cloud workspace selected</p>
         <p className="mt-1 text-xs leading-relaxed text-gray-400">
-          Local machine checks do not describe the remote host. Test that host on
-          the Remote Hosts page before launching.
+          These checks describe only this computer. Confirm the connection and
+          available tools in Workspaces before starting the run.
         </p>
       </section>
     );

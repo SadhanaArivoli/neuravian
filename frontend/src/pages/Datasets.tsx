@@ -13,8 +13,8 @@ export default function Datasets() {
   const { selected } = useWorkspace();
   const { data: datasets, isLoading } = useDatasets();
   const [showImport, setShowImport] = useState(false);
-  const isCloud = Boolean(window.neuroforgeDesktop) && selected.startsWith("cloud:");
-  const isAll = Boolean(window.neuroforgeDesktop) && selected === "all";
+  const isCloud = Boolean(window.neuravianDesktop) && selected.startsWith("cloud:");
+  const isAll = Boolean(window.neuravianDesktop) && selected === "all";
   const cloud = useCloudWorkspace();
   const allCloud = useAllCloudSnapshots();
 

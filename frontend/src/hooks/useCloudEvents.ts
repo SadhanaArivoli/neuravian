@@ -12,7 +12,7 @@ type CloudEvent = {
  * Events flow: cloud VM /api/replication/events → Electron main process →
  * cloud:event IPC → this hook → your callback.
  *
- * Only available in the desktop app (window.neuroforgeDesktop?.onCloudEvent).
+ * Only available in the desktop app (window.neuravianDesktop?.onCloudEvent).
  * In the web app the callback is never called.
  *
  * @param callback - called for every event. Stable reference recommended (use useCallback).
@@ -23,7 +23,7 @@ export function useCloudEvents(
   filter?: string,
 ): void {
   useEffect(() => {
-    const desktop = window.neuroforgeDesktop;
+    const desktop = window.neuravianDesktop;
     if (!desktop?.onCloudEvent) return;
 
     const handler = (event: CloudEvent) => {

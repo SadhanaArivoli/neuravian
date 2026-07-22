@@ -1,4 +1,4 @@
-/** Modal shell for the single shared NeuroForge NIfTI viewer. */
+/** Modal shell for the single shared Neuravian NIfTI viewer. */
 import NeuroImageViewer, { type NiivueLayer } from "./NeuroImageViewer";
 import type { StatMapType } from "../../lib/niivueTheme";
 

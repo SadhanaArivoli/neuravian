@@ -1,4 +1,4 @@
-# NeuroForge x86_64 readiness audit
+# Neuravian x86_64 readiness audit
 
 Status date: 2026-07-14. This is a static readiness audit only. FastSurfer,
 fMRIPrep, and pydeface remain **pending empirical native Linux x86_64
@@ -27,7 +27,7 @@ verification**. No cloud resources or emulated local runs were used.
   CPUs/16 GB. CPU mode is the verification baseline; CUDA is optional and not
   part of the minimum VM plan.
 - **Artifacts/report:** `freesurfer_dir` rooted at the subject directory;
-  NeuroForge report citations and FastSurfer result discovery already exist.
+  Neuravian report citations and FastSurfer result discovery already exist.
 - **Apple Silicon failure:** amd64 CNN passes under emulation were measured at
   an impractical pace. The canonical x86 path contains no Apple-specific
   workaround; the platform selector lives in the executor.

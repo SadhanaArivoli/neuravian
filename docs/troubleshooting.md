@@ -12,13 +12,13 @@ Record the run ID, pipeline name, workspace, and exact message before retrying.
 3. Inspect `docker compose logs --tail=200 backend frontend`.
 4. Rebuild and recreate services after source changes.
 
-Do not delete `data/neuroforge.db` as a routine recovery step. Preserve it and
+Do not delete `data/neuravian.db` as a routine recovery step. Preserve it and
 diagnose the migration or filesystem error first.
 
 ## Dataset rejected
 
 Confirm the path is inside `HOST_DATASETS_DIR`, readable by Docker, and points
-to the BIDS dataset root containing `dataset_description.json`. NeuroForge does
+to the BIDS dataset root containing `dataset_description.json`. Neuravian does
 not rewrite source data. Use validation issue details to fix the source safely.
 
 ## Pipeline crash or missing artifact

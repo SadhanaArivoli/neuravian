@@ -4,7 +4,7 @@ description: >
   Converts raw DICOM scanner output to NIfTI/BIDS format. Fast and
   lightweight — a typical scan session (30–100 DICOMs) converts in seconds.
   Outputs .nii.gz files and optional BIDS JSON sidecars ready for immediate
-  use with MRIQC, fMRIPrep, FastSurfer, and other NeuroForge pipelines.
+  use with MRIQC, fMRIPrep, FastSurfer, and other Neuravian pipelines.
   The recommended first step when you have DICOM files directly from a scanner.
 homepage: https://github.com/rordenlab/dcm2niix
 compute_profile: local-ok
@@ -182,7 +182,7 @@ max_runtime_hours: 0.5
 # 2. PARTIAL CONVERSION (tests known_errors / exit-code-8 path):
 #    backend/.venv/lib/python3.12/site-packages/nibabel/tests/data
 #    Contains mixed formats (real DICOMs, PAR/REC, PET files, incomplete series).
-#    dcm2niix converts 6/34 files and exits code 8 → NeuroForge status=failed.
+#    dcm2niix converts 6/34 files and exits code 8 → Neuravian status=failed.
 #    Use this to verify the "Converted N of M files" known_error entry fires correctly.
 # ─────────────────────────────────────────────────────────────────────────────
 

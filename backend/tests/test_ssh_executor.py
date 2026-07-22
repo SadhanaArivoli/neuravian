@@ -31,7 +31,7 @@ MINIMAL_MANIFEST = {
 FC_MANIFEST = {
     "id": "functional-connectivity",
     "display_name": "Functional Connectivity",
-    "container": {"image": "ghcr.io/neuroforge/functional-connectivity", "tag": "0.1.0"},
+    "container": {"image": "neuravian/functional-connectivity", "tag": "0.1.0"},
     "execution": {"type": "docker"},
     "dataset_positional": True,
     "parameters": [
@@ -64,9 +64,9 @@ MOUNTED_MANIFEST = {
 HOST_CFG = {
     "hostname": "10.0.0.1",
     "ssh_port": 22,
-    "username": "neuroforge",
+    "username": "neuravian",
     "key_path": "/home/user/.ssh/id_ed25519",
-    "remote_work_root": "/scratch/neuroforge",
+    "remote_work_root": "/scratch/neuravian",
     "docker_host": None,
 }
 
@@ -87,8 +87,8 @@ def _ctx(manifest=None, params=None, run_id=42) -> RunContext:
 def test_build_command_basic_structure():
     cmd = _build_remote_docker_cmd(
         _ctx(),
-        remote_input_dir="/scratch/neuroforge/runs/42/input",
-        remote_output_dir="/scratch/neuroforge/runs/42/output",
+        remote_input_dir="/scratch/neuravian/runs/42/input",
+        remote_output_dir="/scratch/neuravian/runs/42/output",
         mounted_remote_paths={},
         docker_host=None,
     )
@@ -149,7 +149,7 @@ def test_build_command_mounted_param():
     cmd = _build_remote_docker_cmd(
         _ctx(MOUNTED_MANIFEST, params={"fs-license-file": "/home/user/license.txt"}),
         "/input", "/output",
-        mounted_remote_paths={"fs-license-file": "/scratch/neuroforge/runs/42/inputs/fs-license-file/license.txt"},
+        mounted_remote_paths={"fs-license-file": "/scratch/neuravian/runs/42/inputs/fs-license-file/license.txt"},
         docker_host=None,
     )
     # Volume mount for the param
@@ -194,7 +194,7 @@ def test_remote_work_root_used_in_shell_quoted_form():
     from app.execution.ssh_executor import SSHExecutor
 
     cfg = dict(HOST_CFG)
-    cfg["remote_work_root"] = "/scratch/neuroforge"
+    cfg["remote_work_root"] = "/scratch/neuravian"
     ex = SSHExecutor(cfg)
     ctx = _ctx()
     remote_in, remote_out = ex._remote_dirs(ctx)

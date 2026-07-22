@@ -157,7 +157,7 @@ function isValidSession(session: unknown): session is WorkspaceSession {
 function _migrate(envelope: SessionEnvelope): WorkspaceSession {
   if (envelope.schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new Error(
-      `Session was written by a newer NeuroForge (schema v${envelope.schemaVersion}). ` +
+      `Session was written by a newer Neuravian (schema v${envelope.schemaVersion}). ` +
       `This build understands up to v${CURRENT_SCHEMA_VERSION}.`,
     );
   }

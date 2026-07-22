@@ -1,4 +1,4 @@
-"""Tests for the NeuroForge plugin loader (plugin_loader.py).
+"""Tests for the Neuravian plugin loader (plugin_loader.py).
 
 Covers:
   - Discovery: env var, /plugins-user, /plugins, repo-root/plugins
@@ -183,7 +183,7 @@ def test_find_plugin_dirs_skips_schema_dir(tmp_path: Path):
     schema_dir.mkdir()
     (schema_dir / "plugin.yaml").write_text("id: x\nname: x\nversion: 1.0.0\nauthor: x\ndescription: x")
 
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         dirs = plugin_loader._find_plugin_dirs()
     assert schema_dir not in dirs
 
@@ -199,8 +199,8 @@ def test_find_plugin_dirs_skips_dirs_without_plugin_yaml(tmp_path: Path):
 
 
 def test_find_plugin_dirs_env_var(tmp_path: Path, minimal_plugin: Path):
-    """NEUROFORGE_PLUGINS_DIRS env var is discovered."""
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    """NEURAVIAN_PLUGINS_DIRS env var is discovered."""
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         dirs = plugin_loader._find_plugin_dirs()
     assert minimal_plugin in dirs
 
@@ -213,7 +213,7 @@ def test_find_plugin_dirs_deduplicates_symlinks(tmp_path: Path, minimal_plugin: 
     root2.mkdir()
     (root2 / "my-plugin").symlink_to(minimal_plugin)
 
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": f"{tmp_path}:{root2}"}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": f"{tmp_path}:{root2}"}):
         dirs = plugin_loader._find_plugin_dirs()
 
     # Should appear at most once
@@ -325,7 +325,7 @@ def test_load_all_plugins_disabled_plugin_not_in_manifests(tmp_path: Path):
             parameters: []
         """)
     )
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         plugins = load_all_plugins()
 
     assert any(p.id == "disabled-with-pipeline" and p.status == "disabled" for p in plugins)
@@ -438,7 +438,7 @@ def test_load_all_plugins_continues_after_bad_plugin(tmp_path: Path):
     bad_dir.mkdir()
     (bad_dir / "plugin.yaml").write_text(": invalid: yaml: [\n")
 
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         plugins = load_all_plugins()
 
     statuses = {p.id: p.status for p in plugins}
@@ -449,7 +449,7 @@ def test_load_all_plugins_continues_after_bad_plugin(tmp_path: Path):
 
 def test_load_all_plugins_idempotent(tmp_path: Path, minimal_plugin: Path):
     """Calling load_all_plugins() twice returns the same result without re-scanning."""
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         first = load_all_plugins()
         second = load_all_plugins()
 
@@ -549,7 +549,7 @@ def test_iter_plugin_manifests_after_load(tmp_path: Path, plugin_with_pipeline: 
 
 def test_reset_for_testing_clears_state(tmp_path: Path, minimal_plugin: Path):
     """reset_for_testing() clears all module state so load_all_plugins() re-runs."""
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(tmp_path)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(tmp_path)}):
         load_all_plugins()
     assert plugin_loader._loaded is True
 
@@ -662,7 +662,7 @@ def test_example_plugin_backend_executable_exists_and_is_executable():
     """The example plugin's backend executable exists and has its execute bit set."""
     exe = (
         Path(__file__).parent.parent.parent
-        / "plugins" / "image-statistics" / "backend" / "neuroforge-image-statistics"
+        / "plugins" / "image-statistics" / "backend" / "neuravian-image-statistics"
     )
     if not exe.is_file():
         pytest.skip("Example plugin executable not found")
@@ -673,12 +673,12 @@ def test_example_plugin_backend_executable_exists_and_is_executable():
 
 def test_example_plugin_loads_via_load_all_plugins(tmp_path: Path):
     """load_all_plugins() discovers and loads the example plugin correctly."""
-    # Point NEUROFORGE_PLUGINS_DIRS at the real plugins/ directory (contains image-statistics)
+    # Point NEURAVIAN_PLUGINS_DIRS at the real plugins/ directory (contains image-statistics)
     plugins_root = Path(__file__).parent.parent.parent / "plugins"
     if not plugins_root.is_dir():
         pytest.skip("plugins/ directory not found")
 
-    with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(plugins_root)}):
+    with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(plugins_root)}):
         plugins = load_all_plugins()
 
     ids = [p.id for p in plugins]
@@ -702,7 +702,7 @@ def test_example_plugin_merges_into_pipeline_registry(tmp_path: Path):
     pipeline_mod._registry = None
 
     try:
-        with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(plugins_root)}):
+        with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(plugins_root)}):
             load_all_plugins()
             registry = pipeline_mod.load_all_manifests()
         assert "image-statistics" in registry
@@ -722,7 +722,7 @@ def test_example_plugin_merges_artifact_types():
     art_mod._artifact_types_cache = None
 
     try:
-        with patch.dict(os.environ, {"NEUROFORGE_PLUGINS_DIRS": str(plugins_root)}):
+        with patch.dict(os.environ, {"NEURAVIAN_PLUGINS_DIRS": str(plugins_root)}):
             load_all_plugins()
             types = art_mod._load_artifact_types()
         assert "image_statistics_json" in types

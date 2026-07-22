@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "NeuroForge Plugin Manifest",
-  "description": "Metadata file (plugin.yaml) required at the root of every NeuroForge plugin.",
+  "title": "Neuravian Plugin Manifest",
+  "description": "Metadata file (plugin.yaml) required at the root of every Neuravian plugin.",
   "type": "object",
   "required": ["id", "name", "version", "author", "description"],
   "additionalProperties": false,
@@ -33,9 +33,9 @@
       "format": "uri",
       "description": "Optional URL to the plugin's documentation or repository."
     },
-    "neuroforge_version": {
+    "neuravian_version": {
       "type": "string",
-      "description": "Required NeuroForge version range (e.g. '>=0.1.0'). Informational only — not currently enforced."
+      "description": "Required Neuravian version range (e.g. '>=0.1.0'). Informational only — not currently enforced."
     },
     "license": {
       "type": "string",

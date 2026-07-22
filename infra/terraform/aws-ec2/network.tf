@@ -1,10 +1,10 @@
-resource "aws_security_group" "neuroforge" {
+resource "aws_security_group" "neuravian" {
   name        = local.name
-  description = "NeuroForge SSH tunnel access from one operator IPv4"
+  description = "Neuravian SSH tunnel access from one operator IPv4"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "SSH from the current NeuroForge operator"
+    description = "SSH from the current Neuravian operator"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -15,7 +15,7 @@ resource "aws_security_group" "neuroforge" {
     for_each = var.enable_public_frontend ? toset([80, 443]) : toset([])
 
     content {
-      description = ingress.value == 80 ? "HTTP for HTTPS certificate issuance and redirect" : "Authenticated NeuroForge HTTPS gateway"
+      description = ingress.value == 80 ? "HTTP for HTTPS certificate issuance and redirect" : "Authenticated Neuravian HTTPS gateway"
       from_port   = ingress.value
       to_port     = ingress.value
       protocol    = "tcp"
@@ -46,7 +46,7 @@ resource "aws_security_group" "neuroforge" {
   }
 }
 
-resource "aws_key_pair" "neuroforge" {
+resource "aws_key_pair" "neuravian" {
   key_name   = local.name
   public_key = trimspace(var.ssh_public_key)
 

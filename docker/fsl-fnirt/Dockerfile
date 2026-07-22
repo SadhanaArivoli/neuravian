@@ -1,9 +1,9 @@
-# NeuroForge FSL FNIRT wrapper image.
+# Neuravian FSL FNIRT wrapper image.
 #
 # Derives from brainlife/fsl (FSL 6.0.7, Ubuntu 22.04) and adds a thin
-# /usr/local/bin/neuroforge-fnirt wrapper script that exposes FNIRT through
+# /usr/local/bin/neuravian-fnirt wrapper script that exposes FNIRT through
 # a flag-based CLI (--input, --ref-preset, --aff-mat, --config-preset, etc.)
-# compatible with NeuroForge's generic Docker executor.
+# compatible with Neuravian's generic Docker executor.
 #
 # Built-in MNI templates are available at:
 #   /usr/local/fsl/data/standard/MNI152_T1_1mm.nii.gz
@@ -20,7 +20,7 @@
 #
 # Build locally (needed once before submitting a FNIRT run):
 #   docker build --platform linux/amd64 \
-#     -t ghcr.io/neuroforge/fsl-fnirt:6.0.7 \
+#     -t neuravian/fsl-fnirt:6.0.7 \
 #     docker/fsl-fnirt/
 #
 # Image is x86_64-only. On Apple Silicon, Docker Desktop runs it via
@@ -32,8 +32,8 @@
 
 FROM brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43
 
-COPY neuroforge-fnirt.sh /usr/local/bin/neuroforge-fnirt
-RUN chmod +x /usr/local/bin/neuroforge-fnirt
+COPY neuravian-fnirt.sh /usr/local/bin/neuravian-fnirt
+RUN chmod +x /usr/local/bin/neuravian-fnirt
 
-ENTRYPOINT ["neuroforge-fnirt"]
+ENTRYPOINT ["neuravian-fnirt"]
 CMD []

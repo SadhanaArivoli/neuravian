@@ -35,12 +35,12 @@ def document_shell(title: str, subtitle: str, body: str, *, footer_html: str = "
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta name="neuroforge-report-system" content="{REPORT_SYSTEM_MARKER}"/>
+<meta name="neuravian-report-system" content="{REPORT_SYSTEM_MARKER}"/>
 <title>{safe_display_value(title)}</title>
-<style id="neuroforge-report-theme">{REPORT_CSS}</style>
+<style id="neuravian-report-theme">{REPORT_CSS}</style>
 </head>
 <body><main class="nf-page">
-<header class="nf-header"><div class="nf-kicker">NeuroForge report</div>
+<header class="nf-header"><div class="nf-kicker">Neuravian report</div>
 <h1>{safe_display_value(title)}</h1><div class="nf-subtitle">{safe_display_value(subtitle)}</div></header>
 {body}
 {footer_html}

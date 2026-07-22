@@ -12,12 +12,12 @@ for arg in "$@"; do
 done
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
-run_cmd docker ps --filter label=neuroforge.run_id --format '{{.ID}} {{.Names}} {{.Status}}'
+run_cmd docker ps --filter label=neuravian.run_id --format '{{.ID}} {{.Names}} {{.Status}}'
 if [[ "${STOP_SERVICES}" == 1 ]]; then
   run_cmd timeout --signal=TERM --kill-after=30s 300 \
     docker compose -f "${NF_ROOT}/docker-compose.yml" stop
 else
-  log "NeuroForge services left running; pass --stop-services to stop without deleting them"
+  log "Neuravian services left running; pass --stop-services to stop without deleting them"
 fi
 log "No images, volumes, containers, cloud instances, or other resources were deleted"
 log "After the evidence ZIP is downloaded and verified, stop the VM through the cloud console"

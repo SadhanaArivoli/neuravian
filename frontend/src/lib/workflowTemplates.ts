@@ -334,7 +334,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     requiredSourceLabel: "Registered source BIDS dataset",
     worstComputeProfile: "local-ok",
     computeWarning:
-      "Requires precomputed fMRIPrep derivatives. NeuroForge does not run fMRIPrep locally for this template.",
+      "Requires precomputed fMRIPrep derivatives. Neuravian does not run fMRIPrep locally for this template.",
     steps: [
       {
         pipelineId: "import-fmriprep-derivatives",
@@ -478,7 +478,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     requiredSourceLabel: "Registered source BIDS dataset",
     worstComputeProfile: "local-ok",
     computeWarning:
-      "Requires precomputed fMRIPrep derivatives. NeuroForge does not run fMRIPrep locally for this template.",
+      "Requires precomputed fMRIPrep derivatives. Neuravian does not run fMRIPrep locally for this template.",
     steps: [
       {
         pipelineId: "import-fmriprep-derivatives",

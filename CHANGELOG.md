@@ -1,70 +1,35 @@
 # Changelog
 
-All notable changes are documented here. NeuroForge follows [Semantic Versioning](https://semver.org/).
+Neuravian was developed privately under the working name **NeuroForge** before
+its first public release. Historical commits and qualification screenshots may
+retain that former name.
+
+All notable changes are documented here. Neuravian follows
+[Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0-alpha] — 2026-07-13
+## 0.1.0 Early Access — 2026-07-22
 
-Initial public release.
+### Platform
 
-### Pipelines (20 total)
+- Local-first projects, BIDS datasets, pipeline runs, logs, artifacts, reports,
+  provenance, methods, citations, and workflow history.
+- Manifest-driven pipeline registry and Pipeline Contract v1.
+- Shared BIDS App adapter for compatible upstream containers.
+- Typed artifact discovery, downstream compatibility, and lineage.
+- NIfTI, surface, matrix, table, figure, and HTML report viewing.
+- Researcher-managed remote workspaces and explicit cloud handoff support.
+- Docker Compose deployment and an unsigned macOS Apple Silicon desktop bundle.
+- FastAPI, React/TypeScript, Electron, SQLite, Alembic, and automated CI tests.
 
-**Conversion**
-- dcm2niix — DICOM to NIfTI conversion
-- dcm2bids + DICOM Wizard — guided DICOM to BIDS with series scouting and entity mapping
+### Qualification
 
-**Validation and QC**
-- BIDS Validator — BIDS structure and metadata validation
-- MRIQC — per-subject image quality metrics (T1w, T2w, BOLD)
-- MRIQC Group — aggregate IQM table across subjects
-- NIfTI Inspector — header metadata, voxel statistics, intensity histogram, and warning summary
+- MRIQC participant and group execution are qualified locally with documented
+  limitations.
+- fMRIPrep integration is complete; scientific execution qualification remains
+  pending.
+- Other registered manifests are integrated, not universally execution-qualified.
 
-**Skull stripping**
-- BrainChop — CNN-based skull stripping (MindGrab)
-- SynthStrip — any-contrast skull stripping (FreeSurfer team)
-
-**Segmentation**
-- FastSurfer — deep-learning cortical segmentation and surface reconstruction
-
-**Preprocessing**
-- fMRIPrep — robust fMRI preprocessing (`local-unsafe` on Apple Silicon; use Import instead)
-- Import fMRIPrep Derivatives — register precomputed derivatives without re-running
-
-**Functional connectivity**
-- Functional Connectivity — atlas-based Pearson correlation matrix (Nilearn)
-- Seed-Based Connectivity — voxelwise seed connectivity z-map
-- ALFF / fALFF — voxelwise amplitude and fractional amplitude of low-frequency fluctuations
-- Regional Homogeneity (ReHo) — voxelwise Kendall's Coefficient of Concordance
-- Group Functional Connectivity — across-run mean connectivity matrix
-- Atlas ROI Extraction — per-ROI voxel statistics from any NIfTI
-- Connectome Graph Analysis — graph-theoretic metrics (NetworkX + Louvain)
-- Statistical Map Explorer — thresholding, cluster labelling, and cluster reporting
-
-**De-identification**
-- pydeface — facial feature removal from structural NIfTI
-
-### Platform features
-
-- Manifest-driven pipeline registry (YAML, no hardcoded pipeline logic)
-- Artifact-typed run chaining with automatic Run Next compatibility
-- Execution queue (sequential, cancel, retry, re-run, duplicate)
-- Stalled-run detection and recovery
-- Analysis Graph (directed run and artifact lineage graph)
-- Artifact Explorer (typed previews: NIfTI viewer, matrix heatmap, HTML embed, CSV table)
-- Comparison Studio (skull-strip Dice, matrix Frobenius norm and difference heatmap)
-- Workflow Builder and Library (save, load, export, import)
-- Workflow Templates (BIDS+QC, fMRI Preprocessing, Functional Connectivity, Skull Strip+Segment, Seed FC → Statistical Map, ALFF/fALFF, Regional Homogeneity)
-- Methods Studio (draft methods paragraph from provenance)
-- Citation Studio (reference list from pipeline registry)
-- Study Report Studio (full dataset report; PDF export; multi-report comparison)
-- Project Studio with lab notebook
-- Per-run provenance records (tool, version, command, parameters, container digest, timestamps)
-- Run lineage via `source_run_id`
-- SQLite local database with Alembic migrations
-- Docker Compose deployment (nginx + FastAPI)
-- GitHub Actions CI (backend pytest + frontend Vitest + TypeScript)
-- Plugin SDK: manifest-driven plugin discovery, JSON Schema validation, artifact type registration, PATH patching, `/plugins` UI page, `GET /api/plugins` endpoint
-- Example plugin: `plugins/image-statistics/` — reference implementation of all plugin features
-
-[0.1.0-alpha]: https://github.com/SadhanaArivoli/neuroforge/releases/tag/v0.1.0-alpha
+See [`docs/pipeline-status.md`](docs/pipeline-status.md) for the authoritative
+manifest-by-manifest status and evidence.

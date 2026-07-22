@@ -25,7 +25,7 @@ export function useCloudWorkspace(): CloudWorkspaceState {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
   const profileId = selected.startsWith("cloud:") ? selected.slice(6) : null;
   const profile = profileId ? cloudProfiles.find((p) => p.id === profileId) ?? null : null;
 

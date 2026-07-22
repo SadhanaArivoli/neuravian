@@ -1,11 +1,11 @@
 # Viewer Guide
 
-NeuroForge chooses viewers from the artifact's declared type and the files that
+Neuravian chooses viewers from the artifact's declared type and the files that
 are actually available.
 
-## NeuroForge Viewer
+## Neuravian Viewer
 
-Use **Open in NeuroForge Viewer** for compatible NIfTI volumes and cached cloud
+Use **Open in Neuravian Viewer** for compatible NIfTI volumes and cached cloud
 artifacts. Axial, coronal, sagittal, multiplanar, and supported 3D views share
 the same source artifact. Viewer controls change display only; they do not
 modify scientific output files.
@@ -26,5 +26,5 @@ then retry. Cloud-only artifacts must be synchronized before a local external
 viewer can open them.
 
 Always verify orientation, voxel geometry, underlay/overlay compatibility, and
-the source run before interpreting an image. NeuroForge viewer output is for
+the source run before interpreting an image. Neuravian viewer output is for
 research review, not clinical diagnosis.

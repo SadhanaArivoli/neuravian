@@ -209,8 +209,8 @@ export default function Projects() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [pushing, setPushing] = useState<Record<string, boolean>>({});
   const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
-  const isCloud = Boolean(window.neuroforgeDesktop) && selected.startsWith("cloud:");
-  const isAll = Boolean(window.neuroforgeDesktop) && selected === "all";
+  const isCloud = Boolean(window.neuravianDesktop) && selected.startsWith("cloud:");
+  const isAll = Boolean(window.neuravianDesktop) && selected === "all";
   const cloud = useCloudWorkspace();
   const allCloud = useAllCloudSnapshots();
 
@@ -218,12 +218,12 @@ export default function Projects() {
 
   async function handlePushToCloud(projectId: number, profileId: string) {
     const project = projects?.find(p => p.id === projectId);
-    if (!project || !window.neuroforgeDesktop) return;
+    if (!project || !window.neuravianDesktop) return;
     const key = `${projectId}-${profileId}`;
     setPushing(prev => ({ ...prev, [key]: true }));
     setPushErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
-      await window.neuroforgeDesktop.pushCloudProject({
+      await window.neuravianDesktop.pushCloudProject({
         profileId,
         project: {
           title: project.title,

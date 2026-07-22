@@ -220,8 +220,8 @@ export default function Runs() {
   const { data: runs, isLoading, error } = useRuns();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const isCloud = Boolean(window.neuroforgeDesktop) && selected.startsWith("cloud:");
-  const isAll = Boolean(window.neuroforgeDesktop) && selected === "all";
+  const isCloud = Boolean(window.neuravianDesktop) && selected.startsWith("cloud:");
+  const isAll = Boolean(window.neuravianDesktop) && selected === "all";
 
   // Cloud workspace data — hooks always called; only activate when cloud scope is selected.
   const cloud = useCloudWorkspace();
@@ -232,7 +232,7 @@ export default function Runs() {
   const [cloudInspection, setCloudInspection] = useState<WorkspaceInspection | null>(null);
 
   useEffect(() => {
-    const desktop = window.neuroforgeDesktop;
+    const desktop = window.neuravianDesktop;
     if (!desktop || !isCloud || !cloud.profile || !cloud.snapshot) return;
     void desktop.inspectWorkspace({
       profileId: cloud.profile.id,

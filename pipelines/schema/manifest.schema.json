@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/neuroforge/neuroforge/blob/main/pipelines/schema/manifest.schema.json",
-  "title": "NeuroForge Pipeline Manifest",
+  "$id": "https://github.com/neuravian/neuravian/blob/main/pipelines/schema/manifest.schema.json",
+  "title": "Neuravian Pipeline Manifest",
   "description": "Schema for YAML pipeline manifests. Each manifest describes how to invoke one containerized neuroimaging tool.",
   "type": "object",
   "required": [
@@ -158,7 +158,7 @@
     },
     "seed_output_from_lineage_artifact_type": {
       "type": "string",
-      "description": "Optional artifact type slug. When a run is launched from lineage carrying this artifact, NeuroForge copies the upstream artifact directory into this run's output_dir before execution. Used for tools whose official group-level mode expects a pre-populated output directory."
+      "description": "Optional artifact type slug. When a run is launched from lineage carrying this artifact, Neuravian copies the upstream artifact directory into this run's output_dir before execution. Used for tools whose official group-level mode expects a pre-populated output directory."
     },
     "deprecated_params": {
       "type": "object",
@@ -313,9 +313,146 @@
         "$ref": "#/$defs/produce_slot"
       },
       "description": "Artifact types this pipeline outputs. Used for chaining: downstream pipelines that accept a matching type can be pre-populated from this run's outputs. Optional."
+    },
+    "contract": {
+      "$ref": "#/$defs/pipeline_contract",
+      "description": "Versioned, backend-neutral lifecycle contract. Omitted fields receive conservative defaults so existing manifests remain compatible."
     }
   },
   "$defs": {
+    "pipeline_contract": {
+      "type": "object",
+      "required": ["version"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {"type": "integer", "const": 1},
+        "unit_of_work": {
+          "type": "string",
+          "enum": ["dataset", "participant", "session", "group", "subject", "longitudinal"]
+        },
+        "lifecycle": {"$ref": "#/$defs/lifecycle_contract"},
+        "progress": {"$ref": "#/$defs/progress_contract"},
+        "bids_app": {"$ref": "#/$defs/bids_app_contract"},
+        "reporting": {"$ref": "#/$defs/reporting_contract"},
+        "methods": {"$ref": "#/$defs/methods_contract"}
+      }
+    },
+    "lifecycle_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_duration_minutes": {"type": "integer", "minimum": 1},
+        "heartbeat_timeout_minutes": {"type": "integer", "minimum": 1},
+        "cancellation_grace_seconds": {"type": "integer", "minimum": 0, "maximum": 600},
+        "retry_mode": {"type": "string", "enum": ["fresh", "resume"]},
+        "resume_strategy": {"type": "string", "enum": ["none", "output-directory", "checkpoint"]},
+        "checkpoint_paths": {"type": "array", "items": {"type": "string"}},
+        "preserve_work_directory": {"type": "boolean"}
+      }
+    },
+    "progress_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {"type": "string", "enum": ["none", "tqdm", "regex", "stages"]},
+        "patterns": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/progress_pattern"}
+        },
+        "stages": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/progress_stage"}
+        }
+      }
+    },
+    "progress_pattern": {
+      "type": "object",
+      "required": ["pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {"type": "string"},
+        "percent_group": {"type": "string", "default": "percent"},
+        "current_group": {"type": "string", "default": "current"},
+        "total_group": {"type": "string", "default": "total"},
+        "stage_group": {"type": "string", "default": "stage"}
+      }
+    },
+    "progress_stage": {
+      "type": "object",
+      "required": ["id", "label", "pattern", "weight"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]+$"},
+        "label": {"type": "string"},
+        "pattern": {"type": "string"},
+        "weight": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "bids_app_contract": {
+      "type": "object",
+      "required": ["analysis_levels"],
+      "additionalProperties": false,
+      "properties": {
+        "analysis_levels": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "analysis_level_parameter": {"type": "string", "default": "analysis_level"},
+        "derivative_name": {"type": "string"},
+        "participant_parameter": {"type": "string"},
+        "session_parameter": {"type": "string"},
+        "task_parameter": {"type": "string"},
+        "run_parameter": {"type": "string"},
+        "work_directory_parameter": {"type": "string"},
+        "input_mount": {"type": "string", "pattern": "^/"},
+        "output_mount": {"type": "string", "pattern": "^/"},
+        "work_mount": {"type": "string", "pattern": "^/"},
+        "environment": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}}
+      }
+    },
+    "reporting_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "html_globs": {"type": "array", "items": {"type": "string"}},
+        "figure_globs": {"type": "array", "items": {"type": "string"}},
+        "metric_globs": {"type": "array", "items": {"type": "string"}},
+        "qc_artifact_types": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "methods_contract": {
+      "type": "object",
+      "required": ["summary"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "Methods prose template. Supports {display_name}, {version}, {execution}, and {runtime}."
+        },
+        "runtime_version_pattern": {
+          "type": "string",
+          "description": "Optional regex with a named 'version' group parsed from tool logs. When present, recorded methods use runtime evidence rather than only the image tag."
+        },
+        "citations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/citation"}
+        }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "required": ["key", "authors", "year", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {"type": "string"},
+        "authors": {"type": "string"},
+        "year": {"type": "integer", "minimum": 1800},
+        "title": {"type": "string"},
+        "journal": {"type": "string"},
+        "volume": {"type": "string"},
+        "issue": {"type": "string"},
+        "pages": {"type": "string"},
+        "doi": {"type": "string"},
+        "rrid": {"type": "string"}
+      }
+    },
     "parameter": {
       "type": "object",
       "required": [
@@ -392,7 +529,7 @@
         "internal": {
           "type": "boolean",
           "default": false,
-          "description": "If true, this parameter can receive manifest/lineage values but is not rendered in the UI and is never emitted as a CLI flag. Use for NeuroForge orchestration metadata, not tool arguments."
+          "description": "If true, this parameter can receive manifest/lineage values but is not rendered in the UI and is never emitted as a CLI flag. Use for Neuravian orchestration metadata, not tool arguments."
         }
       }
     },

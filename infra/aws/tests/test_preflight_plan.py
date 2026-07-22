@@ -10,7 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / "infra/aws/scripts"
-EXAMPLE = ROOT / "infra/aws/config/neuroforge-x86.env.example"
+EXAMPLE = ROOT / "infra/aws/config/neuravian-x86.env.example"
 
 
 FAKE_AWS = r'''#!/usr/bin/env python3
@@ -34,7 +34,7 @@ responses = {
     ("sts", "get-caller-identity"): {
         "UserId": "AIDATEST",
         "Account": account,
-        "Arn": f"arn:aws:iam::{account}:{'root' if root else 'user/neuroforge-test'}",
+        "Arn": f"arn:aws:iam::{account}:{'root' if root else 'user/neuravian-test'}",
     },
     ("ec2", "describe-vpcs"): {"Vpcs": [{"VpcId": "vpc-abc123", "State": "available", "IsDefault": True}]},
     ("ec2", "describe-subnets"): {"Subnets": [{"SubnetId": "subnet-abc123", "VpcId": "vpc-abc123", "State": "available", "MapPublicIpOnLaunch": True, "AvailabilityZone": "us-east-1a"}]},
@@ -248,7 +248,7 @@ def test_config_parser_rejects_command_substitution(harness: dict) -> None:
 def test_iam_plan_is_scoped_permissionless_and_idempotent(harness: dict) -> None:
     result = run_script(harness, "02-bootstrap-iam.sh")
     assert result.returncode == 0, result.stderr
-    plan_root = ROOT / ".neuroforge-aws/plans"
+    plan_root = ROOT / ".neuravian-aws/plans"
     plan_path = plan_root / "iam-plan-nf-x86-test0001.json"
     plan = json.loads(plan_path.read_text())
     assert plan["status"] == "GO"
@@ -278,7 +278,7 @@ def test_iam_apply_is_blocked_without_reserved_future_approval(harness: dict) ->
         "02-bootstrap-iam.sh",
         "--apply",
         "--confirmation",
-        "CREATE NEUROFORGE IAM",
+        "CREATE NEURAVIAN IAM",
     )
     assert result.returncode != 0
     assert "Live AWS automation approval is absent" in result.stderr
@@ -287,10 +287,10 @@ def test_iam_apply_is_blocked_without_reserved_future_approval(harness: dict) ->
 
 def test_committed_iam_templates_are_valid_json_and_contain_no_user_key_actions() -> None:
     paths = [
-        ROOT / "infra/aws/iam/neuroforge-deployer-trust-policy.json",
-        ROOT / "infra/aws/iam/neuroforge-instance-trust-policy.json",
-        ROOT / "infra/aws/iam/neuroforge-instance-role-policy.json",
-        ROOT / "infra/aws/policies/neuroforge-deployer-policy.json",
+        ROOT / "infra/aws/iam/neuravian-deployer-trust-policy.json",
+        ROOT / "infra/aws/iam/neuravian-instance-trust-policy.json",
+        ROOT / "infra/aws/iam/neuravian-instance-role-policy.json",
+        ROOT / "infra/aws/policies/neuravian-deployer-policy.json",
     ]
     documents = [json.loads(path.read_text()) for path in paths]
     encoded = json.dumps(documents)
@@ -305,7 +305,7 @@ def test_provision_dry_run_generates_exact_safe_request(harness: dict) -> None:
     assert result.returncode == 0, result.stderr
     request_path = (
         ROOT
-        / ".neuroforge-aws/plans/provision-nf-x86-test0001/run-instances.json"
+        / ".neuravian-aws/plans/provision-nf-x86-test0001/run-instances.json"
     )
     request = json.loads(request_path.read_text())
     assert request["MinCount"] == request["MaxCount"] == 1
@@ -369,7 +369,7 @@ def test_wait_and_deploy_dry_runs_are_non_mutating(harness: dict) -> None:
     wait = run_script(harness, "04-wait-and-verify.sh", "--dry-run")
     assert wait.returncode == 0, wait.stderr
     assert "no container or scientific pipeline ran" in wait.stdout
-    deploy = run_script(harness, "05-deploy-neuroforge.sh", "--dry-run")
+    deploy = run_script(harness, "05-deploy-neuravian.sh", "--dry-run")
     assert deploy.returncode == 0, deploy.stderr
     assert "no scientific pipeline" in deploy.stdout.lower()
     assert "127.0.0.1:3000" in deploy.stdout
@@ -380,10 +380,10 @@ def test_wait_and_deploy_dry_runs_are_non_mutating(harness: dict) -> None:
 def test_deploy_apply_is_blocked_before_state_or_network(harness: dict) -> None:
     result = run_script(
         harness,
-        "05-deploy-neuroforge.sh",
+        "05-deploy-neuravian.sh",
         "--apply",
         "--confirmation",
-        "DEPLOY LOCAL-ONLY NEUROFORGE",
+        "DEPLOY LOCAL-ONLY NEURAVIAN",
     )
     assert result.returncode != 0
     assert "Live AWS automation approval is absent" in result.stderr
@@ -418,7 +418,7 @@ def test_optional_budget_apply_is_separately_blocked(harness: dict) -> None:
         "--email",
         "researcher@example.org",
         "--confirmation",
-        "CREATE NEUROFORGE BUDGET",
+        "CREATE NEURAVIAN BUDGET",
     )
     assert result.returncode != 0
     assert "Live AWS automation approval is absent" in result.stderr
@@ -427,7 +427,7 @@ def test_optional_budget_apply_is_separately_blocked(harness: dict) -> None:
 
 def test_optional_budget_policy_uses_documented_iam_actions() -> None:
     policy = json.loads(
-        (ROOT / "infra/aws/policies/neuroforge-optional-budget-policy.json").read_text()
+        (ROOT / "infra/aws/policies/neuravian-optional-budget-policy.json").read_text()
     )
     assert policy["Statement"][0]["Action"] == ["budgets:ModifyBudget", "budgets:ViewBudget"]
     assert policy["Statement"][1] == {

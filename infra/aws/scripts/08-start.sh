@@ -50,13 +50,13 @@ verify_owned_instance "${STATE_PATH}" "${OWNERSHIP_JSON}"
 SG_ID="$(state_value "${STATE_PATH}" security_group_id)"
 aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${INSTANCE_ID}" >/dev/null
 aws ec2 wait instance-status-ok --region "${AWS_REGION}" --instance-ids "${INSTANCE_ID}"
-SG_JSON="$(mktemp "${TMPDIR:-/tmp}/neuroforge-sg.XXXXXX")"
+SG_JSON="$(mktemp "${TMPDIR:-/tmp}/neuravian-sg.XXXXXX")"
 aws ec2 describe-security-groups --region "${AWS_REGION}" --group-ids "${SG_ID}" --output json >"${SG_JSON}"
 OLD_CIDR="$(python3 - "${SG_JSON}" "${RESOLVED_DEPLOYMENT_ID}" <<'PY'
 import json, sys
 group = json.load(open(sys.argv[1]))["SecurityGroups"][0]
 tags = {item["Key"]: item["Value"] for item in group.get("Tags", [])}
-assert tags.get("Project") == "NeuroForge" and tags.get("Purpose") == "x86-verification" and tags.get("ManagedBy") == "NeuroForgeProvisioner" and tags.get("DeploymentId") == sys.argv[2]
+assert tags.get("Project") == "Neuravian" and tags.get("Purpose") == "x86-verification" and tags.get("ManagedBy") == "NeuravianProvisioner" and tags.get("DeploymentId") == sys.argv[2]
 permissions = group["IpPermissions"]
 assert len(permissions) == 1 and permissions[0]["FromPort"] == permissions[0]["ToPort"] == 22
 ranges = permissions[0].get("IpRanges", [])
@@ -69,7 +69,7 @@ if [[ "${OLD_CIDR}" != "${CURRENT_CIDR}" ]]; then
   aws ec2 revoke-security-group-ingress --region "${AWS_REGION}" --group-id "${SG_ID}" \
     --protocol tcp --port 22 --cidr "${OLD_CIDR}"
   aws ec2 authorize-security-group-ingress --region "${AWS_REGION}" --group-id "${SG_ID}" \
-    --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${CURRENT_CIDR},Description=NeuroForge-x86-operator}]" >/dev/null
+    --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${CURRENT_CIDR},Description=Neuravian-x86-operator}]" >/dev/null
 fi
 NEW_IP="$(aws ec2 describe-instances --region "${AWS_REGION}" --instance-ids "${INSTANCE_ID}" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"

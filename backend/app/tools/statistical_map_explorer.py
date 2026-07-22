@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 # ── Matplotlib env setup (must precede import) ────────────────────────────────
-_cache_dir = Path(tempfile.gettempdir()) / "neuroforge-cache"
+_cache_dir = Path(tempfile.gettempdir()) / "neuravian-cache"
 (_cache_dir / "matplotlib").mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_cache_dir / "matplotlib"))
 
@@ -42,7 +42,7 @@ from app.reporting import data_table, document_shell, figure_block, footer, info
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-NEUROFORGE_VERSION = "0.1.0"
+NEURAVIAN_VERSION = "0.1.0"
 
 # Connectivity structure: 6-connectivity (face-adjacent), standard for neuroimaging
 _CONNECTIVITY_6 = ndimage.generate_binary_structure(3, 1)
@@ -293,7 +293,7 @@ def export_cluster_json(
     out_path: Path,
 ) -> None:
     payload = {
-        "schema": "neuroforge-cluster-table-v1",
+        "schema": "neuravian-cluster-table-v1",
         "metadata": metadata,
         "clusters": clusters,
     }
@@ -351,7 +351,7 @@ def render_html_report(
     body += warning_box("Descriptive results only", "Cluster values are not corrected for multiple comparisons. No FWE, FDR, or permutation inference was applied.")
     body += data_table(["Cluster", "Size", "Peak", "Mean", "X (mm)", "Y (mm)", "Z (mm)", "Center of mass (mm)"], table_rows) if clusters else "<p class=\"nf-muted\">No clusters detected above threshold.</p>"
     body += methods_block(f"Thresholding used {metadata.get('direction', '')} values at {metadata.get('threshold', '')}. Clusters smaller than {metadata.get('min_cluster_size', '')} voxels were discarded using 6-connectivity in scipy.ndimage {scipy.__version__}. Coordinates used the NIfTI affine with nibabel {metadata.get('nibabel_version', '')}.")
-    body += "<h2>Software</h2>" + data_table(["Package", "Version", "Role"], [["nibabel", metadata.get("nibabel_version", ""), "NIfTI I/O"], ["scipy", scipy.__version__, "Connected components"], ["numpy", np.__version__, "Array operations"], ["matplotlib", _mpl.__version__, "Overlay figure"], ["NeuroForge", NEUROFORGE_VERSION, "Orchestration and reporting"]])
+    body += "<h2>Software</h2>" + data_table(["Package", "Version", "Role"], [["nibabel", metadata.get("nibabel_version", ""), "NIfTI I/O"], ["scipy", scipy.__version__, "Connected components"], ["numpy", np.__version__, "Array operations"], ["matplotlib", _mpl.__version__, "Overlay figure"], ["Neuravian", NEURAVIAN_VERSION, "Orchestration and reporting"]])
     html = document_shell("Cluster Analysis Report", f"Statistical Map Explorer · {metadata.get('input_filename', 'input artifact')}", body, footer_html=footer("No AI-generated scientific interpretation is included."))
     out_path.write_text(html, encoding="utf-8")
 
@@ -360,7 +360,7 @@ def render_html_report(
 
 def run(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="neuroforge-statistical-map-explorer",
+        prog="neuravian-statistical-map-explorer",
         description=(
             "Threshold a statistical NIfTI map, detect clusters, compute statistics, "
             "and export a publication-quality report."
@@ -435,7 +435,7 @@ def run(argv: list[str] | None = None) -> None:
         "generated_at": timestamp,
         "nibabel_version": nib.__version__,
         "scipy_version": scipy.__version__,
-        "neuroforge_version": NEUROFORGE_VERSION,
+        "neuravian_version": NEURAVIAN_VERSION,
     }
 
     export_cluster_json(clusters, metadata, output_dir / "cluster_table.json")

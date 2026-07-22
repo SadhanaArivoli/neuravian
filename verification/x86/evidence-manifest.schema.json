@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://neuroforge.local/schemas/x86-evidence-manifest.schema.json",
-  "title": "NeuroForge x86 verification evidence manifest",
+  "$id": "https://neuravian.local/schemas/x86-evidence-manifest.schema.json",
+  "title": "Neuravian x86 verification evidence manifest",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "created_at", "git_commit", "fixture_id", "files", "redactions"],

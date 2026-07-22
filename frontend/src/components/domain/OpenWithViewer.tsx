@@ -7,26 +7,26 @@ import {
   type ViewerId,
 } from "../../lib/viewerPlugins";
 
-const PREFERENCE_KEY = "neuroforge.preferredViewer";
+const PREFERENCE_KEY = "neuravian.preferredViewer";
 
 export default function OpenWithViewer({
   runId,
   artifact,
   candidates,
-  onOpenNeuroForge,
+  onOpenNeuravian,
 }: {
   runId: number;
   artifact: ArtifactViewModel;
   candidates: ArtifactViewModel[];
-  onOpenNeuroForge: () => void;
+  onOpenNeuravian: () => void;
 }) {
   const plugins = useMemo(() => compatibleViewers(artifact), [artifact]);
   const [preferred, setPreferred] = useState<ViewerId>(() =>
-    (localStorage.getItem(PREFERENCE_KEY) as ViewerId | null) ?? "neuroforge");
+    (localStorage.getItem(PREFERENCE_KEY) as ViewerId | null) ?? "neuravian");
   const [detections, setDetections] = useState<Record<string, { installed: boolean; reason: string | null }>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [localWorkspaceId, setLocalWorkspaceId] = useState<string | null>(null);
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
 
   useEffect(() => {
     if (!desktop) return;
@@ -40,7 +40,7 @@ export default function OpenWithViewer({
     setPreferred(viewerId);
     localStorage.setItem(PREFERENCE_KEY, viewerId);
     setMessage(null);
-    if (viewerId === "neuroforge") { onOpenNeuroForge(); return; }
+    if (viewerId === "neuravian") { onOpenNeuravian(); return; }
     if (!desktop) {
       setMessage(browserViewerAvailability(plugins.find((plugin) => plugin.id === viewerId)!).reason);
       return;
@@ -78,13 +78,13 @@ export default function OpenWithViewer({
         {plugins.map((plugin) => {
           const disabled = plugin.localOnly && (!desktop || detections[plugin.id]?.installed === false);
           return <option key={plugin.id} value={plugin.id} disabled={disabled}>
-            {plugin.id === "neuroforge" ? "Open With: NeuroForge Viewer" : plugin.displayName}
+            {plugin.id === "neuravian" ? "Open With: Neuravian Viewer" : plugin.displayName}
           </option>;
         })}
       </select>
       {!desktop && plugins.some((plugin) => plugin.localOnly) && (
         <p className="mt-1 max-w-xs text-[9px] text-slate-500">
-          Desktop viewers are unavailable in the browser. Use NeuroForge Desktop to synchronize and launch them.
+          Desktop viewers are unavailable in the browser. Use Neuravian Desktop to synchronize and launch them.
         </p>
       )}
       {message && <p role="status" className="mt-1 max-w-xs text-[9px] text-amber-300">{message}</p>}

@@ -1866,7 +1866,7 @@ interface ClusterTableJson {
     voxel_size_mm?: number[];
     nibabel_version?: string;
     scipy_version?: string;
-    neuroforge_version?: string;
+    neuravian_version?: string;
     runtime_seconds?: number;
     input_filename?: string;
     generated_at?: string;
@@ -3161,7 +3161,7 @@ export default function RunResults({ runId }: Props) {
       {(connectivityMatrices.length > 0 || timeseries.length > 0 || images.length > 0 || connectivityMetadata.length > 0 || roiStatistics.length > 0) && (
         <details className="mt-3">
           <summary className="cursor-pointer select-none text-xs text-gray-400 hover:text-gray-200">
-            Connectivity files ({connectivityMatrices.length + timeseries.length + images.length + connectivityMetadata.length + roiStatistics.length})
+            Figures and analysis files ({connectivityMatrices.length + timeseries.length + images.length + connectivityMetadata.length + roiStatistics.length})
           </summary>
           <ul className="mt-2 space-y-1">
             {[...connectivityMatrices, ...timeseries, ...images, ...connectivityMetadata, ...roiStatistics].map((file) => (

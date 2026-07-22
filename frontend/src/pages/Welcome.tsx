@@ -321,12 +321,12 @@ function addCounts(left: HomeWorkspaceCounts, right: HomeWorkspaceCounts): HomeW
 export default function Welcome() {
   const { data: pipelines, isLoading: pipelinesLoading, isError: pipelinesError } = usePipelines();
   const workspace = useWorkspace();
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
   const [workspaceCounts, setWorkspaceCounts] = useState<HomeWorkspaceCounts | null>(null);
   const [workspaceCountsError, setWorkspaceCountsError] = useState<string | null>(null);
 
   const workspaceLabel = useMemo(() => workspace.selected === "local"
-    ? "Local NeuroForge"
+    ? "Local Neuravian"
     : workspace.selected === "all"
       ? "All Workspaces"
       : workspace.cloudProfiles.find((profile) => `cloud:${profile.id}` === workspace.selected)?.name ?? "Cloud workspace",
@@ -372,7 +372,7 @@ export default function Welcome() {
         <div className="max-w-2xl">
           <div className="flex items-center gap-2 mb-4 sm:mb-5">
             <span className="inline-block w-1.5 h-5 rounded-full bg-accent" />
-            <span className="text-xs font-mono text-gray-500 tracking-wider">v0.1.0-alpha</span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-gray-300">Early Access · v0.1.0</span>
             {desktop && <span data-testid="home-workspace-context" className="rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent">
               Current workspace: {workspaceLabel}
             </span>}
@@ -383,8 +383,8 @@ export default function Welcome() {
             <span className="text-accent">without the command line.</span>
           </h1>
           <p className="text-base sm:text-lg text-gray-400 mb-6 sm:mb-8 max-w-xl">
-            NeuroForge wraps established neuroimaging tools — FSL, FreeSurfer,
-            fMRIPrep, and more — in one guided, local-first workspace with
+            Neuravian wraps established neuroimaging tools — MRIQC, selected FSL
+            tools, fMRIPrep, FastSurfer, and more — in one guided, local-first workspace with
             optional cloud handoff for supported workflows.
           </p>
           <div className="flex items-center gap-3 flex-wrap">
@@ -393,13 +393,13 @@ export default function Welcome() {
               state={{ createProject: true }}
               className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
             >
-              Create Your First Project →
+              Create a project
             </Link>
             <Link
               to="/datasets"
               className="rounded-md border border-white/15 px-5 py-2.5 text-sm font-medium text-gray-300 hover:border-white/30 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-surface"
             >
-              Import a Dataset
+              Import a dataset
             </Link>
           </div>
           <div className="mt-6 sm:mt-8 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600 font-mono">
@@ -428,12 +428,12 @@ export default function Welcome() {
 
       {/* ── Value cards ───────────────────────────────────────────────────── */}
       <section className="px-4 sm:px-8 py-10 sm:py-14 border-b border-white/5">
-        <SectionHeading>Why NeuroForge</SectionHeading>
+        <SectionHeading>Why Neuravian</SectionHeading>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl">
           {[
             {
               icon: <IconShield />,
-              title: "Self-Hosted",
+              title: "Local by default",
               body: "Local execution is the default. Cloud transfer requires an explicit workspace and handoff confirmation.",
             },
             {
@@ -443,7 +443,7 @@ export default function Welcome() {
             },
             {
               icon: <IconCpu />,
-              title: "Hardware-Aware",
+              title: "Hardware aware",
               body: "Compute profiles tell you what will run on your hardware before you start.",
             },
           ].map(({ icon, title, body }) => (
@@ -525,7 +525,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ── Why NeuroForge ────────────────────────────────────────────────── */}
+      {/* ── Why Neuravian ────────────────────────────────────────────────── */}
       <section className="px-4 sm:px-8 py-10 sm:py-14 border-b border-white/5">
         <SectionHeading>What makes it different</SectionHeading>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
@@ -617,13 +617,13 @@ export default function Welcome() {
       <footer className="px-4 sm:px-8 py-8 sm:py-10">
         <div className="flex items-center justify-between flex-wrap gap-4 max-w-5xl">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-gray-300">NeuroForge</span>
+            <span className="text-sm font-semibold text-gray-300">Neuravian</span>
             <span className="text-gray-700 text-sm">·</span>
-            <span className="text-xs text-gray-600 font-mono">v0.1.0-alpha</span>
+            <span className="text-xs text-gray-600">Early Access · v0.1.0</span>
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-500">
             <a
-              href="https://github.com/SadhanaArivoli/neuroforge"
+              href="https://github.com/SadhanaArivoli/neuravian"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
@@ -633,7 +633,7 @@ export default function Welcome() {
             </a>
             <span>Apache 2.0</span>
             <a
-              href="https://github.com/SadhanaArivoli/neuroforge/blob/main/docs/quickstart.md"
+              href="https://github.com/SadhanaArivoli/neuravian/blob/main/docs/quickstart.md"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"

@@ -57,7 +57,7 @@ def test_evidence_zip_redacts_subject_and_home_path(tmp_path: Path) -> None:
     evidence = tmp_path / "evidence"
     (evidence / "logs").mkdir(parents=True)
     (evidence / "logs/run.log").write_text(
-        "processed sub-01 at /home/researcher/neuroforge\n"
+        "processed sub-01 at /home/researcher/neuravian\n"
     )
     output = tmp_path / "bundle.zip"
 

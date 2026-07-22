@@ -1,7 +1,7 @@
 """Atlas ROI Extraction native pipeline.
 
 Extracts quantitative per-ROI statistics from any compatible scalar 3D (or
-aggregated 4D) NIfTI artifact using an existing NeuroForge atlas.  Designed
+aggregated 4D) NIfTI artifact using an existing Neuravian atlas.  Designed
 to generalise the ROI statistics produced by functional-connectivity to
 arbitrary scalar maps: brain masks, skull-stripped T1s, seed connectivity
 maps, mean functional images, and future statistical maps.
@@ -21,7 +21,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-_cache_dir = Path(tempfile.gettempdir()) / "neuroforge-cache"
+_cache_dir = Path(tempfile.gettempdir()) / "neuravian-cache"
 (_cache_dir / "matplotlib").mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_cache_dir / "matplotlib"))
 os.environ.setdefault("XDG_CACHE_HOME", str(_cache_dir))
@@ -347,7 +347,7 @@ def run(argv: list[str]) -> int:
     aggregation_mode: str = args.aggregation_mode
 
     # ── Load input ─────────────────────────────────────────────────────────────
-    print(f"[neuroforge] Loading input: {input_path}")
+    print(f"[neuravian] Loading input: {input_path}")
     try:
         img: nib.Nifti1Image = nib.load(str(input_path))
     except Exception as exc:
@@ -367,14 +367,14 @@ def run(argv: list[str]) -> int:
 
     data = np.asanyarray(img.dataobj)
     if ndim == 4:
-        print(f"[neuroforge] 4D input detected ({img.shape}); applying '{aggregation_mode}' aggregation.")
+        print(f"[neuravian] 4D input detected ({img.shape}); applying '{aggregation_mode}' aggregation.")
         data = _aggregate_4d(data, aggregation_mode)
 
     is_binary = _is_binary_mask(data)
-    print(f"[neuroforge] Image shape: {img.shape[:3]}, binary_mask={is_binary}")
+    print(f"[neuravian] Image shape: {img.shape[:3]}, binary_mask={is_binary}")
 
     # ── Load atlas ─────────────────────────────────────────────────────────────
-    print(f"[neuroforge] Loading atlas: {atlas_id}")
+    print(f"[neuravian] Loading atlas: {atlas_id}")
     data_dir = str(_cache_dir / "nilearn_data")
     loaded: LoadedAtlas = load_atlas(atlas_id, data_dir)
     atlas_img: nib.Nifti1Image = nib.load(loaded.labels_img)
@@ -396,7 +396,7 @@ def run(argv: list[str]) -> int:
 
     if resampling_performed:
         print(
-            f"[neuroforge] Resampling atlas from {tuple(geo['atlas_shape'])} to "
+            f"[neuravian] Resampling atlas from {tuple(geo['atlas_shape'])} to "
             f"{tuple(geo['image_shape'])} using nearest-neighbour interpolation."
         )
         atlas_img_resampled = resample_img(
@@ -408,7 +408,7 @@ def run(argv: list[str]) -> int:
         )
         resampled_atlas_path = output_dir / "atlas_resampled.nii.gz"
         nib.save(atlas_img_resampled, str(resampled_atlas_path))
-        print(f"[neuroforge] Saved resampled atlas: {resampled_atlas_path}")
+        print(f"[neuravian] Saved resampled atlas: {resampled_atlas_path}")
     else:
         atlas_img_resampled = atlas_img
 
@@ -416,7 +416,7 @@ def run(argv: list[str]) -> int:
 
     # ── Extract ROI statistics ─────────────────────────────────────────────────
     print(
-        f"[neuroforge] Extracting {len(loaded.roi_labels)} ROIs from "
+        f"[neuravian] Extracting {len(loaded.roi_labels)} ROIs from "
         f"'{loaded.spec.display_name}' atlas."
     )
     rows = extract_all_rois(
@@ -428,7 +428,7 @@ def run(argv: list[str]) -> int:
     )
 
     n_rois_with_voxels = sum(1 for r in rows if r["voxel_count"] > 0)
-    print(f"[neuroforge] {n_rois_with_voxels}/{len(rows)} ROIs have voxels in image space.")
+    print(f"[neuravian] {n_rois_with_voxels}/{len(rows)} ROIs have voxels in image space.")
 
     # ── Write outputs ──────────────────────────────────────────────────────────
     csv_path = output_dir / "roi_extraction.csv"

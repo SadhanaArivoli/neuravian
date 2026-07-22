@@ -2,12 +2,12 @@
 
 ## Responsibility boundary
 
-NeuroForge remains the system of record for projects, datasets, runs, provenance,
+Neuravian remains the system of record for projects, datasets, runs, provenance,
 methods, and artifact relationships. External viewers are local visualization
 backends. They receive only cache-scoped artifact paths and never modify run
 outputs.
 
-The built-in NeuroForge Viewer remains the first registered plugin and the
+The built-in Neuravian Viewer remains the first registered plugin and the
 default in every environment.
 
 ## Canonical verification
@@ -39,14 +39,14 @@ scientific applications must declare and report those dependencies separately.
 - compatibility checks
 - launch-preset and argument-array generation
 
-The initial registry contains NeuroForge Viewer, FreeView, and MRIcroGL. Future
+The initial registry contains Neuravian Viewer, FreeView, and MRIcroGL. Future
 viewers can be added as registry entries without adding viewer-specific branches
 to run pages.
 
 ## Browser and desktop behavior
 
 In a browser deployment, FreeView and MRIcroGL are disabled with an explanation
-that native applications require NeuroForge Desktop. No broken native-launch
+that native applications require Neuravian Desktop. No broken native-launch
 button is shown.
 
 In the Electron deployment, the preload bridge exposes only:
@@ -77,7 +77,7 @@ contains a stable run-scoped artifact ID, relative path, byte count, SHA-256
 checksum, download URL, and volume geometry when applicable. Host dataset,
 output, license, credential, and absolute path values are removed or redacted.
 
-NeuroForge Desktop stores each run once under its private user-data cache:
+Neuravian Desktop stores each run once under its private user-data cache:
 
 ```text
 run-cache/
@@ -94,14 +94,14 @@ reports, artifact IDs, and checksums. Unchanged files are not downloaded again.
 ## Scientific pairing
 
 Preset pairing is constrained by subject, requested base role, and anatomical
-space. Before any multi-volume desktop launch, NeuroForge compares recorded:
+space. Before any multi-volume desktop launch, Neuravian compares recorded:
 
 - shape
 - voxel size
 - orientation axis codes
 - full affine
 
-A missing or unequal geometry blocks launch. NeuroForge never silently
+A missing or unequal geometry blocks launch. Neuravian never silently
 resamples an artifact.
 
 FreeView presets pass the anatomical base and overlay as separate arguments,
@@ -144,7 +144,7 @@ layers before exiting successfully. Source artifacts were not modified.
 
 - Versioned FreeSurfer installations may require a configured absolute FreeView
   executable plus the installation's existing `FREESURFER_HOME` and
-  `FS_LICENSE` process environment. NeuroForge does not create, copy, or modify
+  `FS_LICENSE` process environment. Neuravian does not create, copy, or modify
   a FreeSurfer license.
 - MRIcroGL execution remains pending because MRIcroGL was not installed on the
   verification workstation.

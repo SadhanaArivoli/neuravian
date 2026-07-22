@@ -1,4 +1,4 @@
-# NeuroForge x86 verification: AWS launch checklist
+# Neuravian x86 verification: AWS launch checklist
 
 Status: **pre-launch only**. No AWS resource has been created. Prices were
 checked at `2026-07-15T00:30:15Z` for Linux On-Demand in `us-east-1` (N.
@@ -68,12 +68,12 @@ export AWS_REGION=us-east-1
 export APPLICATION_BASELINE_COMMIT=aec1aea247659f43a92a8f2fc39208d15a68914a
 export VM_PREPARATION_COMMIT=8b9614c328463c9dfcb5337303cadde447985299
 export INSTANCE_TYPE=m7i.2xlarge
-export KEY_NAME=neuroforge-x86-oneoff
-export KEY_FILE="$HOME/.ssh/neuroforge-x86-oneoff.pem"
-export SG_NAME=neuroforge-x86-ssh-oneoff
+export KEY_NAME=neuravian-x86-oneoff
+export KEY_FILE="$HOME/.ssh/neuravian-x86-oneoff.pem"
+export SG_NAME=neuravian-x86-ssh-oneoff
 export FS_LICENSE_LOCAL="$HOME/freesurfer/license.txt"
-export VM_FIXTURE=neuroforge-fixture
-export VM_LICENSE=.neuroforge-secrets/freesurfer-license.txt
+export VM_FIXTURE=neuravian-fixture
+export VM_LICENSE=.neuravian-secrets/freesurfer-license.txt
 export MY_IP="$(curl -fsS --connect-timeout 10 --max-time 30 https://checkip.amazonaws.com | tr -d '\n')"
 export MY_CIDR="${MY_IP}/32"
 test -n "$MY_IP"
@@ -97,7 +97,7 @@ Console settings:
 - Metadata: enabled, IMDSv2 required, hop limit 2.
 - Termination protection: enabled. Stop protection: disabled so Session A can
   end safely. Shutdown behavior: stop.
-- Tag: `Name=neuroforge-x86-verification` and `Purpose=oneoff-x86-verification`.
+- Tag: `Name=neuravian-x86-verification` and `Purpose=oneoff-x86-verification`.
 
 Resolve Canonical's current AMI rather than hard-coding an AMI that can age:
 
@@ -120,7 +120,7 @@ aws ec2 create-key-pair --region "$AWS_REGION" --key-name "$KEY_NAME" \
 chmod 600 "$KEY_FILE"
 
 export SG_ID="$(aws ec2 create-security-group --region "$AWS_REGION" \
-  --group-name "$SG_NAME" --description 'Temporary NeuroForge SSH from one IP' \
+  --group-name "$SG_NAME" --description 'Temporary Neuravian SSH from one IP' \
   --vpc-id "$VPC_ID" --query 'GroupId' --output text)"
 aws ec2 authorize-security-group-ingress --region "$AWS_REGION" \
   --group-id "$SG_ID" --protocol tcp --port 22 --cidr "$MY_CIDR"
@@ -132,7 +132,7 @@ export INSTANCE_ID="$(aws ec2 run-instances --region "$AWS_REGION" \
   --metadata-options 'HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=2' \
   --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=200,VolumeType=gp3,Iops=3000,Throughput=125,Encrypted=true,DeleteOnTermination=true}' \
   --instance-initiated-shutdown-behavior stop \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=neuroforge-x86-verification},{Key=Purpose,Value=oneoff-x86-verification}]' \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=neuravian-x86-verification},{Key=Purpose,Value=oneoff-x86-verification}]' \
   --query 'Instances[0].InstanceId' --output text)"
 aws ec2 wait instance-status-ok --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 export VM_IP="$(aws ec2 describe-instances --region "$AWS_REGION" \
@@ -166,16 +166,16 @@ validates every byte on the VM using the committed SHA-256 manifest:
   --host "ubuntu@$VM_IP" \
   --identity-file "$KEY_FILE" \
   --destination "$VM_FIXTURE" \
-  --repo-dir neuroforge
+  --repo-dir neuravian
 ```
 
 Transfer the license separately without printing it:
 
 ```bash
-ssh -i "$KEY_FILE" "ubuntu@$VM_IP" 'install -d -m 700 "$HOME/.neuroforge-secrets"'
-scp -i "$KEY_FILE" -p "$FS_LICENSE_LOCAL" "ubuntu@$VM_IP:/tmp/neuroforge-fs-license"
+ssh -i "$KEY_FILE" "ubuntu@$VM_IP" 'install -d -m 700 "$HOME/.neuravian-secrets"'
+scp -i "$KEY_FILE" -p "$FS_LICENSE_LOCAL" "ubuntu@$VM_IP:/tmp/neuravian-fs-license"
 ssh -i "$KEY_FILE" "ubuntu@$VM_IP" \
-  'install -m 600 /tmp/neuroforge-fs-license "$HOME/.neuroforge-secrets/freesurfer-license.txt" && rm -f /tmp/neuroforge-fs-license && test -s "$HOME/.neuroforge-secrets/freesurfer-license.txt" && test "$(stat -c %a "$HOME/.neuroforge-secrets/freesurfer-license.txt")" = 600'
+  'install -m 600 /tmp/neuravian-fs-license "$HOME/.neuravian-secrets/freesurfer-license.txt" && rm -f /tmp/neuravian-fs-license && test -s "$HOME/.neuravian-secrets/freesurfer-license.txt" && test "$(stat -c %a "$HOME/.neuravian-secrets/freesurfer-license.txt")" = 600'
 ```
 
 ## Session A: readiness and smoke gates
@@ -187,14 +187,14 @@ gp3/IPv4 ceiling: about `$1.72`.
 
 ```bash
 ssh -i "$KEY_FILE" "ubuntu@$VM_IP"
-cd "$HOME/neuroforge"
+cd "$HOME/neuravian"
 test "$(git rev-parse HEAD)" = "$VM_PREPARATION_COMMIT"
 git merge-base --is-ancestor "$APPLICATION_BASELINE_COMMIT" HEAD
-export FIXTURE_DIR="$HOME/neuroforge-fixture"
-export FS_LICENSE="$HOME/.neuroforge-secrets/freesurfer-license.txt"
-export EVIDENCE_DIR="$HOME/neuroforge/verification/x86/evidence"
+export FIXTURE_DIR="$HOME/neuravian-fixture"
+export FS_LICENSE="$HOME/.neuravian-secrets/freesurfer-license.txt"
+export EVIDENCE_DIR="$HOME/neuravian/verification/x86/evidence"
 verification/x86/commands/00-system-check.sh
-verification/x86/commands/01-neuroforge-health.sh
+verification/x86/commands/01-neuravian-health.sh
 verification/x86/commands/02-pydeface-verify.sh
 verification/x86/commands/03-fmriprep-verify.sh --mode smoke
 verification/x86/commands/04-fastsurfer-smoke.sh
@@ -207,8 +207,8 @@ free after pulls/build, or smoke failure without an accepted progress marker.
 Do not run Session B. Download and verify the evidence archive before stopping:
 
 ```bash
-scp -i "$KEY_FILE" "ubuntu@$VM_IP:neuroforge/verification/x86/neuroforge-x86-evidence.zip" ./
-unzip -t neuroforge-x86-evidence.zip
+scp -i "$KEY_FILE" "ubuntu@$VM_IP:neuravian/verification/x86/neuravian-x86-evidence.zip" ./
+unzip -t neuravian-x86-evidence.zip
 aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 ```
@@ -230,17 +230,17 @@ aws ec2 start-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 aws ec2 wait instance-status-ok --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 export VM_IP="$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"
 ssh -i "$KEY_FILE" "ubuntu@$VM_IP"
-cd "$HOME/neuroforge"
+cd "$HOME/neuravian"
 test "$(git rev-parse HEAD)" = "$VM_PREPARATION_COMMIT"
 git merge-base --is-ancestor "$APPLICATION_BASELINE_COMMIT" HEAD
-export FIXTURE_DIR="$HOME/neuroforge-fixture"
-export FS_LICENSE="$HOME/.neuroforge-secrets/freesurfer-license.txt"
-export EVIDENCE_DIR="$HOME/neuroforge/verification/x86/evidence"
+export FIXTURE_DIR="$HOME/neuravian-fixture"
+export FS_LICENSE="$HOME/.neuravian-secrets/freesurfer-license.txt"
+export EVIDENCE_DIR="$HOME/neuravian/verification/x86/evidence"
 verification/x86/commands/00-system-check.sh
-verification/x86/commands/01-neuroforge-health.sh
-df -h "$HOME/neuroforge"
+verification/x86/commands/01-neuravian-health.sh
+df -h "$HOME/neuravian"
 verification/x86/commands/03-fmriprep-verify.sh --mode full
-df -h "$HOME/neuroforge"
+df -h "$HOME/neuravian"
 verification/x86/commands/05-fastsurfer-full.sh
 verification/x86/commands/06-output-validation.sh
 verification/x86/commands/07-collect-evidence.sh
@@ -281,7 +281,7 @@ aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
 
 # Final license removal before final evidence/termination
-ssh -i "$KEY_FILE" "ubuntu@$VM_IP" 'rm -f "$HOME/.neuroforge-secrets/freesurfer-license.txt" && rmdir "$HOME/.neuroforge-secrets"'
+ssh -i "$KEY_FILE" "ubuntu@$VM_IP" 'rm -f "$HOME/.neuravian-secrets/freesurfer-license.txt" && rmdir "$HOME/.neuravian-secrets"'
 
 # Irreversible final cleanup
 aws ec2 modify-instance-attribute --region "$AWS_REGION" --instance-id "$INSTANCE_ID" --no-disable-api-termination

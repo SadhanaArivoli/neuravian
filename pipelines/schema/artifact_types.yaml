@@ -1,8 +1,89 @@
-# NeuroForge artifact type vocabulary.
+# Neuravian artifact type vocabulary.
 # Each slug is stable — rename only with a migration.
 # Manifests reference these slugs in accepts[].type and produces[].type.
 
 artifact_types:
+
+  # Format-level types used by large external suites. Pipeline-specific types
+  # should be preferred when semantics are known; these prevent each future
+  # integration from inventing a new name for standard neuroimaging formats.
+  surface_geometry:
+    label: "Surface Geometry"
+    description: "Cortical or other mesh geometry"
+    family: surface
+    role: surface-geometry
+    media_type: application/octet-stream
+    extensions: [".surf", ".pial", ".white", ".inflated", ".sphere", ".gii", ".surf.gii"]
+  surface_annotation:
+    label: "Surface Annotation"
+    description: "Parcel, label, or scalar data associated with a surface"
+    family: surface
+    role: surface-annotation
+    media_type: application/octet-stream
+    extensions: [".annot", ".label", ".shape.gii", ".label.gii"]
+  spatial_transform:
+    label: "Spatial Transform"
+    description: "Affine, nonlinear, or composite spatial transform"
+    family: transform
+    role: spatial-transform
+    media_type: application/octet-stream
+    extensions: [".mat", ".lta", ".xfm", ".h5", ".txt"]
+  statistics_table:
+    label: "Statistics Table"
+    description: "Tabular regional, surface, or image-derived statistics"
+    family: table
+    role: segmentation-statistics
+    media_type: text/tab-separated-values
+    extensions: [".stats", ".tsv", ".csv"]
+  html_report:
+    label: "HTML Report"
+    description: "Interactive or static quality-control report"
+    family: report
+    role: quality-report
+    media_type: text/html
+    extensions: [".html", ".htm"]
+  quality_control_figure:
+    label: "Quality-Control Figure"
+    description: "A report figure or reportlet generated for visual quality control"
+    family: image
+    role: quality-control-figure
+    media_type: image/*
+    extensions: [".svg", ".png", ".jpg", ".jpeg"]
+  structured_metadata:
+    label: "Structured Metadata"
+    description: "Machine-readable metadata or provenance"
+    family: metadata
+    role: metadata
+    media_type: application/json
+    extensions: [".json", ".jsonld"]
+  cifti_image:
+    label: "CIFTI Image"
+    description: "Combined cortical surface and subcortical grayordinate data"
+    family: surface-volume
+    role: functional-timeseries
+    media_type: application/octet-stream
+    extensions: [".dscalar.nii", ".dtseries.nii", ".dlabel.nii", ".pconn.nii", ".ptseries.nii"]
+  gifti_image:
+    label: "GIFTI Image"
+    description: "Surface geometry, labels, or scalar data in GIFTI format"
+    family: surface
+    role: surface-scalar
+    media_type: application/octet-stream
+    extensions: [".gii", ".surf.gii", ".shape.gii", ".label.gii", ".func.gii"]
+  freesurfer_volume:
+    label: "FreeSurfer Volume"
+    description: "FreeSurfer MGH or compressed MGZ volume"
+    family: volume
+    role: structural
+    media_type: application/octet-stream
+    extensions: [".mgh", ".mgz"]
+  lookup_table:
+    label: "Lookup Table"
+    description: "Label names and display colors for a segmentation or annotation"
+    family: metadata
+    role: lookup-table
+    media_type: text/plain
+    extensions: [".lut", ".ctab", ".txt", ".tsv"]
 
   alff_map_nii:
     label: "Raw ALFF Map"
@@ -70,16 +151,25 @@ artifact_types:
     label: "MRIQC Report"
     description: "MRIQC participant-level output directory containing subject HTML reports and IQM JSON files"
     extensions: []
+    family: report
+    role: quality_control
+    media_type: application/x-directory
 
   mriqc_group_report:
     label: "MRIQC Group Report"
     description: "MRIQC group-level output directory containing aggregate HTML reports and group IQM TSV tables"
     extensions: []
+    family: report
+    role: quality_control
+    media_type: application/x-directory
 
   fmriprep_derivatives:
     label: "fMRIPrep Derivatives"
     description: "fMRIPrep output derivatives directory with preprocessed NIfTI and confounds"
     extensions: []
+    family: derivatives
+    role: preprocessed-dataset
+    media_type: application/x-directory
 
   connectivity_matrix_csv:
     label: "Connectivity Matrix CSV"

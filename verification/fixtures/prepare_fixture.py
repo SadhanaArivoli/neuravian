@@ -148,8 +148,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         type=Path,
-        default=os.getenv("NEUROFORGE_FIXTURE_SOURCE"),
-        help="OpenNeuro ds000001 v1.0.0 root (or set NEUROFORGE_FIXTURE_SOURCE)",
+        default=os.getenv("NEURAVIAN_FIXTURE_SOURCE"),
+        help="OpenNeuro ds000001 v1.0.0 root (or set NEURAVIAN_FIXTURE_SOURCE)",
     )
     parser.add_argument(
         "--output",
@@ -166,7 +166,7 @@ def main() -> int:
     args = parse_args()
     if args.source is None:
         print(
-            "error: --source or NEUROFORGE_FIXTURE_SOURCE is required",
+            "error: --source or NEURAVIAN_FIXTURE_SOURCE is required",
             file=sys.stderr,
         )
         return 2

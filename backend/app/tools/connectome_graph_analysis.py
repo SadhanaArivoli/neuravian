@@ -1,7 +1,7 @@
-"""Connectome Graph Analysis — NeuroForge native pipeline.
+"""Connectome Graph Analysis — Neuravian native pipeline.
 
 Reads a functional connectivity matrix (NPY or CSV) produced by a prior
-NeuroForge FC run, constructs a weighted undirected graph, and computes
+Neuravian FC run, constructs a weighted undirected graph, and computes
 graph-theoretic metrics using NetworkX.
 
 Outputs
@@ -40,7 +40,7 @@ try:
 except ImportError:
     _LOUVAIN_AVAILABLE = False
 
-__version__ = "neuroforge-connectome-graph-analysis"
+__version__ = "neuravian-connectome-graph-analysis"
 
 # ── Matrix loading ─────────────────────────────────────────────────────────────
 
@@ -397,8 +397,8 @@ def _sha256(path: Path) -> str:
 
 def run(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="NeuroForge Connectome Graph Analysis",
-        prog="neuroforge-connectome-graph-analysis",
+        description="Neuravian Connectome Graph Analysis",
+        prog="neuravian-connectome-graph-analysis",
     )
     parser.add_argument("--input-matrix", required=True,
                         help="Path to connectivity matrix (.npy or .csv)")
@@ -409,7 +409,7 @@ def run(argv: list[str] | None = None) -> None:
                         help="Threshold value: for proportional, fraction of edges to keep (0–1); "
                              "for absolute, minimum weight (default: 0.25)")
     parser.add_argument("--source-run-id", type=int, default=None,
-                        help="NeuroForge run ID of the FC run that produced the matrix")
+                        help="Neuravian run ID of the FC run that produced the matrix")
     parser.add_argument("--output-dir", required=True,
                         help="Directory to write outputs")
     args = parser.parse_args(argv)
@@ -420,46 +420,46 @@ def run(argv: list[str] | None = None) -> None:
 
     input_path = Path(args.input_matrix)
     if not input_path.exists():
-        print(f"[neuroforge] ERROR: input matrix not found: {input_path}", file=sys.stderr)
+        print(f"[neuravian] ERROR: input matrix not found: {input_path}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[neuroforge] Loading matrix: {input_path}")
+    print(f"[neuravian] Loading matrix: {input_path}")
     matrix, labels = load_matrix(input_path)
     n_nodes = matrix.shape[0]
-    print(f"[neuroforge] Matrix shape: {matrix.shape} ({n_nodes} nodes)")
+    print(f"[neuravian] Matrix shape: {matrix.shape} ({n_nodes} nodes)")
 
-    print(f"[neuroforge] Threshold: {args.threshold_method} @ {args.threshold_value}")
+    print(f"[neuravian] Threshold: {args.threshold_method} @ {args.threshold_value}")
     matrix_thresh = apply_threshold(matrix, args.threshold_method, args.threshold_value)
 
-    print(f"[neuroforge] Building graph …")
+    print(f"[neuravian] Building graph …")
     G = build_graph(matrix_thresh, labels)
-    print(f"[neuroforge] Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    print(f"[neuravian] Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
-    print(f"[neuroforge] Computing global metrics …")
+    print(f"[neuravian] Computing global metrics …")
     global_metrics = compute_global_metrics(G, n_nodes)
 
-    print(f"[neuroforge] Computing node metrics …")
+    print(f"[neuravian] Computing node metrics …")
     node_rows = compute_node_metrics(G, labels)
 
     # Save thresholded adjacency
     adj_path = output_dir / "adjacency_thresholded.npy"
     np.save(adj_path, matrix_thresh)
-    print(f"[neuroforge] Saved adjacency: {adj_path}")
+    print(f"[neuravian] Saved adjacency: {adj_path}")
 
     # Edge list
     edge_path = output_dir / "edge_list.csv"
     _write_edge_csv(edge_path, G, labels)
-    print(f"[neuroforge] Saved edge list: {edge_path}")
+    print(f"[neuravian] Saved edge list: {edge_path}")
 
     # Node metrics CSV
     node_csv_path = output_dir / "node_metrics.csv"
     _write_node_csv(node_csv_path, node_rows)
-    print(f"[neuroforge] Saved node metrics: {node_csv_path}")
+    print(f"[neuravian] Saved node metrics: {node_csv_path}")
 
     # Figure
     fig_path = output_dir / "graph_summary.png"
     _write_summary_figure(fig_path, G, node_rows, global_metrics)
-    print(f"[neuroforge] Saved figure: {fig_path}")
+    print(f"[neuravian] Saved figure: {fig_path}")
 
     # Runtime
     runtime = round(time.time() - t_start, 2)
@@ -487,22 +487,22 @@ def run(argv: list[str] | None = None) -> None:
     }
     metrics_path = output_dir / "graph_metrics.json"
     _write_json(metrics_path, metrics_payload)
-    print(f"[neuroforge] Saved graph metrics: {metrics_path}")
+    print(f"[neuravian] Saved graph metrics: {metrics_path}")
 
     # HTML report
     report_path = output_dir / "graph_report.html"
     _write_html_report(report_path, global_metrics, node_rows, provenance)
-    print(f"[neuroforge] Saved report: {report_path}")
+    print(f"[neuravian] Saved report: {report_path}")
 
     provenance["checksums"]["graph_metrics.json"] = _sha256(metrics_path)
     provenance["checksums"]["node_metrics.csv"] = _sha256(node_csv_path)
     provenance["checksums"]["graph_report.html"] = _sha256(report_path)
 
-    print(f"[neuroforge] Done in {runtime}s")
-    print(f"[neuroforge] Global efficiency: {global_metrics.get('global_efficiency')}")
-    print(f"[neuroforge] Modularity Q: {global_metrics.get('modularity')}")
-    print(f"[neuroforge] Communities: {global_metrics.get('n_communities')}")
-    print(f"[neuroforge] Density: {global_metrics.get('density')}")
+    print(f"[neuravian] Done in {runtime}s")
+    print(f"[neuravian] Global efficiency: {global_metrics.get('global_efficiency')}")
+    print(f"[neuravian] Modularity Q: {global_metrics.get('modularity')}")
+    print(f"[neuravian] Communities: {global_metrics.get('n_communities')}")
+    print(f"[neuravian] Density: {global_metrics.get('density')}")
 
 
 def main() -> None:

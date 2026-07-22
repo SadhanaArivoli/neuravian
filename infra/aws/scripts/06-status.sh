@@ -39,15 +39,15 @@ assume_deployer_session "${STATE_PATH}" "${IAM_PLAN_PATH}" "status-${RESOLVED_DE
 trap clear_deployer_session EXIT
 verify_owned_instance "${STATE_PATH}" "${STATE_ROOT}/status-instances.json"
 aws resourcegroupstaggingapi get-resources --region "${AWS_REGION}" \
-  --tag-filters Key=Project,Values=NeuroForge Key=Purpose,Values=x86-verification \
-    Key=ManagedBy,Values=NeuroForgeProvisioner Key=DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
+  --tag-filters Key=Project,Values=Neuravian Key=Purpose,Values=x86-verification \
+    Key=ManagedBy,Values=NeuravianProvisioner Key=DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
   --output json >"${STATE_ROOT}/status-tagged-resources.json"
 python3 - "${STATE_ROOT}/status-instances.json" "${PREFLIGHT_PATH}" <<'PY'
 import json, sys
 i = json.load(open(sys.argv[1]))["Reservations"][0]["Instances"][0]
 p = json.load(open(sys.argv[2]))
 state = i["State"]["Name"]
-print("NeuroForge AWS deployment status")
+print("Neuravian AWS deployment status")
 print(f"  Instance: {i['InstanceId']} ({state})")
 print(f"  Type: {i['InstanceType']}")
 print(f"  Public IPv4 associated: {bool(i.get('PublicIpAddress'))}")

@@ -1,6 +1,6 @@
-# Deploy NeuroForge for native AWS x86 verification
+# Deploy Neuravian for native AWS x86 verification
 
-This guide provisions one temporary, native Linux x86_64 NeuroForge verification
+This guide provisions one temporary, native Linux x86_64 Neuravian verification
 workstation in an AWS account you control. It is for research software
 verification, not participant-data hosting or clinical use.
 
@@ -14,7 +14,7 @@ verification, not participant-data hosting or clinical use.
 - Enable MFA for the AWS account root user manually.
 - Do not create a root access key.
 - Sign in with a non-root console identity authorized to bootstrap the reviewed
-  NeuroForge IAM resources.
+  Neuravian IAM resources.
 - Use AWS CloudShell so the AWS CLI uses the active console session's temporary
   credentials.
 - Do not place AWS credentials, PEM content, participant data, or FreeSurfer
@@ -28,8 +28,8 @@ enrollment and do not attach `AdministratorAccess`.
 **CLOUDSHELL**
 
 ```bash
-git clone https://github.com/SadhanaArivoli/neuroforge.git
-cd neuroforge
+git clone https://github.com/SadhanaArivoli/neuravian.git
+cd neuravian
 git fetch origin main
 git checkout --detach origin/main
 export AUTOMATION_COMMIT="$(git rev-parse HEAD)"
@@ -47,10 +47,10 @@ The VM itself always checks out the distinct frozen verification commit
 **CLOUDSHELL**
 
 ```bash
-mkdir -p .neuroforge-aws
-cp infra/aws/config/neuroforge-x86.env.example .neuroforge-aws/config.env
-chmod 600 .neuroforge-aws/config.env
-sed -n '1,200p' .neuroforge-aws/config.env
+mkdir -p .neuravian-aws
+cp infra/aws/config/neuravian-x86.env.example .neuravian-aws/config.env
+chmod 600 .neuravian-aws/config.env
+sed -n '1,200p' .neuravian-aws/config.env
 ```
 
 After manually confirming root MFA, change `ROOT_MFA_CONFIRMED=false` to
@@ -76,7 +76,7 @@ The target is:
 **CLOUDSHELL**
 
 ```bash
-infra/aws/scripts/00-preflight.sh --config .neuroforge-aws/config.env
+infra/aws/scripts/00-preflight.sh --config .neuravian-aws/config.env
 ```
 
 Require `GO`. The script checks AWS CLI v2, caller identity, root rejection,
@@ -84,15 +84,15 @@ manual root-MFA assertion, current IPv4, region, Canonical AMI and owner,
 x86_64, instance-type shape/availability, vCPU quota and conservatively
 remaining vCPU capacity, default VPC/public subnet,
 existing owned resources, IAM bootstrap capabilities, and current compute/gp3
-pricing. It writes a mode-600 JSON plan under `.neuroforge-aws/plans/`.
+pricing. It writes a mode-600 JSON plan under `.neuravian-aws/plans/`.
 
 ## 5. Resource and IAM plans
 
 **CLOUDSHELL**
 
 ```bash
-infra/aws/scripts/01-plan.sh --config .neuroforge-aws/config.env
-infra/aws/scripts/02-bootstrap-iam.sh --config .neuroforge-aws/config.env
+infra/aws/scripts/01-plan.sh --config .neuravian-aws/config.env
+infra/aws/scripts/02-bootstrap-iam.sh --config .neuravian-aws/config.env
 ```
 
 Both are non-mutating by default. Review the rendered policy files under the
@@ -107,12 +107,12 @@ approval is given in the active review session:
 **CLOUDSHELL**
 
 ```bash
-read -r -s -p 'Live approval: ' NEUROFORGE_AWS_LIVE_APPROVAL; echo
-export NEUROFORGE_AWS_LIVE_APPROVAL
+read -r -s -p 'Live approval: ' NEURAVIAN_AWS_LIVE_APPROVAL; echo
+export NEURAVIAN_AWS_LIVE_APPROVAL
 infra/aws/scripts/02-bootstrap-iam.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
-  --confirmation 'CREATE NEUROFORGE IAM'
+  --confirmation 'CREATE NEURAVIAN IAM'
 ```
 
 Never paste the approval into documentation, CI, shell history, or Git. The
@@ -124,7 +124,7 @@ first IAM bootstrap runs with the current signed-in console identity.
 
 ```bash
 infra/aws/scripts/03-provision.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --dry-run
 ```
 
@@ -138,7 +138,7 @@ An optional budget is a separate, separately approved account mutation:
 ```bash
 # CLOUDSHELL — plan only
 infra/aws/scripts/10-cost-controls.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --limit-usd 15 \
   --dry-run
 ```
@@ -158,11 +158,11 @@ No instance exists yet, so use the structural dry-run:
 
 ```bash
 infra/aws/scripts/11-decommission-plan.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --volume-mode delete-root-volume \
   --dry-run
 infra/aws/scripts/13-decommission-verify.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --dry-run
 ```
 
@@ -174,7 +174,7 @@ Do not launch unless provisioning and decommissioning previews both pass.
 
 ```bash
 infra/aws/scripts/03-provision.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
   --confirmation 'LAUNCH ONE M7I.2XLARGE'
 ```
@@ -195,9 +195,9 @@ printed.
 3. **LOCAL MAC:** save the file outside the Git repository and run:
 
    ```bash
-   chmod 400 "$HOME/.ssh/neuroforge-x86.pem"
-   test -s "$HOME/.ssh/neuroforge-x86.pem"
-   git -C /path/to/neuroforge status --short
+   chmod 400 "$HOME/.ssh/neuravian-x86.pem"
+   test -s "$HOME/.ssh/neuravian-x86.pem"
+   git -C /path/to/neuravian status --short
    ```
 
 4. Confirm the local copy works before removing the CloudShell copy.
@@ -212,7 +212,7 @@ Never display, paste, checksum into public evidence, or commit the PEM.
 
 ```bash
 infra/aws/scripts/04-wait-and-verify.sh \
-  --config .neuroforge-aws/config.env
+  --config .neuravian-aws/config.env
 ```
 
 This verifies EC2 status checks, instance type/architecture/AMI, volume,
@@ -226,9 +226,9 @@ Preview first:
 
 ```bash
 # CLOUDSHELL or LOCAL MAC
-infra/aws/scripts/05-deploy-neuroforge.sh \
-  --config .neuroforge-aws/config.env \
-  --identity-file "$HOME/.ssh/neuroforge-x86.pem" \
+infra/aws/scripts/05-deploy-neuravian.sh \
+  --config .neuravian-aws/config.env \
+  --identity-file "$HOME/.ssh/neuravian-x86.pem" \
   --dry-run
 ```
 
@@ -236,11 +236,11 @@ After live approval:
 
 ```bash
 # CLOUDSHELL or LOCAL MAC
-infra/aws/scripts/05-deploy-neuroforge.sh \
-  --config .neuroforge-aws/config.env \
-  --identity-file "$HOME/.ssh/neuroforge-x86.pem" \
+infra/aws/scripts/05-deploy-neuravian.sh \
+  --config .neuravian-aws/config.env \
+  --identity-file "$HOME/.ssh/neuravian-x86.pem" \
   --apply \
-  --confirmation 'DEPLOY LOCAL-ONLY NEUROFORGE'
+  --confirmation 'DEPLOY LOCAL-ONLY NEURAVIAN'
 ```
 
 Only backend and frontend start. The Compose override must render exactly
@@ -252,7 +252,7 @@ are checked. The script stops before fixture/license transfer or pipelines.
 **LOCAL MAC**
 
 ```bash
-ssh -i "$HOME/.ssh/neuroforge-x86.pem" \
+ssh -i "$HOME/.ssh/neuravian-x86.pem" \
   -L 3000:127.0.0.1:3000 \
   -L 8000:127.0.0.1:8000 \
   "ubuntu@<instance-public-ip>"
@@ -268,9 +268,9 @@ Use `http://127.0.0.1:3000` locally. Never add public security-group rules for
 ```bash
 verification/x86/transfer-fixture.sh \
   --host 'ubuntu@<instance-public-ip>' \
-  --identity-file "$HOME/.ssh/neuroforge-x86.pem" \
-  --destination neuroforge-fixture \
-  --repo-dir neuroforge
+  --identity-file "$HOME/.ssh/neuravian-x86.pem" \
+  --destination neuravian-fixture \
+  --repo-dir neuravian
 ```
 
 The transfer is restricted to the six manifest-listed public files and verifies
@@ -281,12 +281,12 @@ all 52,914,200 bytes. Do not substitute participant data.
 **LOCAL MAC**
 
 ```bash
-ssh -i "$HOME/.ssh/neuroforge-x86.pem" 'ubuntu@<instance-public-ip>' \
-  'install -d -m 700 "$HOME/.neuroforge-secrets"'
-scp -i "$HOME/.ssh/neuroforge-x86.pem" "$HOME/freesurfer/license.txt" \
-  'ubuntu@<instance-public-ip>:/tmp/neuroforge-fs-license'
-ssh -i "$HOME/.ssh/neuroforge-x86.pem" 'ubuntu@<instance-public-ip>' \
-  'install -m 600 /tmp/neuroforge-fs-license "$HOME/.neuroforge-secrets/freesurfer-license.txt" && rm -f /tmp/neuroforge-fs-license && test -s "$HOME/.neuroforge-secrets/freesurfer-license.txt" && test "$(stat -c %a "$HOME/.neuroforge-secrets/freesurfer-license.txt")" = 600'
+ssh -i "$HOME/.ssh/neuravian-x86.pem" 'ubuntu@<instance-public-ip>' \
+  'install -d -m 700 "$HOME/.neuravian-secrets"'
+scp -i "$HOME/.ssh/neuravian-x86.pem" "$HOME/freesurfer/license.txt" \
+  'ubuntu@<instance-public-ip>:/tmp/neuravian-fs-license'
+ssh -i "$HOME/.ssh/neuravian-x86.pem" 'ubuntu@<instance-public-ip>' \
+  'install -m 600 /tmp/neuravian-fs-license "$HOME/.neuravian-secrets/freesurfer-license.txt" && rm -f /tmp/neuravian-fs-license && test -s "$HOME/.neuravian-secrets/freesurfer-license.txt" && test "$(stat -c %a "$HOME/.neuravian-secrets/freesurfer-license.txt")" = 600'
 ```
 
 Never print the file or put it in user-data/evidence.
@@ -308,9 +308,9 @@ Scientific execution is outside the deployment-automation task.
 **CLOUDSHELL**
 
 ```bash
-infra/aws/scripts/06-status.sh --config .neuroforge-aws/config.env
-infra/aws/scripts/07-stop.sh --config .neuroforge-aws/config.env --dry-run
-infra/aws/scripts/08-start.sh --config .neuroforge-aws/config.env --dry-run
+infra/aws/scripts/06-status.sh --config .neuravian-aws/config.env
+infra/aws/scripts/07-stop.sh --config .neuravian-aws/config.env --dry-run
+infra/aws/scripts/08-start.sh --config .neuravian-aws/config.env --dry-run
 ```
 
 Applied stop/start require exact instance-ID confirmations. Start re-resolves
@@ -326,7 +326,7 @@ scientific state:
 
 ```bash
 infra/aws/scripts/emergency-stop.sh \
-  --config .neuroforge-aws/config.env \
+  --config .neuravian-aws/config.env \
   --apply \
   --confirmation 'EMERGENCY STOP <instance-id>'
 ```
@@ -340,11 +340,11 @@ resources. EBS and snapshots continue charging.
 
 ```bash
 infra/aws/scripts/09-collect-evidence.sh \
-  --config .neuroforge-aws/config.env \
-  --identity-file "$HOME/.ssh/neuroforge-x86.pem" \
-  --output-dir "$HOME/neuroforge-evidence" \
+  --config .neuravian-aws/config.env \
+  --identity-file "$HOME/.ssh/neuravian-x86.pem" \
+  --output-dir "$HOME/neuravian-evidence" \
   --apply \
-  --confirmation 'COLLECT NEUROFORGE EVIDENCE'
+  --confirmation 'COLLECT NEURAVIAN EVIDENCE'
 ```
 
 The script downloads only the sanitized ZIP, opens it, validates the manifest,
@@ -363,11 +363,11 @@ destroy command.
 **CLOUDSHELL**
 
 ```bash
-infra/aws/scripts/06-status.sh --config .neuroforge-aws/config.env
+infra/aws/scripts/06-status.sh --config .neuravian-aws/config.env
 aws ec2 describe-volumes --region us-east-1 \
-  --filters Name=tag:Project,Values=NeuroForge Name=tag:Purpose,Values=x86-verification
+  --filters Name=tag:Project,Values=Neuravian Name=tag:Purpose,Values=x86-verification
 aws ec2 describe-snapshots --region us-east-1 --owner-ids self \
-  --filters Name=tag:Project,Values=NeuroForge Name=tag:Purpose,Values=x86-verification
+  --filters Name=tag:Project,Values=Neuravian Name=tag:Purpose,Values=x86-verification
 ```
 
 Also inspect AWS Billing and Cost Management; reporting may lag. The planning
@@ -385,14 +385,14 @@ and `$16/month` for 200 GiB gp3, but the live plan is authoritative.
 - IP mismatch: rerun preflight from the current network.
 - IAM simulation/Access Analyzer failure: have an administrator review the exact
   policy; do not attach AdministratorAccess.
-- Bootstrap failure: inspect `/var/log/neuroforge-bootstrap.log`; do not leave a
+- Bootstrap failure: inspect `/var/log/neuravian-bootstrap.log`; do not leave a
   failed running instance—use emergency stop.
 - IMDS hop-limit issue: stop and report. Do not increase to 2 without empirical
   proof and review.
 
 ## 23. Privacy and contributions
 
-Use only the approved public fixture. NeuroForge does not claim HIPAA, GDPR,
+Use only the approved public fixture. Neuravian does not claim HIPAA, GDPR,
 FedRAMP, or clinical compliance. Contributions must preserve plan-only defaults,
 exact confirmations, loopback services, ownership tags, evidence gates, and
 mocked destructive tests. Region or instance-type adaptations require new

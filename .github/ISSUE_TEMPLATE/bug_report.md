@@ -19,7 +19,7 @@ If the bug involves a pipeline failure, paste the run log from the Run Results p
 - OS: (e.g. macOS 14.5, Ubuntu 22.04)
 - Docker Desktop version:
 - Apple Silicon or Intel:
-- NeuroForge version (shown in Settings → About):
+- Neuravian version (shown in Settings → About):
 
 **Additional context**
 Any other details, screenshots, or configuration that may be relevant.

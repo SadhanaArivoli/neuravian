@@ -1,4 +1,4 @@
-"""Shared HTML report design system for NeuroForge-generated reports."""
+"""Shared HTML report design system for Neuravian-generated reports."""
 
 from app.reporting.components import (
     citation_block,

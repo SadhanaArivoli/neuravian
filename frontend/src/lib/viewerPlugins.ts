@@ -1,6 +1,6 @@
 import type { ArtifactViewModel, NeuroArtifactRole } from "./neuroArtifactView";
 
-export type ViewerId = "neuroforge" | "freeview" | "mricrogl";
+export type ViewerId = "neuravian" | "freeview" | "mricrogl";
 export type ViewerPlatform = "browser" | "darwin" | "win32" | "linux";
 export type ViewerAvailability = "available" | "not-installed" | "browser-unavailable" | "unsupported";
 
@@ -73,16 +73,16 @@ function rejectUnsafePath(path: string) {
   return path;
 }
 
-const neuroforge: ViewerPlugin = {
-  id: "neuroforge",
-  displayName: "NeuroForge Viewer",
+const neuravian: ViewerPlugin = {
+  id: "neuravian",
+  displayName: "Neuravian Viewer",
   platforms: ["browser", "darwin", "win32", "linux"],
   roles: [...VOLUME_ROLES, ...SURFACE_ROLES, "quality-report", "reportlet"],
   formats: [...VOLUME_FORMATS, ".surf", ".surf.gii", ".html", ".svg", ".png", ".jpg", ".jpeg", ".stats"],
   localOnly: false,
   defaultInstallPaths: {},
   supports(artifact) { return artifact.canView; },
-  buildCommand() { throw new Error("The built-in NeuroForge Viewer does not launch an external command."); },
+  buildCommand() { throw new Error("The built-in Neuravian Viewer does not launch an external command."); },
 };
 
 const freeview: ViewerPlugin = {
@@ -136,7 +136,7 @@ const mricrogl: ViewerPlugin = {
   },
 };
 
-export const VIEWER_REGISTRY: readonly ViewerPlugin[] = [neuroforge, freeview, mricrogl];
+export const VIEWER_REGISTRY: readonly ViewerPlugin[] = [neuravian, freeview, mricrogl];
 
 export function viewerPlugin(id: ViewerId) {
   const plugin = VIEWER_REGISTRY.find((candidate) => candidate.id === id);
@@ -150,7 +150,7 @@ export function browserViewerAvailability(plugin: ViewerPlugin): ViewerInstallat
         viewerId: plugin.id,
         availability: "browser-unavailable",
         executable: null,
-        reason: `${plugin.displayName} is a desktop application. Sync this run to NeuroForge Desktop to open it.`,
+        reason: `${plugin.displayName} is a desktop application. Sync this run to Neuravian Desktop to open it.`,
       }
     : { viewerId: plugin.id, availability: "available", executable: null, reason: null };
 }

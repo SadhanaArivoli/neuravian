@@ -21,7 +21,7 @@ const viewerApi: ViewerRendererApi = {
     ipcRenderer.invoke(VIEWER_CHANNELS.assertDefaultScene, input),
 };
 
-contextBridge.exposeInMainWorld("neuroforgeDesktop", {
+contextBridge.exposeInMainWorld("neuravianDesktop", {
   ...viewerApi,
   platform: process.platform,
   architecture: process.arch,

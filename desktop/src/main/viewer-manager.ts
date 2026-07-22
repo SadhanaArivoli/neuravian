@@ -182,7 +182,7 @@ export function validateLaunchCommand(command: LaunchCommand, cacheRoot: string)
       : argument;
     const resolved = path.resolve(value);
     if (resolved !== resolvedRoot && !resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
-      throw new Error("Viewer launch may only use files in the NeuroForge cache.");
+      throw new Error("Viewer launch may only use files in the Neuravian cache.");
     }
     return argument;
   });

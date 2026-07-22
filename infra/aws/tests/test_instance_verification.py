@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[3]
 VERIFY = ROOT / "infra/aws/scripts/lib/verify_instance.py"
 DEPLOYMENT = "nf-x86-test0001"
 TAGS = [
-    {"Key": "Project", "Value": "NeuroForge"},
+    {"Key": "Project", "Value": "Neuravian"},
     {"Key": "Purpose", "Value": "x86-verification"},
-    {"Key": "ManagedBy", "Value": "NeuroForgeProvisioner"},
+    {"Key": "ManagedBy", "Value": "NeuravianProvisioner"},
     {"Key": "DeploymentId", "Value": DEPLOYMENT},
 ]
 
@@ -48,7 +48,7 @@ def documents(tmp_path: Path) -> dict[str, Path]:
                         "PublicIpAddress": "198.51.100.99",
                         "MetadataOptions": {"HttpTokens": "required", "HttpPutResponseHopLimit": 1},
                         "SecurityGroups": [{"GroupId": "sg-abc123", "GroupName": "test"}],
-                        "IamInstanceProfile": {"Arn": f"arn:aws:iam::{account}:instance-profile/NeuroForgeInstance-{DEPLOYMENT}"},
+                        "IamInstanceProfile": {"Arn": f"arn:aws:iam::{account}:instance-profile/NeuravianInstance-{DEPLOYMENT}"},
                         "BlockDeviceMappings": [
                             {"DeviceName": "/dev/sda1", "Ebs": {"VolumeId": "vol-abc123", "DeleteOnTermination": True}}
                         ],
@@ -66,7 +66,7 @@ def documents(tmp_path: Path) -> dict[str, Path]:
                     {
                         "FromPort": 22,
                         "IpProtocol": "tcp",
-                        "IpRanges": [{"CidrIp": "198.51.100.42/32", "Description": "NeuroForge-x86-operator"}],
+                        "IpRanges": [{"CidrIp": "198.51.100.42/32", "Description": "Neuravian-x86-operator"}],
                         "Ipv6Ranges": [],
                         "PrefixListIds": [],
                         "ToPort": 22,

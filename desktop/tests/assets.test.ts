@@ -11,7 +11,7 @@ async function sha256(filePath: string): Promise<string> {
 }
 
 describe("desktop artwork", () => {
-  it.each(["neuroforge-logo.png", "neuroforge-window.png", "neuroforge-splash.png"])(
+  it.each(["neuravian-logo.png", "neuravian-window.png", "neuravian-splash.png"])(
     "preserves the supplied logo bytes in %s",
     async (fileName) => {
       expect(await sha256(path.join(desktopRoot, "assets", fileName))).toBe(expectedLogoHash);
@@ -27,7 +27,7 @@ describe("desktop artwork", () => {
   );
 
   it("includes a generated macOS ICNS file", async () => {
-    const icon = await stat(path.join(desktopRoot, "assets", "NeuroForge.icns"));
+    const icon = await stat(path.join(desktopRoot, "assets", "Neuravian.icns"));
     expect(icon.size).toBeGreaterThan(0);
   });
 });
@@ -35,7 +35,7 @@ describe("desktop artwork", () => {
 describe("startup shell", () => {
   it("renders the supplied logo and local-data assurance", async () => {
     const html = await readFile(path.join(desktopRoot, "src", "renderer", "index.html"), "utf8");
-    expect(html).toContain('src="neuroforge-splash.png"');
+    expect(html).toContain('src="neuravian-splash.png"');
     expect(html).toContain("does not upload your datasets");
   });
 });

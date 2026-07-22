@@ -19,7 +19,7 @@ export function StatusBadge({ connected, loading }: Props) {
         className={`h-2 w-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"}`}
       />
       <span className={connected ? "text-green-400" : "text-red-400"}>
-        {connected ? "Backend connected" : "Backend offline"}
+        {connected ? "Ready" : "Neuravian is offline"}
       </span>
     </span>
   );

@@ -35,8 +35,7 @@ const PIPELINE = [
   { label: "Pipeline",    color: "text-violet-400",  bg: "bg-violet-500/10 border-violet-500/30" },
   { label: "Run",         color: "text-cyan-400",    bg: "bg-cyan-500/10 border-cyan-500/30" },
   { label: "Artifacts",   color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
-  { label: "Analysis",    color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30" },
-  { label: "Publication", color: "text-pink-400",    bg: "bg-pink-500/10 border-pink-500/30" },
+  { label: "Report",      color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30" },
 ];
 
 function FlowDiagram() {
@@ -67,9 +66,8 @@ const NAV_ITEMS = [
   { label: "Datasets",       desc: "Register and validate BIDS dataset folders — the starting point for every analysis." },
   { label: "Pipelines",      desc: "Browse and configure neuroimaging tools: MRIQC, fMRIPrep, BrainChop, and more." },
   { label: "Runs",           desc: "Monitor every pipeline execution — logs, status, results, and full provenance." },
-  { label: "Workflows",      desc: "Build reusable pipeline chains with a drag-and-drop visual editor." },
-  { label: "Library",        desc: "Save, reload, and share workflow plans across sessions." },
-  { label: "Remote Hosts",   desc: "Configure SSH-accessible compute nodes for GPU or HPC execution." },
+  { label: "Workflows",      desc: "Build and save reusable sequences of compatible pipelines." },
+  { label: "Workspaces",     desc: "Move between local and configured cloud workspaces without leaving the app." },
 ];
 
 // ── Pipeline list for Step 4 ─────────────────────────────────────────────────
@@ -78,9 +76,9 @@ const PIPELINE_LIST = [
   { name: "MRIQC",                  cat: "Quality Control",  color: "text-green-400" },
   { name: "BrainChop",              cat: "Segmentation",     color: "text-blue-400" },
   { name: "Functional Connectivity",cat: "Connectivity",     color: "text-violet-400" },
-  { name: "Seed Connectivity",      cat: "Connectivity",     color: "text-violet-400" },
-  { name: "Atlas ROI Extraction",   cat: "Connectivity",     color: "text-violet-400" },
-  { name: "Graph Analysis",         cat: "Connectivity",     color: "text-violet-400" },
+  { name: "fMRIPrep",               cat: "Preprocessing",    color: "text-violet-400" },
+  { name: "FastSurfer",             cat: "Segmentation",     color: "text-violet-400" },
+  { name: "BIDS Validator",         cat: "Validation",       color: "text-violet-400" },
 ];
 
 // ── Step definitions ──────────────────────────────────────────────────────────
@@ -94,11 +92,11 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
   return [
     // Step 1 — Philosophy
     {
-      title: "How NeuroForge thinks",
+      title: "How Neuravian thinks",
       content: (
         <div className="space-y-3 text-sm text-gray-300 leading-relaxed">
           <p>
-            Most neuroimaging tools produce files. NeuroForge organises those
+            Most neuroimaging tools produce files. Neuravian organises those
             files into <span className="text-white font-semibold">Artifacts</span> — typed,
             searchable outputs that know where they came from.
           </p>
@@ -108,8 +106,8 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
           </p>
           <p>
             You import a Dataset, run a Pipeline, get a Run with Artifacts, feed
-            those Artifacts into further Analyses, and export a Methods section
-            ready for publication — all without leaving NeuroForge.
+            those Artifacts into compatible next steps, and export a reproducible
+            report — all without leaving Neuravian.
           </p>
         </div>
       ),
@@ -141,7 +139,7 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
       content: (
         <div className="space-y-4 text-sm text-gray-300 leading-relaxed">
           <p>
-            NeuroForge works with{" "}
+            Neuravian works with{" "}
             <span className="text-white font-semibold">BIDS-formatted datasets</span>.
             BIDS is the community standard for organising neuroimaging data.
           </p>
@@ -151,11 +149,11 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
               <li>Click <span className="font-semibold text-white">Datasets</span> in the sidebar.</li>
               <li>Click <span className="font-semibold text-white">+ Import dataset</span>.</li>
               <li>Enter the full path to your BIDS folder on disk.</li>
-              <li>NeuroForge validates the structure and registers it automatically.</li>
+              <li>Neuravian validates the structure and registers it automatically.</li>
             </ol>
           </div>
           <p className="text-xs text-gray-500">
-            Your files are never modified — NeuroForge reads them in place.
+            Your files are never modified — Neuravian reads them in place.
           </p>
         </div>
       ),
@@ -180,7 +178,7 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
             ))}
           </div>
           <p className="text-xs text-gray-400 leading-relaxed">
-            NeuroForge checks which tools are installed before letting you run.
+            Neuravian checks which tools are installed before letting you run.
             It never launches a tool you don't have.
           </p>
         </div>
@@ -193,7 +191,7 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
       content: (
         <div className="space-y-3 text-sm text-gray-300 leading-relaxed">
           <p>
-            When you launch a pipeline, NeuroForge creates a{" "}
+            When you launch a pipeline, Neuravian creates a{" "}
             <span className="text-white font-semibold">Run</span>. Every run records:
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -212,7 +210,7 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
             ))}
           </div>
           <p className="text-xs text-gray-500">
-            Runs are permanent. You can go back to any run at any time.
+            Completed runs stay in your history until you choose to remove them.
           </p>
         </div>
       ),
@@ -224,7 +222,7 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
       content: (
         <div className="space-y-3 text-sm text-gray-300 leading-relaxed">
           <p>
-            Unlike file managers, NeuroForge knows what each file{" "}
+            Unlike file managers, Neuravian knows what each file{" "}
             <span className="text-white font-semibold">is</span> — a connectivity
             matrix, a brain mask, a QC report. These are{" "}
             <span className="text-white font-semibold">Artifacts</span>.
@@ -232,13 +230,13 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
             <p className="text-emerald-400 font-semibold text-xs uppercase tracking-wide">Run Next</p>
             <p className="text-xs text-gray-300 leading-relaxed">
-              NeuroForge's defining feature. After a run completes, it shows you
+              After a run completes, Neuravian shows you
               every pipeline that can consume its outputs — pre-wired and ready to
               launch in one click.
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Example: FC run → "Run Next" → Graph Analysis, already pointed at
-              the right matrix file.
+              Compatible next steps are prefilled with the correct output, so you
+              can review the settings before starting another run.
             </p>
           </div>
           <p className="text-xs text-gray-400">
@@ -290,11 +288,11 @@ function buildSteps(_completeTour: () => void, _skipTour: () => void): StepDef[]
           <p>
             After running analyses, go to a dataset's{" "}
             <span className="text-white font-semibold">Methods Studio</span>.
-            NeuroForge generates a complete Methods section automatically.
+            Neuravian generates a complete Methods section automatically.
           </p>
           <div className="space-y-2">
             {[
-              { label: "Methods prose",   desc: "Publication-ready paragraph per pipeline" },
+              { label: "Methods draft",   desc: "Provenance-based paragraph for researcher review" },
               { label: "Citations",       desc: "BibTeX-formatted references for every tool" },
               { label: "Software table",  desc: "Tool name, version, container image" },
               { label: "Parameters",      desc: "Full parameter record per run" },
@@ -334,15 +332,15 @@ function WelcomeScreen({
           </svg>
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">NeuroForge</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Neuravian</h1>
           <p className="text-sm text-gray-400 mt-1">Local-first neuroimaging research platform.</p>
         </div>
       </div>
 
       {/* Mission */}
       <p className="text-sm text-gray-300 max-w-sm leading-relaxed">
-        Wrap established neuroimaging tools in a guided interface that runs entirely
-        on your machine — no command line, no data uploads, fully reproducible.
+        Use established neuroimaging tools through one guided interface. Work locally
+        by default, and move to a configured cloud workspace only when you choose.
       </p>
 
       {/* Primary actions */}
@@ -372,7 +370,7 @@ function WelcomeScreen({
       {/* Secondary links */}
       <div className="flex items-center gap-4 text-xs text-gray-600">
         <a
-          href="https://github.com/SadhanaArivoli/neuroforge"
+          href="https://github.com/SadhanaArivoli/neuravian"
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-gray-400 transition-colors"
@@ -381,7 +379,7 @@ function WelcomeScreen({
         </a>
         <span>·</span>
         <a
-          href="https://github.com/SadhanaArivoli/neuroforge/blob/main/docs/quickstart.md"
+          href="https://github.com/SadhanaArivoli/neuravian/blob/main/docs/quickstart.md"
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-gray-400 transition-colors"
@@ -389,7 +387,7 @@ function WelcomeScreen({
           Quick Start
         </a>
         <span>·</span>
-        <span className="text-gray-700">v0.1.0-alpha</span>
+        <span className="text-gray-700">Early Access · v0.1.0</span>
       </div>
     </div>
   );
@@ -535,7 +533,7 @@ export function OnboardingOverlay() {
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="NeuroForge onboarding tour"
+      aria-label="Neuravian onboarding tour"
     >
       {/* Backdrop */}
       <div

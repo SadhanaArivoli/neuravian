@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Neuravian image-statistics plugin — compute basic NIfTI intensity statistics.
+
+Usage:
+    neuravian-image-statistics <input.nii.gz> [-o OUTPUT] [--mask MASK]
+
+Outputs a JSON file with:
+    - file: input path
+    - shape: [X, Y, Z, (T)]
+    - voxel_size_mm: [dx, dy, dz]
+    - n_voxels: total voxel count
+    - n_nonzero: non-zero voxel count (or masked voxel count if --mask given)
+    - mean: mean intensity (all voxels, or masked)
+    - std: standard deviation
+    - min: minimum
+    - max: maximum
+    - p5, p25, p50, p75, p95: percentiles
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Compute basic NIfTI image statistics")
+    p.add_argument("input_file", help="Path to NIfTI file (.nii or .nii.gz)")
+    p.add_argument("-o", "--output", default=None, help="Output JSON path")
+    p.add_argument("--mask", default=None, help="Optional binary mask NIfTI")
+    return p.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+
+    try:
+        import nibabel as nib
+        import numpy as np
+    except ImportError as exc:
+        print(f"ERROR: {exc}\nnibabel and numpy are required. Install with: pip install nibabel numpy", file=sys.stderr)
+        sys.exit(1)
+
+    input_path = Path(args.input_file)
+    if not input_path.exists():
+        print(f"ERROR: Input file not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Loading: {input_path}", flush=True)
+    img = nib.load(str(input_path))
+    data = np.asanyarray(img.dataobj).astype(np.float64)
+
+    zooms = img.header.get_zooms()
+    voxel_size_mm = [float(z) for z in zooms[:3]]
+
+    # Determine which voxels to include in statistics
+    if args.mask:
+        mask_path = Path(args.mask)
+        if not mask_path.exists():
+            print(f"ERROR: Mask file not found: {mask_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Applying mask: {mask_path}", flush=True)
+        mask_img = nib.load(str(mask_path))
+        mask_data = np.asanyarray(mask_img.dataobj).astype(bool)
+        # Handle 4D images: apply 3D mask to each volume
+        if data.ndim == 4 and mask_data.ndim == 3:
+            flat = data[mask_data]
+        else:
+            flat = data[mask_data]
+        label = "masked"
+    else:
+        flat = data.ravel()
+        label = "all"
+
+    nonzero = flat[flat != 0]
+    analysis_data = nonzero if nonzero.size > 0 else flat
+
+    percentiles = np.percentile(analysis_data, [5, 25, 50, 75, 95]).tolist() if analysis_data.size > 0 else [0, 0, 0, 0, 0]
+
+    stats = {
+        "file": str(input_path.resolve()),
+        "shape": list(data.shape),
+        "voxel_size_mm": voxel_size_mm,
+        "dtype": str(data.dtype),
+        "n_voxels": int(data.size),
+        "n_nonzero": int(nonzero.size),
+        "voxel_selection": label,
+        "mean": float(np.mean(analysis_data)) if analysis_data.size > 0 else 0.0,
+        "std": float(np.std(analysis_data)) if analysis_data.size > 0 else 0.0,
+        "min": float(np.min(analysis_data)) if analysis_data.size > 0 else 0.0,
+        "max": float(np.max(analysis_data)) if analysis_data.size > 0 else 0.0,
+        "p5": percentiles[0],
+        "p25": percentiles[1],
+        "p50": percentiles[2],
+        "p75": percentiles[3],
+        "p95": percentiles[4],
+    }
+
+    # Determine output path
+    if args.output:
+        out_path = Path(args.output)
+    else:
+        out_path = Path(os.getcwd()) / "image_statistics.json"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w") as f:
+        json.dump(stats, f, indent=2)
+        f.write("\n")
+
+    print(f"Statistics written to: {out_path}", flush=True)
+    print(f"  Shape: {stats['shape']}", flush=True)
+    print(f"  Voxel size: {stats['voxel_size_mm']} mm", flush=True)
+    print(f"  Non-zero voxels: {stats['n_nonzero']:,} / {stats['n_voxels']:,}", flush=True)
+    print(f"  Mean ± std: {stats['mean']:.4f} ± {stats['std']:.4f}", flush=True)
+    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]", flush=True)
+
+
+if __name__ == "__main__":
+    main()

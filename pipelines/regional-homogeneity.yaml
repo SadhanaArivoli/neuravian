@@ -4,7 +4,7 @@ description: Voxelwise Kendall's Coefficient of Concordance across spatial neigh
 homepage: https://doi.org/10.1016/S1053-8119(04)00168-0
 category: connectivity
 input_type: bids_dataset
-execution: {type: native, command: neuroforge-regional-homogeneity}
+execution: {type: native, command: neuravian-regional-homogeneity}
 dataset_positional: false
 compute_profile: local-ok
 inputs: [fmriprep_derivatives]

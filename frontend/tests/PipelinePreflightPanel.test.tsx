@@ -52,6 +52,6 @@ describe("PipelinePreflightPanel", () => {
 
   it("does not apply local checks to a remote target", () => {
     render(<PipelinePreflightPanel result={null} loading={false} error={null} remote />);
-    expect(screen.getByText(/local machine checks do not describe the remote host/i)).toBeInTheDocument();
+    expect(screen.getByText(/checks describe only this computer/i)).toBeInTheDocument();
   });
 });

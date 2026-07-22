@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 /absolute/path/to/Neuroforge_Logo.png" >&2
+  echo "Usage: $0 /absolute/path/to/Neuravian_Logo.png" >&2
   exit 2
 fi
 
@@ -10,7 +10,7 @@ SOURCE=$1
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DESKTOP_DIR=$(dirname "$SCRIPT_DIR")
 ASSETS_DIR="$DESKTOP_DIR/assets"
-ICONSET_DIR="$ASSETS_DIR/NeuroForge.iconset"
+ICONSET_DIR="$ASSETS_DIR/Neuravian.iconset"
 
 if [ ! -f "$SOURCE" ]; then
   echo "Logo source does not exist: $SOURCE" >&2
@@ -18,9 +18,9 @@ if [ ! -f "$SOURCE" ]; then
 fi
 
 mkdir -p "$ASSETS_DIR/icons" "$ICONSET_DIR"
-cp "$SOURCE" "$ASSETS_DIR/neuroforge-logo.png"
-cp "$SOURCE" "$ASSETS_DIR/neuroforge-window.png"
-cp "$SOURCE" "$ASSETS_DIR/neuroforge-splash.png"
+cp "$SOURCE" "$ASSETS_DIR/neuravian-logo.png"
+cp "$SOURCE" "$ASSETS_DIR/neuravian-window.png"
+cp "$SOURCE" "$ASSETS_DIR/neuravian-splash.png"
 
 make_icon() {
   pixels=$1
@@ -43,12 +43,12 @@ for pixels in 16 32 64 128 256 512 1024; do
   make_icon "$pixels" "$ASSETS_DIR/icons/${pixels}x${pixels}.png"
 done
 
-if ! /usr/bin/iconutil --convert icns --output "$ASSETS_DIR/NeuroForge.icns" "$ICONSET_DIR" 2>/dev/null; then
+if ! /usr/bin/iconutil --convert icns --output "$ASSETS_DIR/Neuravian.icns" "$ICONSET_DIR" 2>/dev/null; then
   if [ ! -d "$DESKTOP_DIR/node_modules/png2icons" ]; then
     echo "iconutil could not convert the iconset and png2icons is not installed." >&2
     echo "Run npm install in $DESKTOP_DIR, then retry." >&2
     exit 1
   fi
-  node "$SCRIPT_DIR/generate-icns.mjs" "$SOURCE" "$ASSETS_DIR/NeuroForge.icns"
+  node "$SCRIPT_DIR/generate-icns.mjs" "$SOURCE" "$ASSETS_DIR/Neuravian.icns"
 fi
-echo "Generated NeuroForge desktop icon assets in $ASSETS_DIR"
+echo "Generated Neuravian desktop icon assets in $ASSETS_DIR"

@@ -257,7 +257,7 @@ def _make_mock_docker_client(exit_code: int) -> MagicMock:
     mock_container.id = "abc123"
 
     mock_image = MagicMock()
-    mock_image.attrs = {"RepoDigests": ["ghcr.io/neuroforge/fsl-flirt@sha256:abc"]}
+    mock_image.attrs = {"RepoDigests": ["neuravian/fsl-flirt@sha256:abc"]}
 
     mock_client = MagicMock()
     mock_client.containers.run.return_value = mock_container

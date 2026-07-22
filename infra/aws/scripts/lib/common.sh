@@ -9,7 +9,7 @@ export AWS_MAX_ATTEMPTS="${AWS_MAX_ATTEMPTS:-5}"
 
 AWS_INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$(cd "${AWS_INFRA_ROOT}/../.." && pwd)"
-STATE_ROOT="${REPO_ROOT}/.neuroforge-aws"
+STATE_ROOT="${REPO_ROOT}/.neuravian-aws"
 PLAN_ROOT="${STATE_ROOT}/plans"
 
 readonly EXPECTED_REGION="us-east-1"
@@ -41,7 +41,7 @@ ensure_state_dirs() {
 
 allowed_config_key() {
   case "$1" in
-    AWS_REGION|INSTANCE_TYPE|ROOT_VOLUME_GIB|ROOT_VOLUME_TYPE|ROOT_VOLUME_IOPS|ROOT_VOLUME_THROUGHPUT|ROOT_VOLUME_ENCRYPTED|ROOT_DELETE_ON_TERMINATION|IMDS_HTTP_TOKENS|IMDS_HOP_LIMIT|NEUROFORGE_VM_COMMIT|APPLICATION_BASELINE_COMMIT|PROJECT_TAG|PURPOSE_TAG|MANAGED_BY_TAG|DEPLOYMENT_ID|SSH_ALLOWED_CIDR|ROOT_MFA_CONFIRMED|SESSION_A_MAX_HOURS|KEY_STRATEGY|VPC_ID|SUBNET_ID|PREPULL_IMAGES)
+    AWS_REGION|INSTANCE_TYPE|ROOT_VOLUME_GIB|ROOT_VOLUME_TYPE|ROOT_VOLUME_IOPS|ROOT_VOLUME_THROUGHPUT|ROOT_VOLUME_ENCRYPTED|ROOT_DELETE_ON_TERMINATION|IMDS_HTTP_TOKENS|IMDS_HOP_LIMIT|NEURAVIAN_VM_COMMIT|APPLICATION_BASELINE_COMMIT|PROJECT_TAG|PURPOSE_TAG|MANAGED_BY_TAG|DEPLOYMENT_ID|SSH_ALLOWED_CIDR|ROOT_MFA_CONFIRMED|SESSION_A_MAX_HOURS|KEY_STRATEGY|VPC_ID|SUBNET_ID|PREPULL_IMAGES)
       return 0
       ;;
     *)
@@ -85,7 +85,7 @@ validate_config() {
   local required=(
     AWS_REGION INSTANCE_TYPE ROOT_VOLUME_GIB ROOT_VOLUME_TYPE ROOT_VOLUME_IOPS
     ROOT_VOLUME_THROUGHPUT ROOT_VOLUME_ENCRYPTED ROOT_DELETE_ON_TERMINATION
-    IMDS_HTTP_TOKENS IMDS_HOP_LIMIT NEUROFORGE_VM_COMMIT
+    IMDS_HTTP_TOKENS IMDS_HOP_LIMIT NEURAVIAN_VM_COMMIT
     APPLICATION_BASELINE_COMMIT PROJECT_TAG PURPOSE_TAG MANAGED_BY_TAG
     DEPLOYMENT_ID SSH_ALLOWED_CIDR ROOT_MFA_CONFIRMED SESSION_A_MAX_HOURS
     KEY_STRATEGY VPC_ID SUBNET_ID PREPULL_IMAGES
@@ -105,11 +105,11 @@ validate_config() {
   [[ "${ROOT_DELETE_ON_TERMINATION}" == "true" ]] || die "DeleteOnTermination must default to true"
   [[ "${IMDS_HTTP_TOKENS}" == "required" ]] || die "IMDS_HTTP_TOKENS must be required"
   [[ "${IMDS_HOP_LIMIT}" == "1" ]] || die "IMDS_HOP_LIMIT must be 1"
-  [[ "${NEUROFORGE_VM_COMMIT}" =~ ^[0-9a-f]{40}$ && "${NEUROFORGE_VM_COMMIT}" == "${EXPECTED_VM_COMMIT}" ]] || die "Unexpected VM commit"
+  [[ "${NEURAVIAN_VM_COMMIT}" =~ ^[0-9a-f]{40}$ && "${NEURAVIAN_VM_COMMIT}" == "${EXPECTED_VM_COMMIT}" ]] || die "Unexpected VM commit"
   [[ "${APPLICATION_BASELINE_COMMIT}" =~ ^[0-9a-f]{40}$ && "${APPLICATION_BASELINE_COMMIT}" == "${EXPECTED_BASELINE_COMMIT}" ]] || die "Unexpected application baseline"
-  [[ "${PROJECT_TAG}" == "NeuroForge" ]] || die "PROJECT_TAG must be NeuroForge"
+  [[ "${PROJECT_TAG}" == "Neuravian" ]] || die "PROJECT_TAG must be Neuravian"
   [[ "${PURPOSE_TAG}" == "x86-verification" ]] || die "PURPOSE_TAG must be x86-verification"
-  [[ "${MANAGED_BY_TAG}" == "NeuroForgeProvisioner" ]] || die "MANAGED_BY_TAG must be NeuroForgeProvisioner"
+  [[ "${MANAGED_BY_TAG}" == "NeuravianProvisioner" ]] || die "MANAGED_BY_TAG must be NeuravianProvisioner"
   # Populated dynamically by the validated configuration parser.
   # shellcheck disable=SC2153
   [[ "${DEPLOYMENT_ID}" == "auto" || "${DEPLOYMENT_ID}" =~ ^nf-x86-[a-z0-9-]{8,32}$ ]] || die "Invalid DEPLOYMENT_ID"
@@ -156,12 +156,12 @@ assert_aws_cli_v2() {
 
 assert_repo_commits() {
   require_command git
-  git -C "${REPO_ROOT}" cat-file -e "${NEUROFORGE_VM_COMMIT}^{commit}" 2>/dev/null || die "VM commit is not present in this checkout"
-  git -C "${REPO_ROOT}" merge-base --is-ancestor "${APPLICATION_BASELINE_COMMIT}" "${NEUROFORGE_VM_COMMIT}" || die "Application baseline is not an ancestor of VM commit"
+  git -C "${REPO_ROOT}" cat-file -e "${NEURAVIAN_VM_COMMIT}^{commit}" 2>/dev/null || die "VM commit is not present in this checkout"
+  git -C "${REPO_ROOT}" merge-base --is-ancestor "${APPLICATION_BASELINE_COMMIT}" "${NEURAVIAN_VM_COMMIT}" || die "Application baseline is not an ancestor of VM commit"
 }
 
 require_live_approval() {
-  [[ "${NEUROFORGE_AWS_LIVE_APPROVAL:-}" == "APPROVE NEUROFORGE AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
+  [[ "${NEURAVIAN_AWS_LIVE_APPROVAL:-}" == "APPROVE NEURAVIAN AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
 }
 
 state_value() {
@@ -188,7 +188,7 @@ iam = json.load(open(sys.argv[2]))
 print(f"arn:aws:iam::{state['account_id']}:role/{iam['deployer_role_name']}")
 PY
 )"
-  credentials_file="$(mktemp "${TMPDIR:-/tmp}/neuroforge-sts.XXXXXX")"
+  credentials_file="$(mktemp "${TMPDIR:-/tmp}/neuravian-sts.XXXXXX")"
   chmod 600 "${credentials_file}"
   aws sts assume-role --role-arn "${role_arn}" --role-session-name "${session_name}" \
     --duration-seconds 3600 --output json >"${credentials_file}"
@@ -236,7 +236,7 @@ document, instance_id, deployment = sys.argv[1:]
 instances = [i for r in json.load(open(document)).get("Reservations", []) for i in r.get("Instances", [])]
 assert len(instances) == 1 and instances[0].get("InstanceId") == instance_id
 tags = {item["Key"]: item["Value"] for item in instances[0].get("Tags", [])}
-required = {"Project": "NeuroForge", "Purpose": "x86-verification", "ManagedBy": "NeuroForgeProvisioner", "DeploymentId": deployment}
+required = {"Project": "Neuravian", "Purpose": "x86-verification", "ManagedBy": "NeuravianProvisioner", "DeploymentId": deployment}
 assert all(tags.get(key) == value for key, value in required.items()), "instance ownership tags mismatch"
 PY
 }

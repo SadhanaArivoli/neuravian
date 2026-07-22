@@ -1,6 +1,6 @@
 # Tutorial: Your First fMRI Analysis
 
-This tutorial walks through a complete fMRI workflow in NeuroForge: from raw BIDS data through image quality control, preprocessing derivative import, functional connectivity analysis, and a methods paragraph ready for a manuscript.
+This tutorial walks through a complete fMRI workflow in Neuravian: from raw BIDS data through image quality control, preprocessing derivative import, functional connectivity analysis, and a methods paragraph ready for a manuscript.
 
 Estimated time: 30–60 minutes (most of which is pipeline execution time, not interaction time).
 
@@ -30,7 +30,7 @@ BIDS dataset
 
 ## Before you start
 
-- NeuroForge is running at http://localhost:3000 (see [Quickstart](quickstart.md))
+- Neuravian is running at http://localhost:3000 (see [Quickstart](quickstart.md))
 - You have a BIDS-formatted fMRI dataset inside `HOST_DATASETS_DIR`
 - You have real fMRIPrep derivatives if you want to run the connectivity steps
 
@@ -56,7 +56,7 @@ You will see the dataset card with its BIDS validation status as a badge.
 4. Wait for the run to complete (10–30 seconds).
 5. Open the completed run. The validation report lists any issues found, with references to the BIDS specification.
 
-If there are errors, fix them in your source data before continuing. NeuroForge treats your source as read-only — it will not modify files.
+If there are errors, fix them in your source data before continuing. Neuravian treats your source as read-only — it will not modify files.
 
 ---
 
@@ -87,12 +87,15 @@ After MRIQC completes, run **MRIQC Group** to aggregate IQMs across subjects int
 Running full fMRIPrep on a laptop takes several hours per subject and is resource-intensive. If you have precomputed derivatives (from a cluster or the sample dataset), use **Import fMRIPrep Derivatives** to register them without re-running.
 
 1. From **Pipelines**, click **Run** next to **Import fMRIPrep Derivatives**.
-2. Set the **Derivatives path** to the directory containing the fMRIPrep output (e.g. `/path/to/derivatives/fmriprep`). NeuroForge will translate host paths to container paths.
+2. Set the **Derivatives path** to the directory containing the fMRIPrep output (e.g. `/path/to/derivatives/fmriprep`). Neuravian will translate host paths to container paths.
 3. Click **Start Run**.
 
 This run completes in seconds. It registers the derivatives as a `fmriprep_derivatives` artifact, making them available as input to all downstream connectivity pipelines.
 
-> If you want to run full fMRIPrep locally, use the **fMRIPrep** pipeline instead. Note that on Apple Silicon this is marked `local-unsafe`; see the [FAQ](faq.md#fmriprep-apple-silicon) for details.
+> The full **fMRIPrep** integration is available, but scientific execution
+> qualification remains pending. On Apple Silicon, use imported derivatives or
+> a researcher-managed Linux x86_64 environment. Review the
+> [canonical pipeline status](pipeline-status.md) before launching it.
 
 ---
 
@@ -151,7 +154,7 @@ This graph is the lineage record for the entire analysis. You can share or expor
 
 1. Navigate to the dataset → **Reports** tab → **Methods Studio**.
 2. Click **Generate Methods**.
-3. NeuroForge produces a draft methods paragraph that includes:
+3. Neuravian produces a draft methods paragraph that includes:
    - The names and versions of all tools used
    - Atlas name, parcel count, and network assignment
    - Confound strategy, smoothing, and bandpass parameters

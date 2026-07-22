@@ -60,7 +60,7 @@ python3 "${SCRIPT_DIR}/lib/render_plan.py" plan \
 python3 - "${OUTPUT_PATH}" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-print("NeuroForge AWS resource plan: GO")
+print("Neuravian AWS resource plan: GO")
 print(f"  DeploymentId: {p['deployment_id']}")
 for resource in p["resources"]:
     print(f"  {resource['count']} x {resource['type']}")

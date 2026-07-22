@@ -2,9 +2,7 @@
 
 import re
 
-import pytest
-
-from app.execution.progress_parser import ParsedProgress, parse_tqdm_line
+from app.execution.progress_parser import parse_progress_line, parse_tqdm_line
 
 # Actual FastSurfer log lines from run 21
 LINE_BATCH_1 = "  0%|          |   1/256 [02:34<10:57:21, 154.14s/it]"
@@ -63,3 +61,48 @@ def test_elapsed_parsed_correctly_batch_68():
     assert result is not None
     # elapsed: 2:54:08 = 2*3600 + 54*60 + 8 = 10448
     assert result.elapsed_seconds == 10448
+
+
+def test_manifest_regex_progress_is_normalized():
+    result = parse_progress_line(
+        "Subject 3 of 12 (25%)",
+        {
+            "strategy": "regex",
+            "patterns": [
+                {
+                    "pattern": (
+                        r"Subject (?P<current>\d+) of (?P<total>\d+) "
+                        r"\((?P<percent>\d+)%\)"
+                    )
+                }
+            ],
+        },
+    )
+    assert result is not None
+    assert result["current"] == 3
+    assert result["total"] == 12
+    assert result["percent"] == 25
+
+
+def test_manifest_stage_progress_uses_weights():
+    config = {
+        "strategy": "stages",
+        "stages": [
+            {
+                "id": "prepare",
+                "label": "Preparing",
+                "pattern": "PREPARE",
+                "weight": 1,
+            },
+            {
+                "id": "reconstruct",
+                "label": "Reconstructing",
+                "pattern": "RECON",
+                "weight": 3,
+            },
+        ],
+    }
+    result = parse_progress_line("RECON started", config)
+    assert result is not None
+    assert result["stage"] == "reconstruct"
+    assert result["percent"] == 100

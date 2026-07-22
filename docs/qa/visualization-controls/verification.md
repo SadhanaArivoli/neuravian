@@ -1,4 +1,4 @@
-# NeuroForge Visualization Controls v1 — verification
+# Neuravian Visualization Controls v1 — verification
 
 ## Architecture
 

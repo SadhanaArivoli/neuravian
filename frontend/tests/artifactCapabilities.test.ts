@@ -29,7 +29,7 @@ function artifact(relativePath: string, overrides: Partial<WorkspaceArtifact> = 
 describe("artifact capability resolution", () => {
   it("classifies fMRIPrep and pydeface volumes by file type", () => {
     expect(resolveArtifactCapabilities("sub-01/anat/sub-01_desc-preproc_T1w.nii.gz").viewableIn)
-      .toEqual(["freeview", "mricrogl", "neuroforge-viewer"]);
+      .toEqual(["freeview", "mricrogl", "neuravian-viewer"]);
     expect(resolveArtifactCapabilities("defaced.nii.gz").isVolume).toBe(true);
     expect(resolveArtifactCapabilities("sub-01.html").isReport).toBe(true);
   });

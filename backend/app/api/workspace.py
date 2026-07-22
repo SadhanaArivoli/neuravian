@@ -12,7 +12,7 @@ _MACHINE_ID_PATHS = (Path("/etc/machine-id"), Path("/var/lib/dbus/machine-id"))
 
 
 def _server_identity_source() -> str:
-    configured = os.getenv("NEUROFORGE_SERVER_ID", "").strip()
+    configured = os.getenv("NEURAVIAN_SERVER_ID", "").strip()
     if configured:
         return f"configured:{configured}"
     for candidate in _MACHINE_ID_PATHS:
@@ -24,7 +24,7 @@ def _server_identity_source() -> str:
             return f"machine:{value}"
     # This fallback is deterministic for a given installation without exposing
     # the database path. Production deployments should have a machine ID or set
-    # NEUROFORGE_SERVER_ID explicitly.
+    # NEURAVIAN_SERVER_ID explicitly.
     from app.core.config import settings
 
     return f"installation:{settings.data_dir}"
@@ -39,6 +39,6 @@ def server_identity() -> str:
 async def workspace_identity() -> dict[str, str]:
     return {
         "workspace_id": server_identity(),
-        "product": "NeuroForge",
+        "product": "Neuravian",
         "api_version": "1",
     }

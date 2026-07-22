@@ -13,7 +13,7 @@ Usage: 02-bootstrap-iam.sh --config PATH [--apply] [--confirmation PHRASE]
 
 CLOUDSHELL: default mode renders and validates the exact IAM plan without
 mutation. Live apply additionally requires the reserved future approval gate
-and the typed confirmation CREATE NEUROFORGE IAM.
+and the typed confirmation CREATE NEURAVIAN IAM.
 
 IAM removal is intentionally not available here. Permanent removal flows only
 through scripts 11, 12, and 13.
@@ -55,11 +55,11 @@ done
 
 [[ -n "${CONFIG_PATH}" ]] || die "--config is required"
 if [[ "${APPLY}" == "true" ]]; then
-  [[ "${NEUROFORGE_AWS_LIVE_APPROVAL:-}" == "APPROVE NEUROFORGE AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
+  [[ "${NEURAVIAN_AWS_LIVE_APPROVAL:-}" == "APPROVE NEURAVIAN AWS AUTOMATION" ]] || die "Live AWS automation approval is absent"
   if [[ -z "${CONFIRMATION}" && -t 0 ]]; then
-    read -r -p 'Type CREATE NEUROFORGE IAM: ' CONFIRMATION
+    read -r -p 'Type CREATE NEURAVIAN IAM: ' CONFIRMATION
   fi
-  [[ "${CONFIRMATION}" == "CREATE NEUROFORGE IAM" ]] || die "Exact IAM confirmation was not provided"
+  [[ "${CONFIRMATION}" == "CREATE NEURAVIAN IAM" ]] || die "Exact IAM confirmation was not provided"
 fi
 
 require_command aws
@@ -85,10 +85,10 @@ PY
 python3 "${SCRIPT_DIR}/lib/render_iam.py" \
   --preflight "${PREFLIGHT_PATH}" \
   --bootstrap-principal-arn "${BOOTSTRAP_PRINCIPAL}" \
-  --deployer-policy-template "${AWS_INFRA_ROOT}/policies/neuroforge-deployer-policy.json" \
-  --deployer-trust-template "${AWS_INFRA_ROOT}/iam/neuroforge-deployer-trust-policy.json" \
-  --instance-trust-template "${AWS_INFRA_ROOT}/iam/neuroforge-instance-trust-policy.json" \
-  --instance-policy-template "${AWS_INFRA_ROOT}/iam/neuroforge-instance-role-policy.json" \
+  --deployer-policy-template "${AWS_INFRA_ROOT}/policies/neuravian-deployer-policy.json" \
+  --deployer-trust-template "${AWS_INFRA_ROOT}/iam/neuravian-deployer-trust-policy.json" \
+  --instance-trust-template "${AWS_INFRA_ROOT}/iam/neuravian-instance-trust-policy.json" \
+  --instance-policy-template "${AWS_INFRA_ROOT}/iam/neuravian-instance-role-policy.json" \
   --output-dir "${IAM_OUTPUT_DIR}" \
   --plan-output "${IAM_PLAN_PATH}" >/dev/null
 
@@ -111,7 +111,7 @@ if [[ "${APPLY}" != "true" ]]; then
   python3 - "${IAM_PLAN_PATH}" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-print("NeuroForge IAM bootstrap plan: GO")
+print("Neuravian IAM bootstrap plan: GO")
 print(f"  Deployer role: {p['deployer_role_name']}")
 print(f"  Instance role: {p['instance_role_name']} (0 AWS API actions)")
 print(f"  Deployer actions: {len(p['deployer_actions'])}")
@@ -122,8 +122,8 @@ PY
 fi
 
 ACCOUNT_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["identity"]["account_id"])' "${PREFLIGHT_PATH}")"
-DEPLOYER_ROLE="NeuroForgeDeployer-${RESOLVED_DEPLOYMENT_ID}"
-INSTANCE_ROLE="NeuroForgeInstance-${RESOLVED_DEPLOYMENT_ID}"
+DEPLOYER_ROLE="NeuravianDeployer-${RESOLVED_DEPLOYMENT_ID}"
+INSTANCE_ROLE="NeuravianInstance-${RESOLVED_DEPLOYMENT_ID}"
 POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${DEPLOYER_ROLE}"
 
 if aws iam get-policy --policy-arn "${POLICY_ARN}" >/dev/null 2>&1; then
@@ -150,8 +150,8 @@ PY
 else
   aws iam create-policy --policy-name "${DEPLOYER_ROLE}" \
     --policy-document "file://${DEPLOYER_POLICY}" \
-    --tags Key=Project,Value=NeuroForge Key=Purpose,Value=x86-verification \
-      Key=ManagedBy,Value=NeuroForgeProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
+    --tags Key=Project,Value=Neuravian Key=Purpose,Value=x86-verification \
+      Key=ManagedBy,Value=NeuravianProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
 fi
 
 ensure_role() {
@@ -161,8 +161,8 @@ ensure_role() {
     aws iam update-assume-role-policy --role-name "${role_name}" --policy-document "file://${trust_file}"
   else
     aws iam create-role --role-name "${role_name}" --assume-role-policy-document "file://${trust_file}" \
-      --tags Key=Project,Value=NeuroForge Key=Purpose,Value=x86-verification \
-        Key=ManagedBy,Value=NeuroForgeProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
+      --tags Key=Project,Value=Neuravian Key=Purpose,Value=x86-verification \
+        Key=ManagedBy,Value=NeuravianProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
   fi
 }
 
@@ -176,8 +176,8 @@ INLINE_COUNT="$(aws iam list-role-policies --role-name "${INSTANCE_ROLE}" --quer
 
 if ! aws iam get-instance-profile --instance-profile-name "${INSTANCE_ROLE}" >/dev/null 2>&1; then
   aws iam create-instance-profile --instance-profile-name "${INSTANCE_ROLE}" \
-    --tags Key=Project,Value=NeuroForge Key=Purpose,Value=x86-verification \
-      Key=ManagedBy,Value=NeuroForgeProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
+    --tags Key=Project,Value=Neuravian Key=Purpose,Value=x86-verification \
+      Key=ManagedBy,Value=NeuravianProvisioner Key=DeploymentId,Value="${RESOLVED_DEPLOYMENT_ID}" >/dev/null
 fi
 PROFILE_ROLE_COUNT="$(aws iam get-instance-profile --instance-profile-name "${INSTANCE_ROLE}" \
   --query "length(InstanceProfile.Roles[?RoleName=='${INSTANCE_ROLE}'])" --output text)"

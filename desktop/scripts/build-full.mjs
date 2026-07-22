@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Full NeuroForge build pipeline.
+ * Full Neuravian build pipeline.
  *
  * Guarantees that the packaged app always ships the frontend at HEAD.
  * Run via:  npm run dist:mac   (from desktop/)
@@ -48,6 +48,7 @@ const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot   = resolve(desktopDir, "..");
 const frontendDir = resolve(repoRoot, "frontend");
 const buildDir   = resolve(desktopDir, "build");
+const frontendImage = "neuravian-frontend:latest";
 
 // ── Step 1: HEAD commit ───────────────────────────────────────────────────────
 step(1, 7, "Resolving HEAD commit");
@@ -78,11 +79,11 @@ step(4, 7, "Verifying Docker image commit label");
 let imageLabel;
 try {
   imageLabel = capture(
-    "docker image inspect neuroforge-frontend --format '{{index .Config.Labels \"org.neuroforge.git-commit\"}}'",
+    `docker image inspect ${frontendImage} --format '{{index .Config.Labels "org.neuravian.git-commit"}}'`,
     repoRoot,
   );
 } catch {
-  fail("Could not inspect neuroforge-frontend image. Docker build may have failed.");
+  fail("Could not inspect the Compose frontend image. Docker build may have failed.");
 }
 
 if (imageLabel !== commit) {
@@ -114,4 +115,4 @@ step(7, 7, "Packaging with electron-builder");
 run("electron-builder --mac dir --arm64 --config electron-builder.yml", desktopDir);
 
 console.log(`\n${GREEN}${BOLD}✓ Full build complete at ${commit}${RESET}`);
-console.log(`  NeuroForge.app frontend is guaranteed to match HEAD.\n`);
+console.log(`  Neuravian.app frontend is guaranteed to match HEAD.\n`);

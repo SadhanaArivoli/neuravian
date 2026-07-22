@@ -463,7 +463,7 @@ def test_methods_template_exists():
     """The group-functional-connectivity methods template must mention Fisher r-to-z."""
     candidates = [
         Path(__file__).parent.parent.parent / "frontend" / "src" / "lib" / "methodsEngine.ts",
-        Path("/host-data/neuroforge/frontend/src/lib/methodsEngine.ts"),
+        Path("/host-data/neuravian/frontend/src/lib/methodsEngine.ts"),
     ]
     ts_path = next((p for p in candidates if p.exists()), None)
     if ts_path is None:
@@ -481,7 +481,7 @@ def test_workflow_template_exists():
     """A workflow template referencing group-functional-connectivity must exist."""
     candidates = [
         Path(__file__).parent.parent.parent / "frontend" / "src" / "lib" / "workflowTemplates.ts",
-        Path("/host-data/neuroforge/frontend/src/lib/workflowTemplates.ts"),
+        Path("/host-data/neuravian/frontend/src/lib/workflowTemplates.ts"),
     ]
     ts_path = next((p for p in candidates if p.exists()), None)
     if ts_path is None:

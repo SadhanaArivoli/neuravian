@@ -1,4 +1,4 @@
-const bridge = window.neuroforgeDesktop;
+const bridge = window.neuravianDesktop;
 const card = document.querySelector(".status-card");
 const status = document.querySelector("#startup-status");
 const detail = document.querySelector("#startup-detail");

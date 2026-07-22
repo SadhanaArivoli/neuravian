@@ -5,7 +5,7 @@ description: >
   graph and compute graph-theoretic metrics: global and local efficiency,
   clustering coefficient, betweenness centrality, modularity (Louvain),
   characteristic path length, density, and per-node strength, degree, and
-  participation coefficient.  This pipeline consumes NeuroForge FC outputs
+  participation coefficient.  This pipeline consumes Neuravian FC outputs
   and does NOT compute connectivity itself.
 homepage: https://networkx.org/documentation/stable/reference/algorithms/index.html
 category: connectivity
@@ -16,7 +16,7 @@ inputs: []
 
 execution:
   type: native
-  command: neuroforge-connectome-graph-analysis
+  command: neuravian-connectome-graph-analysis
 
 dataset_positional: false
 
@@ -34,7 +34,7 @@ parameters:
     required: true
     help: >
       Path to the connectivity matrix file to analyse.
-      Accepts .npy or .csv files produced by a NeuroForge Functional
+      Accepts .npy or .csv files produced by a Neuravian Functional
       Connectivity run.  Filled automatically when launched via Run Next.
 
   - name: threshold-method
@@ -65,7 +65,7 @@ parameters:
     default: null
     advanced: true
     help: >
-      NeuroForge run ID of the Functional Connectivity run that produced the
+      Neuravian run ID of the Functional Connectivity run that produced the
       input matrix.  Used for provenance tracking.
 
   - name: output-dir
@@ -73,7 +73,7 @@ parameters:
     required: false
     default: "{output_dir}"
     advanced: true
-    help: Output directory (set automatically by NeuroForge).
+    help: Output directory (set automatically by Neuravian).
 
 accepts:
   - type: connectivity_matrix_npy

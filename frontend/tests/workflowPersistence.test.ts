@@ -227,7 +227,7 @@ describe("buildExportEnvelope", () => {
   it("sets the correct export_format", () => {
     const state = makeValidState();
     const env = buildExportEnvelope("My WF", "desc", ["neuro", "qc"], state);
-    expect(env.export_format).toBe("neuroforge-workflow-export-v1");
+    expect(env.export_format).toBe("neuravian-workflow-export-v1");
   });
 
   it("includes name, description, tags, state", () => {
@@ -256,7 +256,7 @@ describe("buildExportEnvelope", () => {
 describe("parseWorkflowImport", () => {
   function validEnvelopeJSON(overrides: Record<string, unknown> = {}): string {
     return JSON.stringify({
-      export_format: "neuroforge-workflow-export-v1",
+      export_format: "neuravian-workflow-export-v1",
       exported_at: new Date().toISOString(),
       name: "Test WF",
       description: "A test",

@@ -27,7 +27,7 @@ describe("active-run protection", () => {
 
   it("keeps the required active-run quit choices in the native shell", async () => {
     const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
-    expect(source).toContain('["Cancel", "Leave NeuroForge services running", "Return to NeuroForge"]');
+    expect(source).toContain('["Cancel", "Leave Neuravian services running", "Return to Neuravian"]');
   });
 });
 
@@ -35,10 +35,10 @@ describe("native navigation boundaries", () => {
   it.each([
     "http://127.0.0.1:3000/",
     "http://127.0.0.1:3000/runs/42",
-    "file:///Applications/NeuroForge.app/splash.html",
+    "file:///Applications/Neuravian.app/splash.html",
   ])("keeps %s inside the app", (url) => expect(isInternalUrl(url)).toBe(true));
 
-  it.each(["https://docs.docker.com/", "https://github.com/SadhanaArivoli/neuroforge"])(
+  it.each(["https://docs.docker.com/", "https://github.com/SadhanaArivoli/neuravian"])(
     "opens %s externally",
     (url) => {
       expect(isInternalUrl(url)).toBe(false);
@@ -53,14 +53,14 @@ describe("native navigation boundaries", () => {
 
 describe("window state", () => {
   it("restores saved window size and position", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "neuroforge-window-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "neuravian-window-"));
     const file = path.join(directory, "window-state.json");
     await saveWindowBounds(file, { x: 120, y: 80, width: 1440, height: 960 });
     await expect(loadWindowBounds(file)).resolves.toEqual({ x: 120, y: 80, width: 1440, height: 960 });
   });
 
   it("enforces the minimum usable window size", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "neuroforge-window-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "neuravian-window-"));
     const file = path.join(directory, "window-state.json");
     await saveWindowBounds(file, { width: 400, height: 300 });
     await expect(loadWindowBounds(file)).resolves.toMatchObject({ width: 1024, height: 700 });

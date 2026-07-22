@@ -1,4 +1,4 @@
-# NeuroForge (working name): Architecture & Product Plan
+# Neuravian (working name): Architecture & Product Plan
 *A guided, modular orchestration layer for open-source neuroimaging tools*
 
 ---
@@ -328,7 +328,7 @@ Design principle: **never show a raw traceback as the primary message** — show
 ## 19. Repository Folder Structure
 
 ```
-neuroforge/
+neuravian/
 ├── backend/
 │   ├── app/
 │   │   ├── api/                # FastAPI routers (datasets, pipelines, runs, provenance)
@@ -411,7 +411,7 @@ neuroforge/
 Use this as your opening prompt when you start the actual build in Claude Code. It encodes the architecture above as constraints so the agent doesn't wander into scope creep.
 
 ```
-I'm building "NeuroForge" — a local-first orchestration platform that wraps existing,
+I'm building "Neuravian" — a local-first orchestration platform that wraps existing,
 validated open-source neuroimaging tools (starting with MRIQC, later fMRIPrep) behind a
 modern, beginner-friendly UI. Full architecture doc is at docs/architecture/neuroimaging-platform-architecture.md
 — read it first before writing any code.

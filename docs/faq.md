@@ -23,13 +23,13 @@ docker compose logs backend
 ```
 
 Common causes:
-- **SQLite migration failed** — preserve `data/neuroforge.db`, capture the
+- **SQLite migration failed** — preserve `data/neuravian.db`, capture the
   migration error, and confirm the current Alembic revision. Restore from a
   backup or request support; do not delete the database as a routine fix.
 - **Bad `.env` file** — verify that `HOST_DATASETS_DIR` exists on your machine.
 - **Permission denied on Docker socket** — your user must be in the `docker` group (Linux) or Docker Desktop must be running (macOS/Windows).
 
-### I do not see my datasets in NeuroForge
+### I do not see my datasets in Neuravian
 
 `HOST_DATASETS_DIR` in `.env` must be the directory *containing* your BIDS folders, not a BIDS folder itself.
 
@@ -39,7 +39,7 @@ Example: if your dataset is at `/Users/alice/research/my-study/`, set:
 HOST_DATASETS_DIR=/Users/alice/research
 ```
 
-Then in NeuroForge, create a dataset with path `/Users/alice/research/my-study`.
+Then in Neuravian, create a dataset with path `/Users/alice/research/my-study`.
 
 ---
 
@@ -52,15 +52,20 @@ The tool's Docker image has not been pulled yet, or the native executable is mis
 - **Docker pipelines (MRIQC, FastSurfer, etc.):** the image is pulled automatically on first run. If pull fails, check your internet connection and Docker Hub access.
 - **Native pipelines:** this should not happen with built-in pipelines. If you see it for a plugin, verify that the `backend/` directory contains an executable file with a matching name and `chmod +x`.
 
-### fMRIPrep fails or produces bad results on Apple Silicon {#fmriprep-apple-silicon}
+### Is fMRIPrep qualified on Apple Silicon? {#fmriprep-apple-silicon}
 
-fMRIPrep runs the `linux/amd64` Docker image under Rosetta 2 on Apple Silicon. ANTs non-linear registration (used internally by fMRIPrep) is known to produce unreliable outputs and excessive memory consumption under this emulation layer.
+No. Neuravian's fMRIPrep integration uses a `linux/amd64` image and the
+qualification attempt did not complete under Apple Silicon emulation. That is
+evidence of an unsupported qualification environment, not evidence about the
+scientific validity of fMRIPrep itself.
 
-**Recommended approach on Apple Silicon:** run fMRIPrep on a Linux machine or HPC cluster, then use **Import fMRIPrep Derivatives** to register the results in NeuroForge.
+**Recommended approach on Apple Silicon:** run fMRIPrep in a suitable Linux
+x86_64 environment, then use **Import fMRIPrep Derivatives** to register the
+results in Neuravian. See [Pipeline Status](pipeline-status.md).
 
 ### A run is stuck at "running" after a restart
 
-When NeuroForge shuts down unexpectedly (e.g. `docker compose down` while a run is executing), the run record is left in `running` state. On the next startup, the stalled-run detector marks these as `interrupted`.
+When Neuravian shuts down unexpectedly (e.g. `docker compose down` while a run is executing), the run record is left in `running` state. On the next startup, the stalled-run detector marks these as `interrupted`.
 
 If you see an `interrupted` run, you can re-run it from the run detail page.
 
@@ -84,13 +89,13 @@ Open **Runs** → find the running run → click **Cancel**. The cancel sends a 
 
 All derivatives are written to `./data/derivatives/<pipeline-id>/<run-id>/` on the host, relative to the repository root. This directory is mounted into the backend container at `/app/data/`.
 
-Your source datasets (in `HOST_DATASETS_DIR`) are mounted read-only. NeuroForge never writes to them.
+Your source datasets (in `HOST_DATASETS_DIR`) are mounted read-only. Neuravian never writes to them.
 
 ### How do I delete outputs from a run?
 
 Open **Runs** → run detail page → **Delete Run**. This removes the run record and all associated artifacts from the database. The output files in `data/derivatives/` are not deleted automatically — remove them manually if you need to reclaim disk space.
 
-### Can I import existing analysis outputs that were not produced by NeuroForge?
+### Can I import existing analysis outputs that were not produced by Neuravian?
 
 Yes, for supported derivative formats. Use:
 - **Import fMRIPrep Derivatives** — for fMRIPrep outputs
@@ -133,7 +138,7 @@ Yes. From the run detail page, expand **Provenance record** to see the full JSON
 
 ### Where do I install a plugin?
 
-Put the plugin directory in `plugins/` at the repository root, or set the `NEUROFORGE_PLUGINS_DIRS` environment variable to point at one or more directories containing plugin directories.
+Put the plugin directory in `plugins/` at the repository root, or set the `NEURAVIAN_PLUGINS_DIRS` environment variable to point at one or more directories containing plugin directories.
 
 ### My plugin shows as "error" in the Plugins page
 
@@ -154,17 +159,17 @@ Yes. Set `enabled: false` in `plugin.yaml`. The plugin is discovered but its pip
 
 ## Data privacy
 
-### Does NeuroForge send my data anywhere?
+### Does Neuravian send my data anywhere?
 
-NeuroForge is local-first. No data is uploaded unless you explicitly configure
+Neuravian is local-first. No data is uploaded unless you explicitly configure
 a cloud workspace and confirm a workflow handoff. The handoff transfers only
 manifest-verified inputs required by the remote node.
 
-### Is NeuroForge HIPAA-compliant?
+### Is Neuravian HIPAA-compliant?
 
-NeuroForge is research software, not a certified clinical system. It does not implement access controls, audit logging to an external system, encryption at rest, or any other regulatory compliance feature. Do not use it to process identifiable patient data in a clinical or regulated context without independent security review.
+Neuravian is research software, not a certified clinical system. It does not implement access controls, audit logging to an external system, encryption at rest, or any other regulatory compliance feature. Do not use it to process identifiable patient data in a clinical or regulated context without independent security review.
 
-For research use with de-identified data, NeuroForge's local-first design (no network egress by default) is a reasonable starting point. Add pydeface to your pipeline to remove facial features before analysis if needed.
+For research use with de-identified data, Neuravian's local-first design (no network egress by default) is a reasonable starting point. Add pydeface to your pipeline to remove facial features before analysis if needed.
 
 ---
 

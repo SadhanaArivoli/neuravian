@@ -4,7 +4,7 @@ export type WorkspaceSelection = "local" | "all" | `cloud:${string}`;
 
 export interface LocalWorkspace {
   id: string;
-  name: "Local NeuroForge";
+  name: "Local Neuravian";
 }
 
 interface WorkspaceContextValue {
@@ -14,7 +14,7 @@ interface WorkspaceContextValue {
   cloudProfiles: WorkspaceProfile[];
 }
 
-const STORAGE_KEY = "neuroforge.desktop.selectedWorkspace";
+const STORAGE_KEY = "neuravian.desktop.selectedWorkspace";
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function normalizeWorkspaceSelection(value: string | null, profiles: WorkspaceProfile[]): WorkspaceSelection {
@@ -26,7 +26,7 @@ export function normalizeWorkspaceSelection(value: string | null, profiles: Work
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
   const [selected, setSelected] = useState<WorkspaceSelection>("local");
   const [local, setLocal] = useState<LocalWorkspace | null>(null);
   const [cloudProfiles, setCloudProfiles] = useState<WorkspaceProfile[]>([]);
@@ -34,7 +34,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!desktop) return;
     void desktop.getLocalWorkspaceIdentity().then((identity) => {
-      setLocal({ id: identity.workspaceId, name: "Local NeuroForge" });
+      setLocal({ id: identity.workspaceId, name: "Local Neuravian" });
     });
     void desktop.listWorkspaces().then((profiles) => {
       setCloudProfiles(profiles);

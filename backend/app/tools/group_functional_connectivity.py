@@ -1,6 +1,6 @@
 """Group Functional Connectivity aggregation tool.
 
-Aggregates multiple NeuroForge functional-connectivity run output directories
+Aggregates multiple Neuravian functional-connectivity run output directories
 into a group mean and standard-deviation connectivity matrix using the
 Fisher r-to-z transform (arctanh).
 
@@ -332,7 +332,7 @@ def _write_html_report(
 
 def run(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="neuroforge-group-functional-connectivity",
+        prog="neuravian-group-functional-connectivity",
         description="Aggregate multiple FC runs into a group mean/std matrix via Fisher z.",
     )
     parser.add_argument(

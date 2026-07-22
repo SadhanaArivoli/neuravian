@@ -467,7 +467,7 @@ function EmptyCanvas({ sourceReady }: { sourceReady: boolean }) {
         <p className="mt-2 text-sm leading-6 text-gray-400">
           {sourceReady
             ? "Recommendations appear in the right rail from the artifacts currently on the canvas."
-            : "Start with a registered dataset or a completed run, then NeuroForge will suggest what can run next."}
+            : "Start with a registered dataset or a completed run, then Neuravian will suggest what can run next."}
         </p>
       </div>
     </div>
@@ -738,8 +738,8 @@ export default function WorkflowBuilder() {
   );
 
   useEffect(() => {
-    if (!window.neuroforgeDesktop) return;
-    window.neuroforgeDesktop.listWorkspaces().then((profiles) => {
+    if (!window.neuravianDesktop) return;
+    window.neuravianDesktop.listWorkspaces().then((profiles) => {
       setWorkspaceProfiles(profiles);
       setSelectedWorkspaceId((current) => current || profiles[0]?.id || "");
     }).catch(() => setWorkspaceProfiles([]));
@@ -1208,8 +1208,8 @@ export default function WorkflowBuilder() {
 
   async function continueInCloud() {
     if (handoffIndex == null) return;
-    if (!window.neuroforgeDesktop?.prepareWorkflowHandoff || !selectedWorkspaceId) {
-      setHandoffError("Choose a configured cloud workspace in NeuroForge Desktop.");
+    if (!window.neuravianDesktop?.prepareWorkflowHandoff || !selectedWorkspaceId) {
+      setHandoffError("Choose a configured cloud workspace in Neuravian Desktop.");
       return;
     }
     if (!savedWorkflowId) {
@@ -1230,7 +1230,7 @@ export default function WorkflowBuilder() {
     const idempotencyKey = `workflow-${savedWorkflowId}-${nodes.map((node) => node.runId ?? "pending").join("-")}`;
     try {
       const serialized = serializeWorkflowState(source as SerializedSource, nodes, activeTemplate?.id ?? null);
-      const prepared = await window.neuroforgeDesktop.prepareWorkflowHandoff({
+      const prepared = await window.neuravianDesktop.prepareWorkflowHandoff({
         profileId: selectedWorkspaceId,
         workflowId: savedWorkflowId,
         executionUuid,
@@ -1248,8 +1248,8 @@ export default function WorkflowBuilder() {
       const persistExecution = async (
         status: string, currentNodeId: string | null, returnSyncComplete = false,
       ) => {
-        if (!window.neuroforgeDesktop?.updateWorkflowExecution) return;
-        const updated = await window.neuroforgeDesktop.updateWorkflowExecution({
+        if (!window.neuravianDesktop?.updateWorkflowExecution) return;
+        const updated = await window.neuravianDesktop.updateWorkflowExecution({
           profileId: selectedWorkspaceId,
           executionUuid: persistedExecutionUuid,
           expectedRevision: executionRevision,
@@ -1274,7 +1274,7 @@ export default function WorkflowBuilder() {
       if (remoteStartIndex < 0) remoteStartIndex = nodes.length;
       if (remoteStartIndex > handoffIndex) {
         const previous = nodes[remoteStartIndex - 1]!;
-        const snapshot = await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+        const snapshot = await window.neuravianDesktop.syncWorkspace(selectedWorkspaceId);
         const previousRun = snapshot.snapshot.runs.find((run) => run.id === previous.runId);
         const nextNode = nodes[remoteStartIndex]!;
         const previousResults = previousRun?.results as { artifacts?: RunArtifact[] } | null | undefined;
@@ -1297,7 +1297,7 @@ export default function WorkflowBuilder() {
         node.status = "running";
         node.executionLocation = "Cloud";
         await persistExecution("running-remote", node.id);
-        const launched = await window.neuroforgeDesktop.launchPipeline({
+        const launched = await window.neuravianDesktop.launchPipeline({
           profileId: selectedWorkspaceId,
           pipelineId: node.pipelineId,
           datasetId: remoteDatasetId,
@@ -1319,7 +1319,7 @@ export default function WorkflowBuilder() {
         updateNode(node.id, { runId: launched.runId });
         let remoteRun: WorkspaceRun | null = null;
         for (let attempt = 0; attempt < 900; attempt++) {
-          const sync = await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+          const sync = await window.neuravianDesktop.syncWorkspace(selectedWorkspaceId);
           remoteRun = sync.snapshot.runs.find((run) => run.id === launched.runId) ?? null;
           if (remoteRun && ["success", "failed", "cancelled", "interrupted"].includes(remoteRun.status)) break;
           await wait(2000);
@@ -1349,7 +1349,7 @@ export default function WorkflowBuilder() {
         }
       }
       await persistExecution("synchronizing-results", null);
-      await window.neuroforgeDesktop.syncWorkspace(selectedWorkspaceId);
+      await window.neuravianDesktop.syncWorkspace(selectedWorkspaceId);
       await persistExecution("complete", null, true);
       setHandoffIndex(null);
       setRunMessage("Workflow completed and cloud results synchronized locally.");

@@ -10,11 +10,11 @@ describe("StatusBadge", () => {
 
   it("shows connected state", () => {
     render(<StatusBadge connected={true} loading={false} />);
-    expect(screen.getByText("Backend connected")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 
   it("shows offline state", () => {
     render(<StatusBadge connected={false} loading={false} />);
-    expect(screen.getByText("Backend offline")).toBeInTheDocument();
+    expect(screen.getByText("Neuravian is offline")).toBeInTheDocument();
   });
 });

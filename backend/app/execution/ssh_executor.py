@@ -26,6 +26,7 @@ import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from app.execution.bids_app_adapter import build_bids_app_plan
 from app.execution.executor import Executor, ResourceWarning, RunContext
 from app.schemas.remote_host import PreflightCheck, PreflightResult
 
@@ -56,7 +57,9 @@ def _ssh_connect(cfg: dict[str, Any]) -> "paramiko.SSHClient":
     return client
 
 
-def _exec(client: "paramiko.SSHClient", cmd: str, timeout: float = 30) -> tuple[int, str, str]:
+def _exec(
+    client: "paramiko.SSHClient", cmd: str, timeout: float = 30
+) -> tuple[int, str, str]:
     """Run a single command; return (exit_code, stdout, stderr)."""
     _, stdout, stderr = client.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode("utf-8", errors="replace")
@@ -130,7 +133,9 @@ def run_preflight(cfg: dict[str, Any]) -> PreflightResult:
         client = _ssh_connect(cfg)
     except Exception as exc:
         errors.append(f"SSH connection failed: {exc}")
-        return PreflightResult(connected=False, checks=checks, errors=errors, warnings=warnings)
+        return PreflightResult(
+            connected=False, checks=checks, errors=errors, warnings=warnings
+        )
 
     try:
         # 1. Architecture
@@ -139,14 +144,18 @@ def run_preflight(cfg: dict[str, Any]) -> PreflightResult:
         checks.append(PreflightCheck(name="architecture", passed=code == 0, value=arch))
 
         # 2. Docker daemon
-        code, out, err = _exec(client, "docker version --format '{{.Server.Version}}'", timeout=15)
+        code, out, err = _exec(
+            client, "docker version --format '{{.Server.Version}}'", timeout=15
+        )
         docker_ok = code == 0 and bool(out)
-        checks.append(PreflightCheck(
-            name="docker",
-            passed=docker_ok,
-            value=out if docker_ok else None,
-            detail=err if not docker_ok else None,
-        ))
+        checks.append(
+            PreflightCheck(
+                name="docker",
+                passed=docker_ok,
+                value=out if docker_ok else None,
+                detail=err if not docker_ok else None,
+            )
+        )
         if not docker_ok:
             errors.append(f"Docker not available on remote: {err or 'no output'}")
 
@@ -155,12 +164,14 @@ def run_preflight(cfg: dict[str, Any]) -> PreflightResult:
         probe_cmd = f"mkdir -p {root} && touch {root}/.nf_probe && rm {root}/.nf_probe"
         code, _, err = _exec(client, probe_cmd)
         writable = code == 0
-        checks.append(PreflightCheck(
-            name="remote_work_root_writable",
-            passed=writable,
-            value=cfg["remote_work_root"] if writable else None,
-            detail=err if not writable else None,
-        ))
+        checks.append(
+            PreflightCheck(
+                name="remote_work_root_writable",
+                passed=writable,
+                value=cfg["remote_work_root"] if writable else None,
+                detail=err if not writable else None,
+            )
+        )
         if not writable:
             errors.append(f"Remote work root is not writable: {err}")
 
@@ -177,21 +188,28 @@ def run_preflight(cfg: dict[str, Any]) -> PreflightResult:
                     disk_passed = True
                 except ValueError:
                     pass
-        checks.append(PreflightCheck(
-            name="disk_space_gb",
-            passed=disk_passed and (disk_free_gb or 0) >= _MIN_DISK_WARN_GB,
-            value=f"{disk_free_gb:.1f} GB free" if disk_free_gb is not None else None,
-        ))
+        checks.append(
+            PreflightCheck(
+                name="disk_space_gb",
+                passed=disk_passed and (disk_free_gb or 0) >= _MIN_DISK_WARN_GB,
+                value=f"{disk_free_gb:.1f} GB free"
+                if disk_free_gb is not None
+                else None,
+            )
+        )
         if disk_free_gb is not None and disk_free_gb < _MIN_DISK_WARN_GB:
             warnings.append(
-                f"Only {disk_free_gb:.1f} GB free on remote at {cfg['remote_work_root']}. "
-                f"Heavy pipelines (fMRIPrep, FastSurfer) need at least {_MIN_DISK_WARN_GB:.0f} GB."
+                f"Only {disk_free_gb:.1f} GB free on remote at "
+                f"{cfg['remote_work_root']}. Heavy pipelines need at least "
+                f"{_MIN_DISK_WARN_GB:.0f} GB."
             )
 
     finally:
         client.close()
 
-    return PreflightResult(connected=True, checks=checks, errors=errors, warnings=warnings)
+    return PreflightResult(
+        connected=True, checks=checks, errors=errors, warnings=warnings
+    )
 
 
 # ── Command builder (mirrors DockerExecutor logic with remote paths) ───────────
@@ -219,6 +237,35 @@ def _build_remote_docker_cmd(
         cli += ["-H", docker_host]
     cli += ["run", "--rm", "--platform", "linux/amd64"]
 
+    bids_app = (manifest.get("contract") or {}).get("bids_app")
+    if bids_app:
+        work_name = bids_app.get("work_directory_parameter")
+        work_value = str(params.get(work_name, "")) if work_name else ""
+        remote_work = remote_output_dir.rstrip("/") + "_work"
+
+        def remote_path(value: str) -> str:
+            if work_value and value == work_value:
+                return remote_work
+            for parameter in manifest.get("parameters", []):
+                if str(params.get(parameter["name"], "")) == value:
+                    return mounted_remote_paths.get(parameter["name"], value)
+            return value
+
+        plan = build_bids_app_plan(
+            manifest,
+            params,
+            dataset_host=remote_input_dir,
+            output_host=remote_output_dir,
+            host_path=remote_path,
+        )
+        for source, bind in plan.volumes.items():
+            cli += ["-v", f"{source}:{bind['bind']}:{bind['mode']}"]
+        for name, value in sorted(plan.environment.items()):
+            cli += ["-e", f"{name}={value}"]
+        cli.append(image)
+        cli.extend(plan.command)
+        return cli
+
     # Volumes
     if dataset_positional:
         cli += ["-v", f"{remote_input_dir}:/data:ro"]
@@ -240,7 +287,11 @@ def _build_remote_docker_cmd(
     cmd: list[str] = ["/data", "/out"] if dataset_positional else []
 
     positionals = sorted(
-        [p for p in manifest["parameters"] if not p.get("internal") and p.get("positional_index") is not None],
+        [
+            p
+            for p in manifest["parameters"]
+            if not p.get("internal") and p.get("positional_index") is not None
+        ],
         key=lambda p: p["positional_index"],
     )
     for p in positionals:
@@ -251,7 +302,11 @@ def _build_remote_docker_cmd(
             cmd.append(str(val))
 
     for p in manifest["parameters"]:
-        if p.get("internal") or p.get("positional_index") is not None or p.get("positional_suffix"):
+        if (
+            p.get("internal")
+            or p.get("positional_index") is not None
+            or p.get("positional_suffix")
+        ):
             continue
         name = p["name"]
         ptype = p["type"]
@@ -326,7 +381,9 @@ class SSHExecutor(Executor):
 
     def build_command(self, ctx: RunContext) -> list[str]:
         remote_in, remote_out = self._remote_dirs(ctx)
-        return _build_remote_docker_cmd(ctx, remote_in, remote_out, {}, self._cfg.get("docker_host"))
+        return _build_remote_docker_cmd(
+            ctx, remote_in, remote_out, {}, self._cfg.get("docker_host")
+        )
 
     async def run(
         self,
@@ -336,7 +393,7 @@ class SSHExecutor(Executor):
         loop = asyncio.get_event_loop()
 
         def _info(msg: str) -> None:
-            loop.call_soon_threadsafe(log_callback, f"[neuroforge-ssh] {msg}")
+            loop.call_soon_threadsafe(log_callback, f"[neuravian-ssh] {msg}")
 
         remote_in, remote_out = self._remote_dirs(ctx)
 
@@ -344,8 +401,14 @@ class SSHExecutor(Executor):
             client = _ssh_connect(self._cfg)
             try:
                 # 1. Create remote dirs
-                _info(f"Creating remote staging dirs under {self._cfg['remote_work_root']}/runs/{ctx.run_id}/")
-                code, _, err = _exec(client, f"mkdir -p {shlex.quote(remote_in)} {shlex.quote(remote_out)}")
+                _info(
+                    "Creating remote staging dirs under "
+                    f"{self._cfg['remote_work_root']}/runs/{ctx.run_id}/"
+                )
+                code, _, err = _exec(
+                    client,
+                    f"mkdir -p {shlex.quote(remote_in)} {shlex.quote(remote_out)}",
+                )
                 if code != 0:
                     raise RuntimeError(f"Failed to create remote directories: {err}")
 
@@ -361,7 +424,9 @@ class SSHExecutor(Executor):
                         if p.get("internal") or not p.get("mount"):
                             continue
                         name = p["name"]
-                        raw = str(ctx.params.get(name) or p.get("default") or "").strip()
+                        raw = str(
+                            ctx.params.get(name) or p.get("default") or ""
+                        ).strip()
                         if not raw:
                             continue
                         if not Path(raw).is_absolute():
@@ -369,9 +434,15 @@ class SSHExecutor(Executor):
                         # Safety: ensure the path exists and is a file
                         local_p = Path(raw)
                         if not local_p.exists():
-                            _info(f"Skipping mount param {name!r}: local path not found: {raw}")
+                            _info(
+                                f"Skipping mount param {name!r}: local path not "
+                                f"found: {raw}"
+                            )
                             continue
-                        remote_param_dir = f"{self._cfg['remote_work_root'].rstrip('/')}/runs/{ctx.run_id}/inputs/{name}"
+                        root = self._cfg["remote_work_root"].rstrip("/")
+                        remote_param_dir = (
+                            f"{root}/runs/{ctx.run_id}/inputs/{name}"
+                        )
                         remote_param_path = f"{remote_param_dir}/{local_p.name}"
                         _sftp_makedirs(sftp, remote_param_dir)
                         sftp.put(str(local_p), remote_param_path)
@@ -382,7 +453,11 @@ class SSHExecutor(Executor):
 
                 # 4. Build and run docker command on remote
                 docker_cmd = _build_remote_docker_cmd(
-                    ctx, remote_in, remote_out, mounted_remote, self._cfg.get("docker_host")
+                    ctx,
+                    remote_in,
+                    remote_out,
+                    mounted_remote,
+                    self._cfg.get("docker_host"),
                 )
                 shell_cmd = " ".join(shlex.quote(s) for s in docker_cmd)
                 _info(f"Remote command: {shell_cmd}")
@@ -390,7 +465,9 @@ class SSHExecutor(Executor):
                 max_hours: float | None = ctx.manifest.get("max_runtime_hours")
                 timeout_s = (max_hours * 3600) if max_hours else None
 
-                _, stdout_ch, stderr_ch = client.exec_command(shell_cmd, timeout=timeout_s)
+                _, stdout_ch, stderr_ch = client.exec_command(
+                    shell_cmd, timeout=timeout_s
+                )
                 stdout_ch.channel.set_combine_stderr(True)
 
                 for raw in stdout_ch:
@@ -423,7 +500,7 @@ class SSHExecutor(Executor):
             exit_code = await loop.run_in_executor(None, _run_sync)
         except Exception as exc:
             log.exception("SSHExecutor.run failed for run %d: %s", ctx.run_id, exc)
-            loop.call_soon_threadsafe(log_callback, f"[neuroforge-ssh] Error: {exc}")
+            loop.call_soon_threadsafe(log_callback, f"[neuravian-ssh] Error: {exc}")
             exit_code = 1
 
         # digest is not available for remote runs

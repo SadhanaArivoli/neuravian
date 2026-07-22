@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-NeuroForge currently relies on standard, predictable browser and desktop
+Neuravian currently relies on standard, predictable browser and desktop
 keyboard behavior rather than application-wide custom shortcuts.
 
 | Action | Shortcut |
@@ -13,6 +13,6 @@ keyboard behavior rather than application-wide custom shortcuts.
 | Close a supported dialog or viewer | `Escape` |
 | Find text in the current page/report | `Command`/`Ctrl` + `F` |
 
-Visible focus rings identify the active control. NeuroForge does not override
+Visible focus rings identify the active control. Neuravian does not override
 operating-system or browser shortcuts. Viewer-specific pointer and keyboard
 controls are shown in the viewer when available.

@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-exec > >(tee -a /var/log/neuroforge-bootstrap.log) 2>&1
+exec > >(tee -a /var/log/neuravian-bootstrap.log) 2>&1
 export DEBIAN_FRONTEND=noninteractive
 
-readonly EXPECTED_COMMIT="__NEUROFORGE_VM_COMMIT__"
+readonly EXPECTED_COMMIT="__NEURAVIAN_VM_COMMIT__"
 readonly APPLICATION_BASELINE="__APPLICATION_BASELINE_COMMIT__"
-readonly REPOSITORY_URL="https://github.com/SadhanaArivoli/neuroforge.git"
-readonly REPOSITORY_DIR="/home/ubuntu/neuroforge"
-readonly MARKER_DIR="/var/lib/neuroforge"
+readonly REPOSITORY_URL="https://github.com/SadhanaArivoli/neuravian.git"
+readonly REPOSITORY_DIR="/home/ubuntu/neuravian"
+readonly MARKER_DIR="/var/lib/neuravian"
 readonly MARKER_PATH="${MARKER_DIR}/bootstrap-complete.json"
 readonly PREPULL_IMAGES="__PREPULL_IMAGES__"
 
@@ -61,8 +61,8 @@ git -C "${REPOSITORY_DIR}" checkout --detach "${EXPECTED_COMMIT}"
 git -C "${REPOSITORY_DIR}" cat-file -e "${APPLICATION_BASELINE}^{commit}"
 git -C "${REPOSITORY_DIR}" merge-base --is-ancestor "${APPLICATION_BASELINE}" "${EXPECTED_COMMIT}"
 
-install -d -o ubuntu -g ubuntu -m 0750 /home/ubuntu/neuroforge-fixture
-install -d -o ubuntu -g ubuntu -m 0700 /home/ubuntu/.neuroforge-secrets
+install -d -o ubuntu -g ubuntu -m 0750 /home/ubuntu/neuravian-fixture
+install -d -o ubuntu -g ubuntu -m 0700 /home/ubuntu/.neuravian-secrets
 install -d -o ubuntu -g ubuntu -m 0750 "${REPOSITORY_DIR}/verification/x86/work"
 install -d -o ubuntu -g ubuntu -m 0750 "${REPOSITORY_DIR}/verification/x86/evidence"
 install -d -o ubuntu -g ubuntu -m 0750 "${REPOSITORY_DIR}/data"

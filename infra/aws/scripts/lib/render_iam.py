@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render and lint deployment-scoped NeuroForge IAM documents."""
+"""Render and lint deployment-scoped Neuravian IAM documents."""
 
 from __future__ import annotations
 
@@ -107,8 +107,8 @@ def main() -> int:
         if not principal.startswith(expected_prefix) or not (":user/" in principal or ":role/" in principal):
             raise PolicyError("bootstrap principal must be an exact same-account IAM user or role ARN")
         deployment_id = preflight["deployment_id"]
-        deployer_name = f"NeuroForgeDeployer-{deployment_id}"
-        instance_name = f"NeuroForgeInstance-{deployment_id}"
+        deployer_name = f"NeuravianDeployer-{deployment_id}"
+        instance_name = f"NeuravianInstance-{deployment_id}"
         if max(len(deployer_name), len(instance_name)) > 64:
             raise PolicyError("generated IAM name exceeds 64 characters")
         instance_role_arn = f"arn:aws:iam::{account_id}:role/{instance_name}"
@@ -159,7 +159,7 @@ def main() -> int:
             "instance_role_actions": [],
             "deployer_actions": actions(deployer_policy),
             "rendered_files": {name: str(path) for name, path in files.items()},
-            "apply_confirmation": "CREATE NEUROFORGE IAM",
+            "apply_confirmation": "CREATE NEURAVIAN IAM",
             "live_approval_required": True,
         }
         write_private(args.plan_output, plan)

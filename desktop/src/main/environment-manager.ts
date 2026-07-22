@@ -41,7 +41,7 @@ export interface LaunchEnvironmentOptions {
   startTimeoutMs?: number;
   /** Poll interval while waiting for "running" (default: 8 seconds). */
   pollIntervalMs?: number;
-  /** How long to wait for the NeuroForge server to become reachable (default: 90 seconds). */
+  /** How long to wait for the Neuravian server to become reachable (default: 90 seconds). */
   serverReadyTimeoutMs?: number;
 }
 
@@ -89,7 +89,7 @@ export class ExecutionEnvironmentManager {
     // ── Step 3: Save updated serverUrl (new IP after restart) ─────────────────
     profile = await this._resolveAndSaveUrl(profile);
 
-    // ── Step 4: Poll until the NeuroForge server is reachable ─────────────────
+    // ── Step 4: Poll until the Neuravian server is reachable ─────────────────
     await this._pollUntilServerReady(profile, credential, serverReadyTimeoutMs, pollIntervalMs);
 
     const workspaceId = await this._fetchWorkspaceId(profile, credential);
@@ -184,7 +184,7 @@ export class ExecutionEnvironmentManager {
       }
       await sleep(intervalMs);
     }
-    throw new Error(`NeuroForge server did not become reachable within ${timeoutMs / 1000}s.`);
+    throw new Error(`Neuravian server did not become reachable within ${timeoutMs / 1000}s.`);
   }
 
   private async _fetchWorkspaceId(

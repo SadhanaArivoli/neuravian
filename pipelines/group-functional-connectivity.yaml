@@ -2,7 +2,7 @@ id: group-functional-connectivity
 display_name: Group Functional Connectivity
 description: >
   Aggregates multiple functional-connectivity runs (already computed by
-  NeuroForge) into a group mean and standard-deviation connectivity matrix.
+  Neuravian) into a group mean and standard-deviation connectivity matrix.
   Performs compatibility validation (same atlas, ROI count, and correlation
   method) and produces a mean heatmap, std heatmap, and summary report.
   Descriptive statistics only — no inferential testing.
@@ -11,7 +11,7 @@ input_type: bids_dataset
 
 execution:
   type: native
-  command: neuroforge-group-functional-connectivity
+  command: neuravian-group-functional-connectivity
 
 dataset_positional: false
 compute_profile: local-ok
@@ -37,7 +37,7 @@ parameters:
     type: string
     required: true
     help: >
-      Comma-separated list of NeuroForge functional-connectivity run IDs to
+      Comma-separated list of Neuravian functional-connectivity run IDs to
       aggregate. All runs must have used the same atlas and ROI ordering.
       This field is filled automatically by the multi-run selector.
 

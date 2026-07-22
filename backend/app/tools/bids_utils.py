@@ -1,4 +1,4 @@
-"""Shared BIDS path utilities for NeuroForge native functional tools.
+"""Shared BIDS path utilities for Neuravian native functional tools.
 
 These helpers replace private-underscore imports from functional_connectivity
 that were previously scattered across alff_falff, regional_homogeneity,

@@ -27,7 +27,7 @@ done
 [[ -n "${CONFIG_PATH}" ]] || die "--config is required"
 load_config "${CONFIG_PATH}"; validate_config; ensure_state_dirs; resolve_deployment_id
 python3 -c 'import sys; value=float(sys.argv[1]); assert 1 <= value <= 1000' "${LIMIT_USD}" || die "Budget limit must be between 1 and 1000 USD"
-BUDGET_NAME="NeuroForge-${RESOLVED_DEPLOYMENT_ID}"
+BUDGET_NAME="Neuravian-${RESOLVED_DEPLOYMENT_ID}"
 if [[ "${APPLY}" != "true" ]]; then
   cat <<EOF
 [CLOUDSHELL] OPTIONAL PLAN: create one monthly AWS Budget named ${BUDGET_NAME}
@@ -38,7 +38,7 @@ EOF
   exit 0
 fi
 require_live_approval
-[[ "${CONFIRMATION}" == "CREATE NEUROFORGE BUDGET" ]] || die "Exact budget confirmation was not provided"
+[[ "${CONFIRMATION}" == "CREATE NEURAVIAN BUDGET" ]] || die "Exact budget confirmation was not provided"
 [[ "${EMAIL}" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || die "A valid notification email is required"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 BUDGET_FILE="${STATE_ROOT}/budget.json"

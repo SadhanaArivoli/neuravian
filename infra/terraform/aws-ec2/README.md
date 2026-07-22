@@ -1,6 +1,6 @@
-# NeuroForge Terraform deployment for one AWS EC2 instance
+# Neuravian Terraform deployment for one AWS EC2 instance
 
-This root module provisions one native x86_64 NeuroForge verification VM and
+This root module provisions one native x86_64 Neuravian verification VM and
 deploys the public repository at an exact Git commit. It follows the reviewed
 security decisions in [`docs/cloud/aws-automated-deployment-architecture.md`](../../../docs/cloud/aws-automated-deployment-architecture.md).
 
@@ -21,7 +21,7 @@ keys, participant data, FreeSurfer licenses, and application secrets are not.
 - one EC2-trusted instance role and profile with no AWS API policy;
 - IMDSv2 required with hop limit 1;
 - termination protection enabled by default;
-- Docker Engine, Compose, an exact NeuroForge Git checkout, and a systemd unit
+- Docker Engine, Compose, an exact Neuravian Git checkout, and a systemd unit
   that builds and starts the frontend/backend automatically;
 - frontend/backend bound only to `127.0.0.1:3000` and `127.0.0.1:8000`.
 
@@ -48,8 +48,8 @@ in `.tf`, `.tfvars`, shell arguments, Git, user-data, or the VM.
 
 ```bash
 # LOCAL MAC
-aws configure --profile neuroforge-deployer
-export AWS_PROFILE=neuroforge-deployer
+aws configure --profile neuravian-deployer
+export AWS_PROFILE=neuravian-deployer
 export AWS_REGION=us-east-1
 aws sts get-caller-identity
 ```
@@ -67,8 +67,8 @@ cp terraform.tfvars.example terraform.tfvars
 chmod 600 terraform.tfvars
 
 # Create a key outside the repository if one does not already exist.
-ssh-keygen -t ed25519 -f "$HOME/.ssh/neuroforge-terraform" -C neuroforge-terraform
-chmod 400 "$HOME/.ssh/neuroforge-terraform"
+ssh-keygen -t ed25519 -f "$HOME/.ssh/neuravian-terraform" -C neuravian-terraform
+chmod 400 "$HOME/.ssh/neuravian-terraform"
 
 # Put only the .pub content in ssh_public_key.
 # Set operator_ssh_cidr to the current public IPv4 followed by /32.
@@ -87,8 +87,8 @@ create resources:
 terraform fmt -check -recursive
 terraform init
 terraform validate
-terraform plan -out neuroforge.tfplan
-terraform show neuroforge.tfplan
+terraform plan -out neuravian.tfplan
+terraform show neuravian.tfplan
 ```
 
 Review the plan for exactly:
@@ -108,7 +108,7 @@ must not be committed or shared publicly.
 
 ```bash
 # LOCAL MAC — MUTATES AWS AND INCURS COST
-terraform apply neuroforge.tfplan
+terraform apply neuravian.tfplan
 ```
 
 This command is intentionally documented but was not executed while generating
@@ -116,19 +116,19 @@ this module.
 
 ## Verify deployment
 
-Cloud-init builds both application images, starts `neuroforge.service`, waits
+Cloud-init builds both application images, starts `neuravian.service`, waits
 for frontend/backend health, verifies loopback listeners, and writes:
 
 ```text
-/var/lib/neuroforge/terraform-bootstrap-complete.json
+/var/lib/neuravian/terraform-bootstrap-complete.json
 ```
 
 After `terraform apply` finishes:
 
 ```bash
 # LOCAL MAC
-chmod 400 "$HOME/.ssh/neuroforge-terraform"
-./scripts/verify.sh --identity-file "$HOME/.ssh/neuroforge-terraform"
+chmod 400 "$HOME/.ssh/neuravian-terraform"
+./scripts/verify.sh --identity-file "$HOME/.ssh/neuravian-terraform"
 terraform output -raw tunnel_command
 ```
 
@@ -144,15 +144,15 @@ the deployment SSH connection and run the credential-free completion helper:
 
 ```bash
 # LOCAL MAC, from the repository root
-git bundle create /private/tmp/neuroforge.bundle codex/aws-terraform-ec2-deployment
-scp -i "$HOME/.ssh/neuroforge-terraform" \
-  /private/tmp/neuroforge.bundle \
+git bundle create /private/tmp/neuravian.bundle codex/aws-terraform-ec2-deployment
+scp -i "$HOME/.ssh/neuravian-terraform" \
+  /private/tmp/neuravian.bundle \
   infra/terraform/aws-ec2/scripts/complete-private-bootstrap.sh \
   "ubuntu@$(terraform -chdir=infra/terraform/aws-ec2 output -raw public_ip):/tmp/"
 
-ssh -i "$HOME/.ssh/neuroforge-terraform" \
+ssh -i "$HOME/.ssh/neuravian-terraform" \
   "ubuntu@$(terraform -chdir=infra/terraform/aws-ec2 output -raw public_ip)" \
-  "sudo bash /tmp/complete-private-bootstrap.sh /tmp/neuroforge.bundle \
+  "sudo bash /tmp/complete-private-bootstrap.sh /tmp/neuravian.bundle \
   $(terraform -chdir=infra/terraform/aws-ec2 output -raw deployed_git_commit)"
 ```
 
@@ -163,7 +163,7 @@ The GitHub credential never reaches EC2.
 
 ### Authenticated public HTTPS access
 
-NeuroForge has no built-in user authentication, and its frontend proxies the
+Neuravian has no built-in user authentication, and its frontend proxies the
 backend API. Never expose container ports 3000 or 8000 directly. Public access
 is therefore disabled by default and must use the authenticated HTTPS gateway.
 
@@ -190,7 +190,7 @@ domain you control for a stable long-term URL.
 On the VM, bootstrap logs are at:
 
 ```text
-/var/log/neuroforge-terraform-bootstrap.log
+/var/log/neuravian-terraform-bootstrap.log
 ```
 
 ## Updates

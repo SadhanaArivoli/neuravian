@@ -47,7 +47,7 @@ function ec2StateTone(s: Ec2InstanceState | "unknown"): "success" | "warning" | 
 export function WorkspaceSettingsPanel({
   profile, workspaceId, inspection, online, ec2Health, onClose, onUpdated, onRemoved,
 }: Props) {
-  const desktop = window.neuroforgeDesktop!;
+  const desktop = window.neuravianDesktop!;
   const [tab, setTab] = useState<SettingsTab>("general");
 
   // General
@@ -188,7 +188,7 @@ export function WorkspaceSettingsPanel({
     setTestResult(null);
     try {
       const result = await desktop.testWorkspace(profile.id);
-      setTestResult(`Connected · NeuroForge ${result.serverVersion} · API ${result.apiVersion}`);
+      setTestResult(`Connected · Neuravian ${result.serverVersion} · API ${result.apiVersion}`);
     } catch (err) {
       setTestResult(err instanceof Error ? err.message : String(err));
     } finally {
@@ -393,7 +393,7 @@ export function WorkspaceSettingsPanel({
         {tab === "connection" && (
           <form onSubmit={(e) => void saveConnection(e)} className="space-y-4">
             <Card>
-              <CardHeader title="Connection mode" subtitle="How NeuroForge locates this server" />
+              <CardHeader title="Connection mode" subtitle="How Neuravian locates this server" />
               <div className="mt-4 space-y-4">
                 <FormField label="Mode">
                   <select
@@ -438,7 +438,7 @@ export function WorkspaceSettingsPanel({
                       />
                     </FormField>
                     <InfoBanner tone="info">
-                      On each reconnect, NeuroForge runs{" "}
+                      On each reconnect, Neuravian runs{" "}
                       <code className="font-mono">aws ec2 describe-instances</code> to find the current
                       public IP and updates the serverUrl automatically. AWS CLI must be configured
                       with appropriate credentials.
@@ -469,12 +469,12 @@ export function WorkspaceSettingsPanel({
                         )}
                         {ec2Health.instanceState === "stopped" && (
                           <InfoBanner tone="warning" title="Instance is stopped">
-                            Start the instance below. NeuroForge will reconnect automatically once it is running.
+                            Start the instance below. Neuravian will reconnect automatically once it is running.
                           </InfoBanner>
                         )}
                         {ec2Health.instanceState === "pending" && (
                           <InfoBanner tone="info" title="Instance is starting…">
-                            NeuroForge will reconnect automatically once the instance is running. This usually takes 1–2 minutes.
+                            Neuravian will reconnect automatically once the instance is running. This usually takes 1–2 minutes.
                           </InfoBanner>
                         )}
                         {ec2Health.instanceState === "stopping" && (
@@ -608,7 +608,7 @@ export function WorkspaceSettingsPanel({
             <Card>
               <CardHeader title="Cache location" />
               <p className="mt-2 text-xs text-slate-400">
-                Cached artifacts are stored locally in the NeuroForge app data directory under{" "}
+                Cached artifacts are stored locally in the Neuravian app data directory under{" "}
                 <code className="font-mono text-slate-300">run-cache/{workspaceId ?? "…"}/</code>.
                 Clearing the cache does not affect cloud data.
               </p>
@@ -689,7 +689,7 @@ export function WorkspaceSettingsPanel({
                   subtitle="Stop the EC2 instance automatically when a run finishes"
                 />
                 <p className="mt-3 text-xs text-slate-500">
-                  When enabled, NeuroForge will run the shutdown fence and stop the instance
+                  When enabled, Neuravian will run the shutdown fence and stop the instance
                   automatically after every completed run — success or failure. You can restart
                   it any time from the Connection tab.
                 </p>
@@ -721,7 +721,7 @@ export function WorkspaceSettingsPanel({
               />
               <p className="mt-3 text-xs text-slate-500">
                 Use the Projects and Workflows views to push individual items to the cloud, or pull
-                cloud items to your local NeuroForge instance.
+                cloud items to your local Neuravian instance.
               </p>
             </Card>
 
@@ -734,7 +734,7 @@ export function WorkspaceSettingsPanel({
                 <p className="mt-3 text-xs text-slate-500">
                   Syncs all completed run artifacts to your local machine. Use this if you need
                   artifacts cached locally without stopping the instance. To stop the instance,
-                  use the <strong className="text-slate-300">Connection</strong> tab — NeuroForge
+                  use the <strong className="text-slate-300">Connection</strong> tab — Neuravian
                   will sync artifacts and stop the VM automatically.
                 </p>
 
@@ -843,7 +843,7 @@ export function WorkspaceSettingsPanel({
               </p>
               <div className="mt-3">
                 <ConfirmAction
-                  label={`This permanently removes "${profile.name}" from NeuroForge Desktop.`}
+                  label={`This permanently removes "${profile.name}" from Neuravian Desktop.`}
                   confirmLabel="Delete workspace"
                   tone="danger"
                   onConfirm={() => void deleteWorkspace()}

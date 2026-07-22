@@ -11,7 +11,7 @@ vi.mock("../src/hooks/useHealth", () => ({
 }));
 
 const profile: WorkspaceProfile = {
-  id: "aws", name: "AWS NeuroForge", serverUrl: "https://cloud.example",
+  id: "aws", name: "AWS Neuravian", serverUrl: "https://cloud.example",
   authenticationRef: "os-credential:aws", serverIdentity: "workspace-a",
   lastSync: "2026-07-18T00:00:00Z", connectionState: "connected",
 };
@@ -42,7 +42,7 @@ const snapshot: WorkspaceSnapshot = {
 
 const navigationLabels = [
   "Home", "Projects", "Datasets", "Pipelines", "Runs", "Workflows",
-  "DICOM Wizard", "Plugins", "Remote Hosts", "Workspace", "Settings",
+  "DICOM Wizard", "Plugins", "Workspaces", "Settings",
 ];
 
 function renderApp(path = "/") {
@@ -52,7 +52,7 @@ function renderApp(path = "/") {
 describe("restored desktop shell", () => {
   beforeEach(() => {
     localStorage.clear();
-    window.neuroforgeDesktop = {
+    window.neuravianDesktop = {
       detectViewers: vi.fn(async () => []),
       getLocalWorkspaceIdentity: vi.fn(async () => ({
         schemaVersion: 1 as const, workspaceId: "local-installation", createdAt: "2026-07-18T00:00:00Z",
@@ -109,7 +109,7 @@ describe("restored desktop shell", () => {
     }));
   });
 
-  it("renders Home at desktop root with the switcher and complete original navigation", async () => {
+  it("renders Home at desktop root with the workspace switcher and primary navigation", async () => {
     renderApp();
     expect(await screen.findByText("Neuroimaging pipelines")).toBeInTheDocument();
     expect(screen.queryByText("Workspace Home")).not.toBeInTheDocument();
@@ -127,7 +127,7 @@ describe("restored desktop shell", () => {
   it("keeps Home and every navigation destination while switching Local, AWS, and All", async () => {
     renderApp();
     const switcher = await screen.findByLabelText("Workspaces");
-    await waitFor(() => expect(screen.getByTestId("home-workspace-context")).toHaveTextContent("Local NeuroForge"));
+    await waitFor(() => expect(screen.getByTestId("home-workspace-context")).toHaveTextContent("Local Neuravian"));
     for (const value of ["cloud:aws", "all", "local"]) {
       fireEvent.change(switcher, { target: { value } });
       expect(screen.getByText("Neuroimaging pipelines")).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe("restored desktop shell", () => {
       }
     }
     fireEvent.change(switcher, { target: { value: "cloud:aws" } });
-    await waitFor(() => expect(screen.getByTestId("home-workspace-context")).toHaveTextContent("AWS NeuroForge"));
+    await waitFor(() => expect(screen.getByTestId("home-workspace-context")).toHaveTextContent("AWS Neuravian"));
     expect(await screen.findByText("7 runs")).toBeInTheDocument();
     fireEvent.change(switcher, { target: { value: "all" } });
     await waitFor(() => expect(screen.getByText("116 runs")).toBeInTheDocument());

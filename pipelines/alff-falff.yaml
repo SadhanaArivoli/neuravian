@@ -4,7 +4,7 @@ description: Native voxelwise amplitude and fractional amplitude of low-frequenc
 homepage: https://pubmed.ncbi.nlm.nih.gov/18501969/
 category: connectivity
 input_type: bids_dataset
-execution: {type: native, command: neuroforge-alff-falff}
+execution: {type: native, command: neuravian-alff-falff}
 dataset_positional: false
 compute_profile: local-ok
 inputs: [fmriprep_derivatives]
@@ -47,4 +47,4 @@ produces:
 known_errors:
   - {pattern: "not 4D|at least .* required|empty|constant", explanation: "The selected input is not a scientifically usable 4D BOLD run.", fix_hint: "Select an fMRIPrep desc-preproc_bold run with a valid brain mask and sufficient nonconstant timepoints."}
   - {pattern: "Nyquist|Frequency|frequency|TR", explanation: "TR or the requested spectral band is invalid.", fix_hint: "Confirm TR and choose 0 <= low < high <= 1/(2*TR)."}
-  - {pattern: "Missing required confound", explanation: "The selected fMRIPrep confounds file lacks one or more requested regressors.", fix_hint: "Choose a strategy whose exact columns are available; NeuroForge will not silently substitute regressors."}
+  - {pattern: "Missing required confound", explanation: "The selected fMRIPrep confounds file lacks one or more requested regressors.", fix_hint: "Choose a strategy whose exact columns are available; Neuravian will not silently substitute regressors."}

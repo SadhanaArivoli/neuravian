@@ -1,10 +1,11 @@
-"""Parse tqdm-style progress lines emitted by neuroimaging pipelines."""
+"""Parse manifest-declared or tqdm progress from pipeline log lines."""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 # Matches lines like:
 #  27%|██▋       |  68/256 [2:54:08<8:03:20, 154.13s/it]
@@ -52,3 +53,58 @@ def parse_tqdm_line(line: str) -> ParsedProgress | None:
         rate_unit=rate_unit,
         last_updated=datetime.now(UTC).isoformat(),
     )
+
+
+def parse_progress_line(
+    line: str,
+    progress_contract: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Return normalized progress using the manifest's declared strategy.
+
+    Regex patterns use named groups (``percent``, ``current``, ``total``, and
+    ``stage`` by default). Staged progress maps matched milestones to cumulative
+    weights. The existing tqdm parser remains the backward-compatible default.
+    """
+    config = progress_contract or {"strategy": "tqdm"}
+    strategy = config.get("strategy", "tqdm")
+    if strategy == "none":
+        return None
+    if strategy == "tqdm":
+        parsed = parse_tqdm_line(line)
+        return asdict(parsed) if parsed else None
+    if strategy == "regex":
+        for rule in config.get("patterns", []):
+            match = re.search(rule["pattern"], line)
+            if not match:
+                continue
+            groups = match.groupdict()
+            result: dict[str, Any] = {
+                "last_updated": datetime.now(UTC).isoformat(),
+            }
+            for field in ("percent", "current", "total", "stage"):
+                group_name = rule.get(f"{field}_group", field)
+                value = groups.get(group_name)
+                if value is not None:
+                    result[field] = int(value) if field != "stage" else value
+            if "percent" not in result and result.get("total"):
+                result["percent"] = round(
+                    result.get("current", 0) * 100 / result["total"]
+                )
+            return result
+        return None
+    if strategy == "stages":
+        stages = config.get("stages", [])
+        total_weight = sum(float(item["weight"]) for item in stages)
+        completed = 0.0
+        for item in stages:
+            if re.search(item["pattern"], line):
+                completed += float(item["weight"])
+                return {
+                    "percent": round(completed * 100 / total_weight),
+                    "stage": item["id"],
+                    "stage_label": item["label"],
+                    "last_updated": datetime.now(UTC).isoformat(),
+                }
+            completed += float(item["weight"])
+        return None
+    return None

@@ -19,9 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from app.core.config import settings
+from app.execution.bids_app_adapter import build_bids_app_plan
 from app.execution.executor import Executor, ResourceWarning, RunContext
 from app.execution.output_permissions import prepare_output_directory
-from app.core.config import settings
 from app.services.dataset_paths import (
     DatasetPathConfigurationError,
     dataset_translation_configured,
@@ -48,8 +49,9 @@ def _get_container_mounts() -> dict[str, str]:
     if not _is_running_in_docker():
         return {}
     try:
-        import docker
         import socket
+
+        import docker
 
         client = docker.from_env()
         hostname = socket.gethostname()
@@ -95,12 +97,14 @@ def to_host_path(container_path: str) -> str:
     best_dest = ""
     best_src = ""
     for dest, src in mounts.items():
-        if (container_path == dest or container_path.startswith(dest + "/")) and len(dest) > len(best_dest):
+        if (container_path == dest or container_path.startswith(dest + "/")) and len(
+            dest
+        ) > len(best_dest):
             best_dest = dest
             best_src = src
 
     if best_dest:
-        relative = container_path[len(best_dest):]
+        relative = container_path[len(best_dest) :]
         return best_src + relative
 
     log.warning("No mount found for container path %s — using as-is", container_path)
@@ -122,7 +126,7 @@ def from_host_path(host_path: str) -> str:
     """
     Translate a host filesystem path to the equivalent backend-container-internal
     path. Inverse of to_host_path(). Used by NativeExecutor to convert user-
-    supplied host paths (e.g. /Users/you/Documents/neuroforge/data/...) to
+    supplied host paths (e.g. /Users/you/Documents/neuravian/data/...) to
     paths accessible inside the backend container (e.g. /app/data/...).
 
     When not running inside Docker, the path is already accessible and is
@@ -137,12 +141,14 @@ def from_host_path(host_path: str) -> str:
     best_src = ""
     best_dest = ""
     for src, dest in inv.items():
-        if (host_path == src or host_path.startswith(src + "/")) and len(src) > len(best_src):
+        if (host_path == src or host_path.startswith(src + "/")) and len(src) > len(
+            best_src
+        ):
             best_src = src
             best_dest = dest
 
     if best_src:
-        relative = host_path[len(best_src):]
+        relative = host_path[len(best_src) :]
         return best_dest + relative
 
     log.warning("No mount found for host path %s — using as-is", host_path)
@@ -155,18 +161,39 @@ class _SdkParams:
     command: list[str]
     volumes: dict[str, dict[str, str]]  # {host_path: {"bind": ..., "mode": ...}}
     user: str | None = None  # "uid:gid" when run_as_host_user: true in manifest
+    environment: dict[str, str] | None = None
 
 
 class DockerExecutor(Executor):
     """Runs pipeline containers via the Docker SDK for Python."""
 
-    def _build_sdk_params(self, ctx: RunContext, *, validate_mounts: bool = True) -> _SdkParams:
+    def _build_sdk_params(
+        self, ctx: RunContext, *, validate_mounts: bool = True
+    ) -> _SdkParams:
         manifest = ctx.manifest
         params = ctx.params
         container = manifest["container"]
 
         dataset_host = _dataset_bind_source(ctx.dataset_path)
         output_host = to_host_path(ctx.output_dir)
+
+        bids_app = (manifest.get("contract") or {}).get("bids_app")
+        if bids_app:
+            plan = build_bids_app_plan(
+                manifest,
+                params,
+                dataset_host=dataset_host,
+                output_host=output_host,
+                host_path=to_host_path,
+            )
+            tag = container["tag"]
+            sep = "@" if tag.startswith("sha256:") else ":"
+            return _SdkParams(
+                image=f"{container['image']}{sep}{tag}",
+                command=plan.command,
+                volumes=plan.volumes,
+                environment=plan.environment,
+            )
 
         # dataset_positional: true (default) → BIDS-style pipelines that take
         # the dataset dir and output dir as positional CLI args (/data /out).
@@ -239,7 +266,7 @@ class DockerExecutor(Executor):
             # is called for command-preview display — no need to verify at that point).
             #
             # We can only validate a path when we can actually see it from here:
-            #   - The path was resolved via dataset-path translation → backend copy is accessible
+            #   - Dataset-path translation made the backend copy accessible
             #   - We are not inside a Docker container → raw filesystem is accessible
             # When running inside Docker with an untranslated path (e.g. a FreeSurfer
             # license file that lives outside the datasets mount), we cannot verify
@@ -250,30 +277,38 @@ class DockerExecutor(Executor):
             if validate_mounts:
                 if resolved_dataset_path is not None:
                     backend_path = resolved_dataset_path.backend
-                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    backend_ok = (
+                        backend_path.is_dir()
+                        if expected_dir
+                        else backend_path.is_file()
+                    )
                     if not backend_ok:
                         kind = "directory" if expected_dir else "file"
                         raise RuntimeError(
                             f"Mount validation failed for parameter '{name}': "
                             f"{kind} not found at '{raw}'. "
-                            "The file may have been moved or deleted after the run was submitted."
+                            "The file may have been moved or deleted after "
+                            "the run was submitted."
                         )
                 elif not _is_running_in_docker():
                     backend_path = Path(raw)
-                    backend_ok = backend_path.is_dir() if expected_dir else backend_path.is_file()
+                    backend_ok = (
+                        backend_path.is_dir()
+                        if expected_dir
+                        else backend_path.is_file()
+                    )
                     if not backend_ok:
                         kind = "directory" if expected_dir else "file"
                         raise RuntimeError(
                             f"Mount validation failed for parameter '{name}': "
                             f"{kind} not found at '{raw}'. "
-                            "The file may have been moved or deleted after the run was submitted."
+                            "The file may have been moved or deleted after "
+                            "the run was submitted."
                         )
             container_path = f"/inputs/{name}/{basename}"
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
             _mounted_paths[name] = container_path
-            log.debug(
-                "Mounting %s → %s for param %r", host_path, container_path, name
-            )
+            log.debug("Mounting %s → %s for param %r", host_path, container_path, name)
 
         # Build the tool command (everything after the image name).
         # BIDS-layout pipelines start with the fixed positional pair /data /out;
@@ -282,7 +317,11 @@ class DockerExecutor(Executor):
 
         # Positional parameters (sorted by positional_index)
         positionals = sorted(
-            [p for p in manifest["parameters"] if not p.get("internal") and p.get("positional_index") is not None],
+            [
+                p
+                for p in manifest["parameters"]
+                if not p.get("internal") and p.get("positional_index") is not None
+            ],
             key=lambda p: p["positional_index"],
         )
         for p in positionals:
@@ -377,6 +416,7 @@ class DockerExecutor(Executor):
             user = f"{explicit_user['uid']}:{explicit_user['gid']}"
         elif manifest.get("run_as_host_user"):
             import os
+
             host_uid = os.environ.get("HOST_UID", "").strip()
             host_gid = os.environ.get("HOST_GID", "").strip()
             if host_uid and host_gid and host_uid != "0":
@@ -386,7 +426,8 @@ class DockerExecutor(Executor):
                     "run_as_host_user=true but HOST_UID=%r HOST_GID=%r — "
                     "ensure HOST_UID and HOST_GID are set in the environment "
                     "before running 'docker compose up'. Skipping -u flag.",
-                    host_uid, host_gid,
+                    host_uid,
+                    host_gid,
                 )
 
         # Digest-pinned images use @sha256:... instead of :tag syntax.
@@ -397,6 +438,7 @@ class DockerExecutor(Executor):
             command=cmd,
             volumes=volumes,
             user=user,
+            environment=None,
         )
 
     def build_command(self, ctx: RunContext) -> list[str]:
@@ -408,6 +450,8 @@ class DockerExecutor(Executor):
         for host_path, bind in sdk.volumes.items():
             mode = bind.get("mode", "rw")
             cli += ["-v", f"{host_path}:{bind['bind']}:{mode}"]
+        for name, value in sorted((sdk.environment or {}).items()):
+            cli += ["-e", f"{name}={value}"]
         cli.append(sdk.image)
         cli.extend(sdk.command)
         return cli
@@ -446,12 +490,14 @@ class DockerExecutor(Executor):
                 volumes=sdk.volumes,
                 detach=True,
                 remove=False,  # we remove after capturing exit code
-                labels={"neuroforge_run_id": str(ctx.run_id)},
+                labels={"neuravian_run_id": str(ctx.run_id)},
                 # Force x86_64 emulation on Apple Silicon so that amd64-only
                 # images (fMRIPrep, FastSurfer cpu builds) don't fail with a
                 # "no matching manifest for linux/arm64" 404 at pull time.
                 platform="linux/amd64",
             )
+            if sdk.environment:
+                run_kwargs["environment"] = sdk.environment
             if sdk.user is not None:
                 run_kwargs["user"] = sdk.user
             container = client.containers.run(sdk.image, **run_kwargs)
@@ -492,17 +538,25 @@ class DockerExecutor(Executor):
             await asyncio.sleep(max_hours * 3600)
             cid = _active_containers.get(ctx.run_id)
             if cid:
-                log.warning("Run %d exceeded max runtime of %.1fh — stopping container %s", ctx.run_id, max_hours, cid[:12])
+                log.warning(
+                    "Run %d exceeded max runtime of %.1fh — stopping container %s",
+                    ctx.run_id,
+                    max_hours,
+                    cid[:12],
+                )
                 try:
                     client.containers.get(cid).stop(timeout=30)
                 except Exception:
                     pass
             loop.call_soon_threadsafe(
                 log_callback,
-                f"[neuroforge] Run stopped automatically after {max_hours:.0f}h maximum runtime.",
+                "[neuravian] Run stopped automatically after "
+                f"{max_hours:.0f}h maximum runtime.",
             )
 
-        watchdog: asyncio.Task | None = asyncio.ensure_future(_watchdog()) if max_hours else None
+        watchdog: asyncio.Task | None = (
+            asyncio.ensure_future(_watchdog()) if max_hours else None
+        )
         try:
             await loop.run_in_executor(None, _run_sync)
         finally:
@@ -530,44 +584,54 @@ class DockerExecutor(Executor):
                     img_info = client_tmp.images.get(_c_ref)
                     img_arch = img_info.attrs.get("Architecture", "")
                     if img_arch == "amd64":
-                        warnings.append(ResourceWarning(
-                            level="warn",
-                            message=(
-                                f"This pipeline image ({_c_ref}) "
-                                "is x86_64 only and will run under Rosetta 2 emulation on your Apple Silicon Mac. "
-                                "Expect 5-10× slower processing and higher memory usage than native. "
-                                "Keep nprocs=1 and omp-nthreads=1 to avoid memory exhaustion. "
-                                "A single T1w subject will take approximately 30-90 minutes."
-                            ),
-                        ))
+                        warnings.append(
+                            ResourceWarning(
+                                level="warn",
+                                message=(
+                                    f"This pipeline image ({_c_ref}) "
+                                "is x86_64 only and will run under Rosetta 2 "
+                                "emulation on your Apple Silicon Mac. Expect 5-10× "
+                                "slower processing and higher memory usage than "
+                                "native. Keep nprocs=1 and omp-nthreads=1 to avoid "
+                                "memory exhaustion. A single T1w subject will take "
+                                "approximately 30-90 minutes."
+                                ),
+                            )
+                        )
                 except Exception:
                     pass
 
             # RAM check
-            available_gb = psutil.virtual_memory().available / (1024 ** 3)
+            available_gb = psutil.virtual_memory().available / (1024**3)
             if available_gb < _MIN_RAM_WARN_GB:
-                warnings.append(ResourceWarning(
-                    level="warn",
-                    message=(
-                        f"Only {available_gb:.1f} GB RAM available. "
-                        f"MRIQC recommends at least {_MIN_RAM_WARN_GB:.0f} GB free. "
-                        "The run may be slow or fail on larger datasets."
-                    ),
-                ))
+                warnings.append(
+                    ResourceWarning(
+                        level="warn",
+                        message=(
+                            f"Only {available_gb:.1f} GB RAM available. "
+                            "MRIQC recommends at least "
+                            f"{_MIN_RAM_WARN_GB:.0f} GB free. "
+                            "The run may be slow or fail on larger datasets."
+                        ),
+                    )
+                )
 
             # Disk check (check the output dir's filesystem)
             output_parent = Path(ctx.output_dir).parent
             output_parent.mkdir(parents=True, exist_ok=True)
-            free_gb = psutil.disk_usage(str(output_parent)).free / (1024 ** 3)
+            free_gb = psutil.disk_usage(str(output_parent)).free / (1024**3)
             if free_gb < _MIN_DISK_WARN_GB:
-                warnings.append(ResourceWarning(
-                    level="warn",
-                    message=(
-                        f"Only {free_gb:.1f} GB disk space available. "
-                        f"MRIQC outputs require at least {_MIN_DISK_WARN_GB:.0f} GB. "
-                        "The run may fail partway through."
-                    ),
-                ))
+                warnings.append(
+                    ResourceWarning(
+                        level="warn",
+                        message=(
+                            f"Only {free_gb:.1f} GB disk space available. "
+                            "MRIQC outputs require at least "
+                            f"{_MIN_DISK_WARN_GB:.0f} GB. "
+                            "The run may fail partway through."
+                        ),
+                    )
+                )
         except ImportError:
             log.warning("psutil not installed; skipping resource pre-check")
         except Exception as exc:

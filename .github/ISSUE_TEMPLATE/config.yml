@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/SadhanaArivoli/neuravian/security/advisories/new
+    about: Report vulnerabilities privately. Do not include sensitive imaging data in an issue.
+  - name: Usage and troubleshooting
+    url: https://github.com/SadhanaArivoli/neuravian/blob/main/docs/troubleshooting.md
+    about: Review installation, pipeline, viewer, and synchronization recovery steps before opening an issue.

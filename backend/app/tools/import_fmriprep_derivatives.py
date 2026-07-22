@@ -73,7 +73,7 @@ def _validate_bold(path: Path) -> dict[str, Any]:
 
 def run(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Import precomputed fMRIPrep derivatives into NeuroForge."
+        description="Import precomputed fMRIPrep derivatives into Neuravian."
     )
     parser.add_argument("--fmriprep-dir", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -112,9 +112,9 @@ def run(argv: list[str] | None = None) -> int:
     metadata_path = output_dir / "fmriprep_import_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    print(f"[neuroforge] Imported fMRIPrep derivatives: {root}")
-    print(f"[neuroforge] Found {len(scans)} preprocessed BOLD file(s)")
-    print(f"[neuroforge] Wrote import metadata: {metadata_path}")
+    print(f"[neuravian] Imported fMRIPrep derivatives: {root}")
+    print(f"[neuravian] Found {len(scans)} preprocessed BOLD file(s)")
+    print(f"[neuravian] Wrote import metadata: {metadata_path}")
     return 0
 
 

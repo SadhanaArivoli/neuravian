@@ -57,7 +57,7 @@ assert_aws_cli_v2
 assert_repo_commits
 OUTPUT_PATH="${OUTPUT_PATH:-${PLAN_ROOT}/preflight-${RESOLVED_DEPLOYMENT_ID}.json}"
 
-TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/neuroforge-aws-preflight.XXXXXX")"
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/neuravian-aws-preflight.XXXXXX")"
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 
 info "Running read-only AWS preflight in ${AWS_REGION}; no resource will be created"
@@ -217,7 +217,7 @@ python3 "${SCRIPT_DIR}/lib/render_plan.py" preflight \
 python3 - "${OUTPUT_PATH}" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-print("NeuroForge AWS preflight: GO")
+print("Neuravian AWS preflight: GO")
 print(f"  Execution: {p['execution_location']} (read-only)")
 print(f"  Account fingerprint: {p['identity']['account_sha256'][:16]}")
 print(f"  Caller type: {p['identity']['caller_type']}")

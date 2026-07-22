@@ -214,7 +214,7 @@ def test_missing_cloud_dataset_blocks_without_host_path_leak(
     backend_root = tmp_path / "backend-host-data"
     backend_root.mkdir()
     logical_path = backend_root / "missing-dataset"
-    host_root = Path("/srv/private-neuroforge-datasets")
+    host_root = Path("/srv/private-neuravian-datasets")
     dataset = Dataset(path=str(logical_path), validation_status="valid")
 
     with patch.object(settings, "host_datasets_mount", str(host_root)), \

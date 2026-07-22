@@ -12,14 +12,14 @@ data "aws_iam_policy_document" "ec2_trust" {
 }
 
 resource "aws_iam_role" "instance" {
-  name               = "NeuroForgeInstance-${var.deployment_id}"
+  name               = "NeuravianInstance-${var.deployment_id}"
   description        = "Permissionless instance role for ${local.name}"
   assume_role_policy = data.aws_iam_policy_document.ec2_trust.json
 
   tags = local.resource_tags
 }
 
-# Deliberately no aws_iam_role_policy or policy attachment. NeuroForge and its
+# Deliberately no aws_iam_role_policy or policy attachment. Neuravian and its
 # containers do not require AWS API access for this deployment.
 resource "aws_iam_instance_profile" "instance" {
   name = aws_iam_role.instance.name

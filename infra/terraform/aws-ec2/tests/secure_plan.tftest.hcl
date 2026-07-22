@@ -4,7 +4,7 @@ mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = {
       account_id = "111111111111"
-      arn        = "arn:aws:iam::111111111111:user/neuroforge-test"
+      arn        = "arn:aws:iam::111111111111:user/neuravian-test"
       user_id    = "AIDATEST"
     }
   }
@@ -87,31 +87,31 @@ run "secure_single_instance_plan" {
   }
 
   assert {
-    condition     = aws_instance.neuroforge.instance_type == "m7i.2xlarge"
+    condition     = aws_instance.neuravian.instance_type == "m7i.2xlarge"
     error_message = "The plan must create the reviewed m7i.2xlarge shape."
   }
 
   assert {
-    condition     = aws_instance.neuroforge.disable_api_termination
+    condition     = aws_instance.neuravian.disable_api_termination
     error_message = "Termination protection must default to enabled."
   }
 
   assert {
     condition = (
-      aws_instance.neuroforge.root_block_device[0].encrypted &&
-      aws_instance.neuroforge.root_block_device[0].volume_size == 200 &&
-      aws_instance.neuroforge.root_block_device[0].delete_on_termination
+      aws_instance.neuravian.root_block_device[0].encrypted &&
+      aws_instance.neuravian.root_block_device[0].volume_size == 200 &&
+      aws_instance.neuravian.root_block_device[0].delete_on_termination
     )
     error_message = "The root volume security contract changed."
   }
 
   assert {
     condition = (
-      length(aws_security_group.neuroforge.ingress) == 1 &&
-      one(aws_security_group.neuroforge.ingress).from_port == 22 &&
-      one(aws_security_group.neuroforge.ingress).to_port == 22 &&
-      length(one(aws_security_group.neuroforge.ingress).cidr_blocks) == 1 &&
-      contains(one(aws_security_group.neuroforge.ingress).cidr_blocks, "203.0.113.10/32")
+      length(aws_security_group.neuravian.ingress) == 1 &&
+      one(aws_security_group.neuravian.ingress).from_port == 22 &&
+      one(aws_security_group.neuravian.ingress).to_port == 22 &&
+      length(one(aws_security_group.neuravian.ingress).cidr_blocks) == 1 &&
+      contains(one(aws_security_group.neuravian.ingress).cidr_blocks, "203.0.113.10/32")
     )
     error_message = "Security-group ingress must remain SSH-only from one /32."
   }

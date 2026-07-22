@@ -1,12 +1,14 @@
-# NeuroForge Architecture
+# Neuravian Architecture
 
-This document describes the technical architecture of NeuroForge as built and deployed in v0.1.0-alpha.
+This document describes the technical architecture of the Neuravian 0.1.0
+Early Access release candidate. Pipeline availability and qualification are
+tracked separately in [pipeline-status.md](pipeline-status.md).
 
 ---
 
 ## System Overview
 
-NeuroForge is a local-first web application. Everything runs on the researcher's machine inside Docker Compose. No data leaves the machine unless the researcher explicitly configures remote execution.
+Neuravian is a local-first web application. Everything runs on the researcher's machine inside Docker Compose. No data leaves the machine unless the researcher explicitly configures remote execution.
 
 ```mermaid
 graph TB
@@ -151,7 +153,7 @@ graph LR
 
 ```mermaid
 flowchart TD
-    ENV["NEUROFORGE_PLUGINS_DIRS env"] --> D
+    ENV["NEURAVIAN_PLUGINS_DIRS env"] --> D
     PU["/plugins-user\n(Docker volume)"] --> D
     PC["/plugins\n(baked into image)"] --> D
     LP["repo-root/plugins/\n(local dev)"] --> D

@@ -5,11 +5,11 @@ import { WorkflowHandoffPanel } from "../src/components/domain/WorkflowHandoffPa
 
 describe("WorkflowHandoffPanel", () => {
   it("shows required disclosure without fabricating estimates", () => {
-    render(<WorkflowHandoffPanel pipelineNames={["FNIRT", "fMRIPrep"]} artifactType="warped_t1" profiles={[{ id: "aws", name: "AWS NeuroForge" }]} selectedProfileId="aws" busy={false} onSelectProfile={() => {}} onContinue={() => {}} />);
+    render(<WorkflowHandoffPanel pipelineNames={["FNIRT", "fMRIPrep"]} artifactType="warped_t1" profiles={[{ id: "aws", name: "AWS Neuravian" }]} selectedProfileId="aws" busy={false} onSelectProfile={() => {}} onContinue={() => {}} />);
     expect(screen.getByText("This workflow now requires cloud execution.")).toBeInTheDocument();
     expect(screen.getByText("FNIRT, fMRIPrep")).toBeInTheDocument();
     expect(screen.getByText("No reliable estimate available")).toBeInTheDocument();
-    expect(screen.getByText("AWS NeuroForge")).toBeInTheDocument();
+    expect(screen.getByText("AWS Neuravian")).toBeInTheDocument();
   });
 
   it("exposes one primary Continue in Cloud action", () => {

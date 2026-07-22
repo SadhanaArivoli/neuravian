@@ -179,7 +179,7 @@ max_runtime_hours: 40
 known_errors:
   - pattern: "Run stopped automatically after.*maximum runtime"
     explanation: >
-      The NeuroForge runtime watchdog stopped this FastSurfer run after it exceeded
+      The Neuravian runtime watchdog stopped this FastSurfer run after it exceeded
       the maximum allowed wall time. On native x86_64 Linux or cloud hardware,
       FastSurfer --seg_only typically finishes in 30–90 minutes per subject.
       On Apple Silicon Macs running the x86_64 image under Rosetta 2 emulation,

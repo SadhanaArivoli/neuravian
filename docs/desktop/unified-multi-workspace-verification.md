@@ -1,14 +1,14 @@
 # Unified multi-workspace desktop verification
 
 Verified on macOS on 2026-07-17/18 using the packaged application at
-`desktop/dist/mac-arm64/NeuroForge.app`. The product name was `NeuroForge`,
-the bundle identifier was `org.neuroforge.desktop`, and no Electron development
+`desktop/dist/mac-arm64/Neuravian.app`. The product name was `Neuravian`,
+the bundle identifier was `org.neuravian.desktop`, and no Electron development
 application was used for acceptance.
 
 ## Backup and identity
 
 - Backup root:
-  `/Users/arivolitirouvingadame/Documents/NeuroForge Backups/phase1-20260718T052559Z`
+  `/Users/arivolitirouvingadame/Documents/Neuravian Backups/phase1-20260718T052559Z`
 - Original and backup database SHA-256:
   `9cb96314d328c44d555dfaa1f458361a41a7dcbf1dc30943cfb5df88e924f9cc`
 - Local workspace identity:
@@ -60,11 +60,11 @@ matched their Phase 1 backup copies:
 
 ## Packaged application checks
 
-- Exactly one branded NeuroForge main process was used; the startup trace
-  reached `main NeuroForge UI visible`.
-- Local NeuroForge displayed 10 datasets, 3 workflows, 109 runs, and
+- Exactly one branded Neuravian main process was used; the startup trace
+  reached `main Neuravian UI visible`.
+- Local Neuravian displayed 10 datasets, 3 workflows, 109 runs, and
   `Available offline`.
-- AWS NeuroForge displayed one dataset, seven runs, the expected UUID, and a
+- AWS Neuravian displayed one dataset, seven runs, the expected UUID, and a
   healthy synchronized connection.
 - All Workspaces displayed both local Run 7 and AWS Run 7 with distinct keys:
   `local-d5454b03-695d-4783-89ed-0f41ae2f3226:run:7` and
@@ -107,8 +107,12 @@ cloud cache writes remained under the AWS workspace UUID namespace.
 
 ## Screenshots
 
-- [Local workspace and selector](../screenshots/unified-multi-workspace/local-neuroforge.png)
-- [AWS workspace](../screenshots/unified-multi-workspace/aws-neuroforge.png)
+These qualification captures are historical evidence from before the Neuravian
+rename. Their legacy filenames and any branding visible in the pixels are not a
+current product-name claim.
+
+- [Local workspace and selector](../screenshots/unified-multi-workspace/local-neuravian.png)
+- [AWS workspace](../screenshots/unified-multi-workspace/aws-neuravian.png)
 - [All Workspaces](../screenshots/unified-multi-workspace/all-workspaces.png)
 - [Local Run 109](../screenshots/unified-multi-workspace/local-run-109.png)
 - [Cloud Run 7](../screenshots/unified-multi-workspace/cloud-run-7.png)

@@ -294,7 +294,7 @@ export default function ReportStudio() {
         <div>
           <h1 className="text-2xl font-semibold">Study Report Studio</h1>
           <p className="text-sm text-gray-400 mt-1">
-            Generate a publication-ready report for this dataset.
+            Generate a reproducible report draft for this dataset.
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -349,7 +349,7 @@ export default function ReportStudio() {
           </p>
           <p className="text-xs text-gray-500 mt-1">
             {reports.length === 0
-              ? 'Click "Generate Report" to create a publication-ready study report.'
+              ? 'Click "Generate Report" to create a study report draft from recorded runs.'
               : `Switch to "All" to see reports with other statuses.`}
           </p>
         </div>

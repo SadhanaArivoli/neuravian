@@ -71,7 +71,7 @@ LOCAL_KEY="$(state_value "${STATE_PATH}" cloudshell_key_path)"
 if [[ "${VOLUME_MODE}" == "delete-root-volume" || "${VOLUME_MODE}" == "snapshot-then-delete-volume" ]]; then
   [[ "${CONFIRM_VOLUMES}" == "DELETE VOLUMES ${VOLUME_ID}" ]] || die "Exact volume deletion confirmation is required"
 fi
-[[ "${CONFIRM_IAM}" == "DELETE NEUROFORGE IAM ${RESOLVED_DEPLOYMENT_ID}" ]] || die "Exact IAM removal confirmation is required"
+[[ "${CONFIRM_IAM}" == "DELETE NEURAVIAN IAM ${RESOLVED_DEPLOYMENT_ID}" ]] || die "Exact IAM removal confirmation is required"
 if [[ "${DELETE_LOCAL_KEY}" == "true" ]]; then
   [[ "${CONFIRM_LOCAL_KEY}" == "DELETE LOCAL KEY $(basename "${LOCAL_KEY}")" ]] || die "Exact local-key deletion confirmation is required"
 fi
@@ -79,7 +79,7 @@ BUDGET_STATE="${STATE_ROOT}/budget-state.json"
 if [[ "${DELETE_BUDGET}" == "true" ]]; then
   [[ -s "${BUDGET_STATE}" ]] || die "No owned optional budget state exists"
   BUDGET_NAME="$(state_value "${BUDGET_STATE}" budget_name)"
-  [[ "${CONFIRM_BUDGET}" == "DELETE NEUROFORGE BUDGET ${BUDGET_NAME}" ]] || die "Exact optional-budget deletion confirmation is required"
+  [[ "${CONFIRM_BUDGET}" == "DELETE NEURAVIAN BUDGET ${BUDGET_NAME}" ]] || die "Exact optional-budget deletion confirmation is required"
 fi
 
 record_phase() {
@@ -135,7 +135,7 @@ if ! phase_complete "instance-stopped" && [[ "${INSTANCE_STATE}" == "running" &&
   KNOWN_HOSTS="${STATE_ROOT}/known_hosts"; touch "${KNOWN_HOSTS}"; chmod 600 "${KNOWN_HOSTS}"
   ssh -i "${LOCAL_KEY}" -o BatchMode=yes -o ConnectTimeout=20 \
     -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=${KNOWN_HOSTS}" \
-    "ubuntu@${PUBLIC_IP}" 'cd "$HOME/neuroforge" && if [[ -f compose.aws-loopback.yaml ]]; then docker compose -f docker-compose.yml -f compose.aws-loopback.yaml down; fi'
+    "ubuntu@${PUBLIC_IP}" 'cd "$HOME/neuravian" && if [[ -f compose.aws-loopback.yaml ]]; then docker compose -f docker-compose.yml -f compose.aws-loopback.yaml down; fi'
 fi
 if ! phase_complete "instance-stopped" && [[ "${INSTANCE_STATE}" == "running" || "${INSTANCE_STATE}" == "pending" ]]; then
   aws ec2 stop-instances --region "${AWS_REGION}" --instance-ids "${INSTANCE_ID}" >/dev/null
@@ -151,15 +151,15 @@ if ! phase_complete "instance-terminated" && [[ "${VOLUME_MODE}" != "delete-root
 fi
 if [[ "${VOLUME_MODE}" == "snapshot-then-delete-volume" ]] && ! phase_complete "encrypted-snapshot-complete"; then
   mapfile -t EXISTING_SNAPSHOTS < <(aws ec2 describe-snapshots --region "${AWS_REGION}" --owner-ids self \
-    --filters Name=tag:Project,Values=NeuroForge Name=tag:Purpose,Values=x86-verification \
-      Name=tag:ManagedBy,Values=NeuroForgeProvisioner Name=tag:DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
+    --filters Name=tag:Project,Values=Neuravian Name=tag:Purpose,Values=x86-verification \
+      Name=tag:ManagedBy,Values=NeuravianProvisioner Name=tag:DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
     --query 'Snapshots[].SnapshotId' --output text | tr '\t' '\n')
   [[ "${#EXISTING_SNAPSHOTS[@]}" -le 1 ]] || die "Multiple owned snapshots exist; refusing to choose one"
   SNAPSHOT_ID="${EXISTING_SNAPSHOTS[0]:-}"
-  SNAPSHOT_TAGS="ResourceType=snapshot,Tags=[{Key=Name,Value=neuroforge-${RESOLVED_DEPLOYMENT_ID}-final},{Key=Project,Value=NeuroForge},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuroForgeProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
+  SNAPSHOT_TAGS="ResourceType=snapshot,Tags=[{Key=Name,Value=neuravian-${RESOLVED_DEPLOYMENT_ID}-final},{Key=Project,Value=Neuravian},{Key=Purpose,Value=x86-verification},{Key=ManagedBy,Value=NeuravianProvisioner},{Key=DeploymentId,Value=${RESOLVED_DEPLOYMENT_ID}}]"
   if [[ -z "${SNAPSHOT_ID}" ]]; then
     SNAPSHOT_ID="$(aws ec2 create-snapshot --region "${AWS_REGION}" --volume-id "${VOLUME_ID}" \
-      --description "NeuroForge x86 final retained snapshot" --tag-specifications "${SNAPSHOT_TAGS}" \
+      --description "Neuravian x86 final retained snapshot" --tag-specifications "${SNAPSHOT_TAGS}" \
       --query SnapshotId --output text)"
   fi
   aws ec2 wait snapshot-completed --region "${AWS_REGION}" --snapshot-ids "${SNAPSHOT_ID}"

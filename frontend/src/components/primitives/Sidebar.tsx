@@ -22,8 +22,7 @@ const WIZARD_ITEMS = [
 
 const SETTINGS_ITEMS = [
   { to: "/plugins", label: "Plugins", end: false, icon: WorkbenchIcons.plugin },
-  { to: "/settings/remote-hosts", label: "Remote Hosts", end: false, icon: WorkbenchIcons.network },
-  { to: "/workspaces", label: "Workspace", end: false, icon: WorkbenchIcons.home },
+  { to: "/workspaces", label: "Workspaces", end: false, icon: WorkbenchIcons.network },
   { to: "/settings", label: "Settings", end: true, icon: WorkbenchIcons.settings },
 ] as const;
 
@@ -47,7 +46,7 @@ function NavItem({ to, label, end, icon: Icon }: { to: string; label: string; en
 }
 
 function WorkspaceSwitcher() {
-  const desktop = window.neuroforgeDesktop!;
+  const desktop = window.neuravianDesktop!;
   const location = useLocation();
   const navigate = useNavigate();
   const { selected, select, local, cloudProfiles } = useWorkspace();
@@ -71,7 +70,7 @@ function WorkspaceSwitcher() {
     }
   }, [cloudProfiles, desktop]);
 
-  const selectedLabel = useMemo(() => selected === "local" ? "Local NeuroForge"
+  const selectedLabel = useMemo(() => selected === "local" ? "Local Neuravian"
     : selected === "all" ? "All Workspaces"
       : cloudProfiles.find((profile) => `cloud:${profile.id}` === selected)?.name ?? "Cloud workspace",
   [selected, cloudProfiles]);
@@ -91,7 +90,7 @@ function WorkspaceSwitcher() {
     <label className="text-[9px] font-semibold uppercase tracking-widest text-gray-500" htmlFor="workspace-selector">Workspaces</label>
     <select id="workspace-selector" value={selected} onChange={(event) => change(event.target.value as WorkspaceSelection)}
       className="mt-1 w-full rounded border border-white/10 bg-surface px-2 py-1.5 text-xs font-semibold text-white">
-      <option value="local">Local NeuroForge</option>
+      <option value="local">Local Neuravian</option>
       {cloudProfiles.map((profile) => <option key={profile.id} value={`cloud:${profile.id}`}>{profile.name}</option>)}
       <option value="all">All Workspaces</option>
     </select>
@@ -191,7 +190,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
 
         <a
           role="menuitem"
-          href="https://github.com/SadhanaArivoli/neuroforge"
+          href="https://github.com/SadhanaArivoli/neuravian"
           target="_blank"
           rel="noopener noreferrer"
           onClick={onClose}
@@ -203,7 +202,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
 
         <a
           role="menuitem"
-          href="https://github.com/SadhanaArivoli/neuroforge/releases"
+          href="https://github.com/SadhanaArivoli/neuravian/releases"
           target="_blank"
           rel="noopener noreferrer"
           onClick={onClose}
@@ -221,7 +220,7 @@ function HelpMenu({ onClose }: { onClose: () => void }) {
           className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-surface-overlay hover:text-white transition-colors flex items-center gap-2.5"
         >
           <WorkbenchIcons.info className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden="true" />
-          About NeuroForge
+          About Neuravian
         </button>
       </div>
     </>
@@ -237,12 +236,12 @@ export function Sidebar() {
   return (
     <aside className="flex shrink-0 flex-col gap-3 border-b border-white/5 bg-surface-raised px-3 py-3 md:h-screen md:w-52 md:border-b-0 md:border-r md:py-4">
       <div className="px-2 md:mb-3">
-        <div className="text-lg font-semibold tracking-tight text-white">NeuroForge</div>
-        <p className="mt-0.5 hidden text-xs text-muted sm:block">Neuroimaging orchestrator</p>
+        <div className="text-lg font-semibold tracking-tight text-white">Neuravian</div>
+        <p className="mt-0.5 hidden text-xs text-muted sm:block">Neuroimaging workspace</p>
       </div>
 
       <nav className="flex flex-1 gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-        {window.neuroforgeDesktop && <WorkspaceSwitcher />}
+        {window.neuravianDesktop && <WorkspaceSwitcher />}
         {NAV_ITEMS.map(({ to, label, end, icon }) => (
           <NavItem key={to} to={to} label={label} end={end} icon={icon} />
         ))}

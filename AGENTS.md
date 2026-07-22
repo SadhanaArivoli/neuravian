@@ -2,7 +2,7 @@
 
 ## Project Name
 
-NeuroForge: A Local-First Neuroimaging Research Platform
+Neuravian: A Local-First Neuroimaging Research Platform
 
 ## Core Vision
 

@@ -1,5 +1,5 @@
 /**
- * Shared NiiVue visualization theme for NeuroForge.
+ * Shared NiiVue visualization theme for Neuravian.
  *
  * All NiiVue viewer components pull from this single source of truth.
  * Keep in sync with the NiiVue version installed (currently 0.69.0).

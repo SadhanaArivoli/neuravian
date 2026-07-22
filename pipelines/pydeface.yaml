@@ -192,7 +192,7 @@ known_errors:
       pydeface could not write the output file. This usually means the
       output directory is not writable by the container user.
     fix_hint: >
-      This is an internal NeuroForge issue — the output directory should
+      This is an internal Neuravian issue — the output directory should
       always be writable. Try resubmitting the run. If it persists, check
       that your system disk has sufficient free space (pydeface needs
       roughly 3× the input file size in temporary space).

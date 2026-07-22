@@ -57,12 +57,12 @@ aws iam get-role --role-name "${DEPLOYER_ROLE}" --output json >"${VERIFY_DIR}/de
 aws iam get-instance-profile --instance-profile-name "${INSTANCE_PROFILE}" --output json >"${VERIFY_DIR}/profile.json" 2>/dev/null || printf '%s\n' '{}' >"${VERIFY_DIR}/profile.json"
 aws iam get-policy --policy-arn "${POLICY_ARN}" --output json >"${VERIFY_DIR}/policy.json" 2>/dev/null || printf '%s\n' '{}' >"${VERIFY_DIR}/policy.json"
 aws resourcegroupstaggingapi get-resources --region "${AWS_REGION}" \
-  --tag-filters Key=Project,Values=NeuroForge Key=Purpose,Values=x86-verification \
-    Key=ManagedBy,Values=NeuroForgeProvisioner Key=DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
+  --tag-filters Key=Project,Values=Neuravian Key=Purpose,Values=x86-verification \
+    Key=ManagedBy,Values=NeuravianProvisioner Key=DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
   --output json >"${VERIFY_DIR}/tagged.json"
 aws ec2 describe-snapshots --region "${AWS_REGION}" --owner-ids self \
-  --filters Name=tag:Project,Values=NeuroForge Name=tag:Purpose,Values=x86-verification \
-    Name=tag:ManagedBy,Values=NeuroForgeProvisioner Name=tag:DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
+  --filters Name=tag:Project,Values=Neuravian Name=tag:Purpose,Values=x86-verification \
+    Name=tag:ManagedBy,Values=NeuravianProvisioner Name=tag:DeploymentId,Values="${RESOLVED_DEPLOYMENT_ID}" \
   --output json >"${VERIFY_DIR}/snapshots.json"
 BUDGET_STATUS="not-managed"
 BUDGET_STATE="${STATE_ROOT}/budget-state.json"
@@ -140,7 +140,7 @@ report = {
 }
 Path(report_path).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n"); os.chmod(report_path, 0o600)
 Path(public_path).write_text(
-    "# NeuroForge decommission report (redacted)\n\n"
+    "# Neuravian decommission report (redacted)\n\n"
     f"- Deployment: `{plan['deployment_id']}`\n- Result: **GO**\n- Region: `us-east-1`\n"
     f"- Instance: terminated (identifier redacted)\n- Volume mode: `{mode}`\n"
     f"- Retained resources: {len(allowed)} (identifiers redacted)\n"

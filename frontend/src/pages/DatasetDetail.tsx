@@ -344,7 +344,7 @@ export default function DatasetDetail() {
           <QuickAction label="Launch FastSurfer" pipelineId="fastsurfer" datasetId={datasetId} datasetPath={dataset.path} />
           <QuickAction label="Launch FreeSurfer" pipelineId="freesurfer" datasetId={datasetId} datasetPath={dataset.path} />
           <QuickAction label="Launch pydeface" pipelineId="pydeface" datasetId={datasetId} datasetPath={dataset.path} />
-          {window.neuroforgeDesktop && (
+          {window.neuravianDesktop && (
             <button
               onClick={() => {
                 const el = document.createElement("a");

@@ -13,7 +13,7 @@ input_type: bids_dataset
 # native arm64 Python when the backend is local.
 execution:
   type: native
-  command: neuroforge-seed-based-connectivity
+  command: neuravian-seed-based-connectivity
 
 dataset_positional: false
 compute_profile: local-ok
@@ -133,7 +133,7 @@ produces:
 known_errors:
   - pattern: "No fMRIPrep preprocessed BOLD files were found"
     explanation: >
-      NeuroForge searched the fMRIPrep derivatives directory for files
+      Neuravian searched the fMRIPrep derivatives directory for files
       matching sub-*/func/*desc-preproc_bold.nii.gz but found none.
       Check that the fMRIPrep derivatives directory is correct and that
       preprocessing completed successfully.

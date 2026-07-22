@@ -2,7 +2,7 @@
 
 X86_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NF_ROOT="${NF_ROOT:-$(cd "${X86_DIR}/../.." && pwd)}"
-API_URL="${NEUROFORGE_API_URL:-http://127.0.0.1:8000/api}"
+API_URL="${NEURAVIAN_API_URL:-http://127.0.0.1:8000/api}"
 FIXTURE_DIR="${FIXTURE_DIR:-${NF_ROOT}/verification/fixtures/prepared/x86-minimal-bids}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-${NF_ROOT}/verification/x86/evidence}"
 RUN_STATE_DIR="${RUN_STATE_DIR:-${EVIDENCE_DIR}/run-state}"

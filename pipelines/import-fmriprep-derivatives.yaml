@@ -2,7 +2,7 @@ id: import-fmriprep-derivatives
 display_name: Import fMRIPrep Derivatives
 description: >
   Registers an existing precomputed fMRIPrep derivatives directory so downstream
-  NeuroForge pipelines can use its preprocessed BOLD outputs without launching
+  Neuravian pipelines can use its preprocessed BOLD outputs without launching
   fMRIPrep locally.
 homepage: https://fmriprep.org/en/stable/outputs.html
 category: preprocessing
@@ -10,7 +10,7 @@ input_type: bids_dataset
 
 execution:
   type: native
-  command: neuroforge-import-fmriprep-derivatives
+  command: neuravian-import-fmriprep-derivatives
 
 dataset_positional: false
 compute_profile: local-ok
@@ -37,7 +37,7 @@ parameters:
     default: "{output_dir}"
     advanced: true
     help: >
-      NeuroForge metadata output directory for the import record.
+      Neuravian metadata output directory for the import record.
 
 accepts:
   - type: bids_dataset
@@ -59,7 +59,7 @@ max_runtime_hours: 0.25
 known_errors:
   - pattern: "No fMRIPrep preprocessed BOLD files were found|Preprocessed BOLD is not 4D"
     explanation: >
-      NeuroForge could not confirm that the selected directory contains usable
+      Neuravian could not confirm that the selected directory contains usable
       fMRIPrep preprocessed BOLD derivatives.
     fix_hint: >
       Select the fMRIPrep derivatives root containing sub-*/func/

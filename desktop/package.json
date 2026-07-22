@@ -1,8 +1,8 @@
 {
-  "name": "neuroforge-desktop",
+  "name": "neuravian-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Thin macOS desktop launcher for the existing NeuroForge Docker Compose application",
+  "description": "Open-source desktop workspace for reproducible neuroimaging research",
   "main": "build/main/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-renderer.mjs",

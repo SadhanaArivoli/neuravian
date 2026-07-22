@@ -195,7 +195,7 @@ function EmptyState({ tab }: { tab: Tab }) {
 export default function WorkflowLibrary() {
   const navigate = useNavigate();
   const { selected, cloudProfiles } = useWorkspace();
-  const isAll = Boolean(window.neuroforgeDesktop) && selected === "all";
+  const isAll = Boolean(window.neuravianDesktop) && selected === "all";
   const allCloud = useAllCloudSnapshots();
   const [pushing, setPushing] = useState<Record<string, boolean>>({});
   const [pushErrors, setPushErrors] = useState<Record<string, string>>({});
@@ -222,7 +222,7 @@ export default function WorkflowLibrary() {
     setPushErrors((e) => { const n = { ...e }; delete n[key]; return n; });
     try {
       const detail = await fetchWorkflow(wf.id);
-      await window.neuroforgeDesktop!.pushCloudWorkflow({
+      await window.neuravianDesktop!.pushCloudWorkflow({
         profileId,
         workflow: {
           name: detail.name,
@@ -255,7 +255,7 @@ export default function WorkflowLibrary() {
     setRunning((r) => ({ ...r, [key]: true }));
     setRunResult((r) => { const n = { ...r }; delete n[key]; return n; });
     try {
-      const result = await window.neuroforgeDesktop!.launchPipeline({
+      const result = await window.neuravianDesktop!.launchPipeline({
         profileId,
         pipelineId,
         datasetId,
@@ -322,7 +322,7 @@ export default function WorkflowLibrary() {
         if (!full) return;
         fetchWorkflow(wf.id).then((detail) => {
             const envelope = {
-              export_format: "neuroforge-workflow-export-v1",
+              export_format: "neuravian-workflow-export-v1",
               exported_at: new Date().toISOString(),
               name: detail.name,
               description: detail.description,

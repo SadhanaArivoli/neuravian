@@ -1,8 +1,8 @@
 locals {
-  name = "neuroforge-${var.deployment_id}"
+  name = "neuravian-${var.deployment_id}"
 
   required_tags = merge(var.additional_tags, {
-    Project      = "NeuroForge"
+    Project      = "Neuravian"
     Purpose      = "x86-verification"
     ManagedBy    = "Terraform"
     DeploymentId = var.deployment_id

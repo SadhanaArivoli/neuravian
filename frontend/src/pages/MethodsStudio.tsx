@@ -1,7 +1,7 @@
 /**
  * Methods & Citation Studio
  *
- * Generates publication-ready Methods sections, citation lists, software tables,
+ * Generates provenance-based Methods drafts, citation lists, software tables,
  * parameter appendices, and provenance exports from recorded run metadata.
  *
  * Routes:

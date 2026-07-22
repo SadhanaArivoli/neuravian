@@ -1,4 +1,10 @@
-# NeuroForge local desktop launcher architecture
+# Neuravian local desktop launcher architecture
+
+> Historical design record. This document describes the initial launcher scope
+> and is not a current product-support matrix. See
+> [pipeline status](../pipeline-status.md),
+> [installation](../installation.md), and the current
+> [desktop README](../../desktop/README.md).
 
 Status: architecture decision for the macOS prototype  
 Date: 2026-07-14
@@ -6,14 +12,14 @@ Date: 2026-07-14
 ## 1. Problem statement and boundary
 
 The desktop milestone adds a thin, local launcher and native window around the
-existing NeuroForge deployment. It does not create another NeuroForge runtime.
+existing Neuravian deployment. It does not create another Neuravian runtime.
 The canonical React frontend, FastAPI backend, SQLite database, pipeline
 registry, plugins, executors, artifact discovery, provenance, reports, and
 output paths remain authoritative.
 
 Two equal installation paths must remain supported:
 
-- Desktop prototype: double-click `NeuroForge.app`; the launcher checks the
+- Desktop prototype: double-click `Neuravian.app`; the launcher checks the
   host, starts the canonical Docker Compose services, waits for health, and
   opens `http://127.0.0.1:3000` in its native window.
 - Manual/developer mode: run `docker compose up --build` from the repository as
@@ -31,7 +37,7 @@ adapt scientific behavior, mounts, data locations, or run execution.
 
 | Service | Container port | Current published port | Health/readiness |
 | --- | ---: | ---: | --- |
-| FastAPI backend | 8000 | 8000 | `GET /api/health` returns `{"status":"ok","service":"neuroforge-backend"}` |
+| FastAPI backend | 8000 | 8000 | `GET /api/health` returns `{"status":"ok","service":"neuravian-backend"}` |
 | Nginx/React frontend | 3000 | 3000 | HTTP response from `/`; Compose waits for backend health before starting it |
 
 The current short-form port mappings publish on all interfaces. Desktop mode
@@ -66,7 +72,7 @@ Manual Compose behavior remains unchanged.
 - `VITE_API_URL` remains optional. Desktop mode does not need to rewrite or
   rebuild the React application with a different API URL.
 
-The native window will allow navigation only to the local NeuroForge origin.
+The native window will allow navigation only to the local Neuravian origin.
 External `http:` and `https:` destinations will be opened through the macOS
 default browser. Popups will not create untracked Electron windows.
 
@@ -85,7 +91,7 @@ The backend receives the existing mounts without modification:
 
 Within `/app/data`, the current backend uses:
 
-- database: `/app/data/neuroforge.db`, persisted at `./data/neuroforge.db`;
+- database: `/app/data/neuravian.db`, persisted at `./data/neuravian.db`;
 - run logs: `/app/data/logs/{run_id}.log`, persisted at `./data/logs`;
 - outputs: `/app/data/derivatives/{pipeline_id}/{run_id}`, persisted at
   `./data/derivatives`.
@@ -115,8 +121,8 @@ The launcher will treat any queue entry or persisted active status as an active
 scientific run. A quit request with an active run presents only:
 
 - Cancel;
-- Leave NeuroForge services running;
-- Return to NeuroForge.
+- Leave Neuravian services running;
+- Return to Neuravian.
 
 It will not cancel or kill the run by default. If no run is active, it may run
 `docker compose ... stop` only when this launcher instance successfully started
@@ -124,7 +130,7 @@ the desktop-owned Compose project. It will never run `down -v`, delete a bind
 mount, remove a volume, or stop an unrelated/manual Compose project.
 
 Backend restart recovery is already implemented. At startup, persisted
-`running` rows are matched to Docker containers using the `neuroforge_run_id`
+`running` rows are matched to Docker containers using the `neuravian_run_id`
 label, with an output-mount fallback. Monitoring is reattached when the
 container survives; otherwise the run is marked `interrupted`. A separate
 checker detects stalled persisted runs when the in-process queue is idle. The
@@ -150,7 +156,7 @@ Tauri is attractive for a smaller production binary, but it is not the most
 reliable prototype path on the audited machine because no `cargo`, `rustc`, or
 usable Xcode build toolchain is installed. Installing and maintaining a second
 language toolchain would add a material packaging prerequisite unrelated to
-NeuroForge. Electron provides the required process control and native-window
+Neuravian. Electron provides the required process control and native-window
 behavior with the toolchain already used by the project.
 
 This decision does not prevent a later Tauri evaluation once packaging,
@@ -176,7 +182,7 @@ desktop/
   README.md
 ```
 
-The desktop renderer is not a second NeuroForge frontend. It shows only startup,
+The desktop renderer is not a second Neuravian frontend. It shows only startup,
 error, diagnostics, privacy, and shutdown state. When ready, the same window
 navigates to the existing Nginx-served React application.
 
@@ -205,8 +211,8 @@ percentages:
    directories, Docker CLI, daemon, Compose, and ports.
 2. A precise blocking state when required: **Docker not installed**, **Docker
    daemon stopped**, **Docker Compose unavailable**, or **Port conflict**.
-3. **Starting NeuroForge** — run the canonical Compose file plus the isolated
-   localhost override under app-owned project name `neuroforge-desktop`.
+3. **Starting Neuravian** — run the canonical Compose file plus the isolated
+   localhost override under app-owned project name `neuravian-desktop`.
 4. **Backend starting** — poll `http://127.0.0.1:8000/api/health`.
 5. **Frontend starting** — poll `http://127.0.0.1:3000/`.
 6. **Ready** — show the privacy statement, then load the existing frontend.
@@ -214,10 +220,10 @@ percentages:
    logs.
 8. **Shutting down** — apply the active-run policy before stopping anything.
 
-The startup shell displays the provided logo, “NeuroForge”, “Local-first
+The startup shell displays the provided logo, “Neuravian”, “Local-first
 neuroimaging workstation”, and:
 
-> NeuroForge is running locally. The desktop launcher does not upload your datasets.
+> Neuravian is running locally. The desktop launcher does not upload your datasets.
 
 Docker is never installed automatically. When missing, the only installation
 action opens the official Docker Desktop page in the system browser.
@@ -228,7 +234,7 @@ The desktop command is derived from the canonical deployment:
 
 ```text
 docker compose
-  --project-name neuroforge-desktop
+  --project-name neuravian-desktop
   -f <repo>/docker-compose.yml
   -f <repo>/desktop/docker-compose.desktop.yml
   up --build -d
@@ -256,7 +262,7 @@ path.
 
 ## 7. Native window policy
 
-- title: `NeuroForge`;
+- title: `Neuravian`;
 - minimum size: 1024 × 700, with last valid size and position restored;
 - icon: generated from the supplied transparent logo;
 - local paths and same-origin API/file links stay in the window;
@@ -266,7 +272,7 @@ path.
 - development builds may open DevTools explicitly;
 - packaged builds do not expose DevTools by default.
 
-The native application menu/status area will expose NeuroForge, Docker,
+The native application menu/status area will expose Neuravian, Docker,
 backend, and frontend status; data, derivatives, and logs folders; copied
 redacted diagnostics; restart/stop actions; About data from `/api/about`; and
 Quit with the active-run guard.
@@ -282,7 +288,7 @@ Quit with the active-run guard.
   redaction markers.
 - The application makes no HIPAA, GDPR, clinical, or legal-compliance claim.
 - The original logo remains unchanged at
-  `/Users/arivolitirouvingadame/Downloads/neuroforge-logo.001-removebg-preview.png`.
+  `/Users/arivolitirouvingadame/Downloads/neuravian-logo.001-removebg-preview.png`.
   It is a 500 × 500 PNG with alpha; a copy will be placed under desktop assets
   during the scaffold milestone.
 

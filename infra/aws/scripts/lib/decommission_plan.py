@@ -37,9 +37,9 @@ def tag_map(items: list[dict[str, str]]) -> dict[str, str]:
 def verify_tags(items: list[dict[str, str]], deployment_id: str) -> None:
     actual = tag_map(items)
     required = {
-        "Project": "NeuroForge",
+        "Project": "Neuravian",
         "Purpose": "x86-verification",
-        "ManagedBy": "NeuroForgeProvisioner",
+        "ManagedBy": "NeuravianProvisioner",
         "DeploymentId": deployment_id,
     }
     if any(actual.get(key) != value for key, value in required.items()):
@@ -186,13 +186,13 @@ def main() -> int:
             "confirmations": {
                 "terminate": f"TERMINATE {state['instance_id']}",
                 "delete_volumes": f"DELETE VOLUMES {volume_id}",
-                "delete_iam": f"DELETE NEUROFORGE IAM {deployment}",
+                "delete_iam": f"DELETE NEURAVIAN IAM {deployment}",
                 "delete_local_key": f"DELETE LOCAL KEY {Path(state['cloudshell_key_path']).name}",
             },
             "dependency_order": [
                 "verify evidence locally",
                 "verify no scientific pipeline is active",
-                "stop NeuroForge services and instance",
+                "stop Neuravian services and instance",
                 "apply selected volume policy",
                 "disable termination protection",
                 "terminate exact instance and wait",

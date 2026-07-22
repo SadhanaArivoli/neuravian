@@ -2,7 +2,7 @@
 Workspace Replication Engine — server-side endpoints.
 
 The cloud VM is an execution environment with a temporary replication cache,
-not a second authoritative NeuroForge installation. Objects flow:
+not a second authoritative Neuravian installation. Objects flow:
 
   desktop (authoritative)  →  PUT /replication/objects/:id  →  VM cache
   VM cache                 →  GET /replication/objects/:id  →  desktop
@@ -38,7 +38,7 @@ router = APIRouter(tags=["replication"])
 
 class ReplicatedObject(Base):
     """
-    Ephemeral cache of NeuroForgeObjects pushed from the desktop.
+    Ephemeral cache of NeuravianObjects pushed from the desktop.
     This table exists only to support execution — it is not authoritative.
     It can be wiped when the VM shuts down without any data loss
     (the desktop holds the canonical copy).
@@ -95,7 +95,7 @@ def upsert_object(
     db: Session = Depends(get_db),
 ) -> None:
     """
-    Accept a NeuroForgeObject from the desktop and cache it.
+    Accept a NeuravianObject from the desktop and cache it.
     Idempotent: if the object already exists at the same revision and
     contentHash, this is a no-op. If the revision is higher, the cache
     is updated.

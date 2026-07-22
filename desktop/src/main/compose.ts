@@ -3,7 +3,7 @@ import { runCommand } from "./command.js";
 import type { CommandResult } from "./types.js";
 import { STARTUP_TIMEOUTS } from "./timeouts.js";
 
-export const DESKTOP_PROJECT_NAME = "neuroforge-desktop";
+export const DESKTOP_PROJECT_NAME = "neuravian-desktop";
 
 export function composeArguments(repositoryRoot: string): string[] {
   return [

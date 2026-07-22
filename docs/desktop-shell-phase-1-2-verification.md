@@ -1,7 +1,7 @@
 # Desktop Shell Phase 1–2 Verification
 
 Verified on macOS with the packaged application at
-`desktop/dist/mac-arm64/NeuroForge.app`.
+`desktop/dist/mac-arm64/Neuravian.app`.
 
 ## Scope
 
@@ -20,7 +20,7 @@ artifact, deployment, database schema, or scientific output was changed.
 ## Packaged verification
 
 - A clean packaged launch landed on Home.
-- Home retained the original NeuroForge hero, actions, status line, cards,
+- Home retained the original Neuravian hero, actions, status line, cards,
   branding, and complete sidebar.
 - Local Home: 1 project, 10 datasets, 3 workflows, 109 runs, 10 reports.
 - AWS Home: 0 projects, 1 dataset, 0 workflows, 7 runs, 0 reports.

@@ -1,6 +1,6 @@
-# NeuroForge desktop logo source
+# Neuravian desktop logo source
 
-- Original filename: `Neuroforge_Logo.png`
+- Original filename: `Neuravian_Logo.png`
 - Original SHA-256: `75a612dbf10c1f05a26366f38243f00b27cbe6fc5bb18ec64197533826b6660f`
 - Original dimensions: 500 × 500 pixels
 - Imported: 2026-07-14

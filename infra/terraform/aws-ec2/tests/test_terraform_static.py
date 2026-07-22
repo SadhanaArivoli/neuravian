@@ -61,7 +61,7 @@ def test_instance_role_has_no_permissions_policy() -> None:
 def test_cloud_init_pins_repo_commit_and_starts_service_without_pipeline() -> None:
     template = read("templates/cloud-init.tftpl")
     assert "git -C \"$REPOSITORY_DIR\" checkout --detach \"$GIT_COMMIT\"" in template
-    assert "systemctl enable --now neuroforge.service" in template
+    assert "systemctl enable --now neuravian.service" in template
     assert "http://127.0.0.1:8000/api/health" in template
     assert '"scientific_pipelines_run": False' in template
     assert "fmriprep" not in template.lower()

@@ -15,7 +15,7 @@ interface Ec2ConnectionHealth {
   awsCliAvailable: boolean;
 }
 
-interface NeuroForgeDesktopBridge {
+interface NeuravianDesktopBridge {
   detectViewers(): Promise<Array<{
     viewerId: "freeview" | "mricrogl";
     displayName: string;
@@ -363,7 +363,7 @@ interface WorkspaceSession {
   viewerState: {
     lastRunId: number | null;
     openFiles: string[];
-    viewerPreference: "freeview" | "mricrogl" | "neuroforge-viewer" | null;
+    viewerPreference: "freeview" | "mricrogl" | "neuravian-viewer" | null;
   };
   syncStatus: SessionSyncStatus;
   researchContext: {
@@ -375,5 +375,5 @@ interface WorkspaceSession {
 }
 
 interface Window {
-  neuroforgeDesktop?: NeuroForgeDesktopBridge;
+  neuravianDesktop?: NeuravianDesktopBridge;
 }

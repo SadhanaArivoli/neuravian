@@ -35,14 +35,14 @@ PUBLIC_IP="<instance-public-ip>"
 if [[ "${APPLY}" != "true" ]]; then
   cat <<EOF
 [LOCAL MAC] DRY-RUN: SSH to ubuntu@${PUBLIC_IP}; run the committed sanitized evidence collector
-[LOCAL MAC] DRY-RUN: copy only neuroforge-x86-evidence.zip; verify ZIP, manifest, and SHA-256; open successfully
+[LOCAL MAC] DRY-RUN: copy only neuravian-x86-evidence.zip; verify ZIP, manifest, and SHA-256; open successfully
 [LOCAL MAC] DRY-RUN: write ignored evidence-receipt.json; never print license/key contents
 AWS mutations: none
 EOF
   exit 0
 fi
 require_live_approval
-[[ "${CONFIRMATION}" == "COLLECT NEUROFORGE EVIDENCE" ]] || die "Exact evidence confirmation was not provided"
+[[ "${CONFIRMATION}" == "COLLECT NEURAVIAN EVIDENCE" ]] || die "Exact evidence confirmation was not provided"
 [[ -s "${STATE_PATH}" ]] || die "Deployment state is missing"
 [[ -s "${IDENTITY_FILE}" ]] || die "LOCAL MAC identity file is missing"
 [[ -n "${OUTPUT_DIR}" ]] || die "--output-dir is required"
@@ -51,9 +51,9 @@ KNOWN_HOSTS="${STATE_ROOT}/known_hosts"
 touch "${KNOWN_HOSTS}"; chmod 600 "${KNOWN_HOSTS}"
 SSH_OPTIONS=(-i "${IDENTITY_FILE}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=${KNOWN_HOSTS}")
 ssh "${SSH_OPTIONS[@]}" "ubuntu@${PUBLIC_IP}" \
-  'cd "$HOME/neuroforge" && verification/x86/commands/07-collect-evidence.sh'
-REMOTE_ZIP="/home/ubuntu/neuroforge/verification/x86/neuroforge-x86-evidence.zip"
-LOCAL_ZIP="${OUTPUT_DIR}/${RESOLVED_DEPLOYMENT_ID}-neuroforge-x86-evidence.zip"
+  'cd "$HOME/neuravian" && verification/x86/commands/07-collect-evidence.sh'
+REMOTE_ZIP="/home/ubuntu/neuravian/verification/x86/neuravian-x86-evidence.zip"
+LOCAL_ZIP="${OUTPUT_DIR}/${RESOLVED_DEPLOYMENT_ID}-neuravian-x86-evidence.zip"
 scp "${SSH_OPTIONS[@]}" "ubuntu@${PUBLIC_IP}:${REMOTE_ZIP}" "${LOCAL_ZIP}"
 unzip -t "${LOCAL_ZIP}" >/dev/null
 unzip -p "${LOCAL_ZIP}" evidence-manifest.json | python3 -m json.tool >/dev/null

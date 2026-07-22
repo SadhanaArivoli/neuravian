@@ -15,7 +15,7 @@ EXPECTED = [
     for index, name in enumerate(
         [
             "system-check",
-            "neuroforge-health",
+            "neuravian-health",
             "pydeface-verify",
             "fmriprep-verify",
             "fastsurfer-smoke",

@@ -7,7 +7,7 @@ export function isRepositoryRoot(candidate: string): boolean {
   return REQUIRED.every((entry) => existsSync(path.join(candidate, entry)));
 }
 
-export function findRepositoryRoot(startDirectory: string, explicit = process.env.NEUROFORGE_REPO_ROOT): string {
+export function findRepositoryRoot(startDirectory: string, explicit = process.env.NEURAVIAN_REPO_ROOT): string {
   const candidates: string[] = [];
   if (explicit) candidates.push(path.resolve(explicit));
   let current = path.resolve(startDirectory);
@@ -18,7 +18,7 @@ export function findRepositoryRoot(startDirectory: string, explicit = process.en
     current = parent;
   }
   const found = candidates.find(isRepositoryRoot);
-  if (!found) throw new Error("Could not locate the NeuroForge repository. Set NEUROFORGE_REPO_ROOT.");
+  if (!found) throw new Error("Could not locate the Neuravian repository. Set NEURAVIAN_REPO_ROOT.");
   return found;
 }
 

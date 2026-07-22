@@ -10,7 +10,7 @@ import {
 
 describe("viewer plugin registry", () => {
   it("registers the built-in viewer first and external viewers independently", () => {
-    expect(VIEWER_REGISTRY.map((plugin) => plugin.id)).toEqual(["neuroforge", "freeview", "mricrogl"]);
+    expect(VIEWER_REGISTRY.map((plugin) => plugin.id)).toEqual(["neuravian", "freeview", "mricrogl"]);
   });
 
   it("disables desktop viewers in browser deployments with a synchronization explanation", () => {
@@ -24,10 +24,10 @@ describe("viewer plugin registry", () => {
   it("declares role and format compatibility", () => {
     const segmentation = classifyNeuroArtifact({ name: "aseg.auto.mgz", path: "mri/aseg.auto.mgz" }, "fastsurfer");
     expect(compatibleViewers(segmentation).map((plugin) => plugin.id)).toEqual([
-      "neuroforge", "freeview", "mricrogl",
+      "neuravian", "freeview", "mricrogl",
     ]);
     const report = classifyNeuroArtifact({ name: "report.html", path: "report.html" }, "fmriprep");
-    expect(compatibleViewers(report).map((plugin) => plugin.id)).toEqual(["neuroforge"]);
+    expect(compatibleViewers(report).map((plugin) => plugin.id)).toEqual(["neuravian"]);
   });
 });
 

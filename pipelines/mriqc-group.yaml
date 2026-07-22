@@ -1,8 +1,9 @@
 id: mriqc-group
 display_name: MRIQC Group Report
 description: >
-  Aggregates completed participant-level MRIQC image quality metrics into
-  group-level HTML reports and TSV tables.
+  Uses the established MRIQC group analysis to aggregate completed participant
+  metrics into group HTML reports and TSV tables. Interpretation remains the
+  researcher's responsibility.
 homepage: https://mriqc.readthedocs.io/en/24.0.2/running.html
 
 container:
@@ -18,6 +19,22 @@ outputs:
 compute_profile: local-ok
 category: quality_control
 input_type: bids_dataset
+preflight:
+  empirical_status: verified
+  required_os: Linux
+  required_architecture: x86_64
+  architecture_mismatch: warning
+  requires_valid_bids: true
+  license_parameters: []
+  ports: []
+  resources:
+    min_ram_gb: 4
+    recommended_ram_gb: 8
+    min_cpu_count: 1
+    recommended_cpu_count: 2
+    min_disk_free_gb: 2
+    working_space_gb: 1
+    output_space_gb: 1
 
 seed_output_from_lineage_artifact_type: mriqc_report
 
@@ -30,7 +47,7 @@ parameters:
     positional_index: 1
     help: >
       MRIQC group mode aggregates IQM JSON files that were produced by a
-      prior participant-level MRIQC run. NeuroForge keeps this fixed to
+      prior participant-level MRIQC run. Neuravian keeps this fixed to
       group for the dedicated group-report pipeline.
 
   - name: upstream-mriqc-dir
@@ -38,7 +55,7 @@ parameters:
     required: true
     internal: true
     help: >
-      Internal NeuroForge lineage path. This is copied into the run output
+      Internal Neuravian lineage path. This is copied into the run output
       directory before MRIQC group mode starts; it is not passed to MRIQC as
       a command-line flag.
 
@@ -47,7 +64,7 @@ parameters:
     default: true
     advanced: true
     help: >
-      Disable MRIQC's optional anonymized metrics submission. NeuroForge
+      Disable MRIQC's optional anonymized metrics submission. Neuravian
       keeps this enabled by default to avoid sending data without explicit
       user intent.
 
@@ -90,6 +107,56 @@ produces:
     description: "Group-level MRIQC HTML reports and aggregate IQM TSV tables"
 
 max_runtime_hours: 1
+
+contract:
+  version: 1
+  unit_of_work: group
+  lifecycle:
+    expected_duration_minutes: 15
+    heartbeat_timeout_minutes: 10
+    cancellation_grace_seconds: 30
+    retry_mode: fresh
+    resume_strategy: none
+    preserve_work_directory: false
+  progress:
+    strategy: stages
+    stages:
+      - id: discover
+        label: Finding participant metrics
+        pattern: "(IQM|JSON|BIDS layout)"
+        weight: 1
+      - id: aggregate
+        label: Building group summary
+        pattern: "(group|Group|Generating report)"
+        weight: 2
+  bids_app:
+    analysis_levels: [group]
+    analysis_level_parameter: analysis_level
+    derivative_name: mriqc
+    input_mount: /data
+    output_mount: /out
+  reporting:
+    html_globs: ["**/*group*.html", "**/*.html"]
+    figure_globs: ["**/*.svg", "**/*.png"]
+    metric_globs: ["group_*.tsv", "sub-*/**/*.json"]
+    qc_artifact_types: [mriqc_group_report]
+  methods:
+    runtime_version_pattern: 'Running MRIQC version (?P<version>\S+)'
+    summary: >
+      Group-level quality-control summaries were generated with {display_name}
+      {version}, executed by Neuravian using {execution} from recorded
+      participant-level MRIQC derivatives.
+    citations:
+      - key: mriqc
+        authors: Esteban et al.
+        year: 2017
+        title: "MRIQC: Advancing the Automatic Prediction of Image Quality in MRI from Unseen Sites"
+        journal: PLOS ONE
+        volume: "12"
+        issue: "9"
+        pages: e0184661
+        doi: 10.1371/journal.pone.0184661
+        rrid: SCR_022942
 
 known_errors:
   - pattern: "No IQM-JSON files were found|No files were found|No input runs"

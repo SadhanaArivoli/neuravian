@@ -12,19 +12,20 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
+from app.execution.docker_executor import to_host_path
 from app.models.dataset import Dataset
 from app.models.run import ProvenanceEvent, Run
 from app.schemas.run import RunCreate, RunRead, RunSummary
-from app.execution.docker_executor import to_host_path
 from app.services.artifact_registry import resolve_run_artifacts
 from app.services.pipeline import get_registry
+from app.services.pipeline_contract import normalized_contract
 from app.services.run import (
+    _broadcast_done,
     RunService,
     get_log_buffer,
     get_log_history,
     subscribe,
     unsubscribe,
-    _broadcast_done,
 )
 
 log = logging.getLogger(__name__)
@@ -308,22 +309,28 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
             "metadata": _build_run_metadata(run, svc),
         }
 
-    reports = [
-        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
-        for f in sorted(output_root.glob("*.html"))
-    ]
-    metrics = [
-        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
-        for f in sorted(output_root.rglob("sub-*.json"))
-    ]
+    manifest = get_registry().get(run.pipeline_manifest_id, {})
+    reporting = normalized_contract(manifest)["reporting"]
+
+    def discover(globs: list[str]) -> list[dict]:
+        matches: dict[str, Path] = {}
+        for pattern in globs:
+            for candidate in output_root.glob(pattern):
+                if candidate.is_file():
+                    relative = candidate.relative_to(output_root).as_posix()
+                    matches[relative] = candidate
+        return [
+            {"name": path.stem, "path": relative}
+            for relative, path in sorted(matches.items())
+        ]
+
+    reports = discover(reporting["html_globs"])
+    metrics = discover(reporting["metric_globs"])
     group_tables = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("group_*.tsv"))
     ]
-    images = [
-        {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
-        for f in sorted(output_root.glob("*.png"))
-    ]
+    images = discover(reporting["figure_globs"])
     connectivity_matrices = [
         {"name": f.stem, "path": f.relative_to(output_root).as_posix()}
         for f in sorted(output_root.glob("*connectivity_matrix*.csv"))
@@ -413,6 +420,10 @@ def get_run_results(run_id: int, svc: RunService = Depends(_svc)) -> dict:
                     "resolution_source": a.resolution_source,
                     "paths": a.paths,
                     "host_paths": [to_host_path(p) for p in a.paths],
+                    "family": a.family,
+                    "role": a.role,
+                    "media_type": a.media_type,
+                    "extensions": a.extensions,
                 }
                 for a in resolved
             ]
@@ -469,7 +480,7 @@ def download_run_results(run_id: int, svc: RunService = Depends(_svc)) -> Respon
     buf.seek(0)
 
     slug = run.pipeline_manifest_id.replace(" ", "-").lower()
-    filename = f"neuroforge-run-{run_id}-{slug}-results.zip"
+    filename = f"neuravian-run-{run_id}-{slug}-results.zip"
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
@@ -479,7 +490,7 @@ def download_run_results(run_id: int, svc: RunService = Depends(_svc)) -> Respon
 
 @router.get("/runs/{run_id}/sync-manifest")
 def get_run_sync_manifest(run_id: int, svc: RunService = Depends(_svc)) -> dict:
-    """Return a host-path-free, checksum-addressed manifest for NeuroForge Desktop."""
+    """Return a host-path-free, checksum-addressed manifest for Neuravian Desktop."""
     try:
         run = svc.get_by_id(run_id)
     except KeyError:
@@ -611,7 +622,7 @@ def serve_run_file(run_id: int, file_path: str, svc: RunService = Depends(_svc))
 
     headers: dict[str, str] = {}
     if requested.suffix.lower() in {".html", ".svg"}:
-        # Official tool reports are embeddable only by NeuroForge on the same
+        # Official tool reports are embeddable only by Neuravian on the same
         # origin. The public gateway mirrors this narrow policy.
         headers = {
             "X-Frame-Options": "SAMEORIGIN",

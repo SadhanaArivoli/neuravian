@@ -15,7 +15,7 @@ class SavedWorkflow(Base):
     dataset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
     tags_json: Mapped[str | None] = mapped_column(Text)           # JSON array of strings
     state_json: Mapped[str] = mapped_column(Text, nullable=False)  # serialized WorkflowState
-    schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="neuroforge-workflow-v1")
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="neuravian-workflow-v1")
     is_template: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

@@ -213,12 +213,12 @@ function HostForm({
           <input
             value={form.remote_work_root}
             onChange={(e) => set("remote_work_root", e.target.value)}
-            placeholder="/scratch/neuroforge"
+            placeholder="/scratch/neuravian"
             className={inputCls(!!errors.remote_work_root)}
           />
           {errors.remote_work_root && <p className={errCls}>{errors.remote_work_root}</p>}
           <p className="mt-0.5 text-xs text-gray-500">
-            Directory on the remote host where NeuroForge stages run inputs and outputs.
+            Directory on the remote host where Neuravian stages run inputs and outputs.
           </p>
         </div>
 
@@ -523,10 +523,10 @@ export default function RemoteHosts() {
           SSH key setup
         </h3>
         <p className="text-xs text-gray-500 leading-relaxed">
-          NeuroForge uses key-based SSH authentication. Place your private key on the machine
-          running the NeuroForge backend and enter its absolute path here. The key is never
+          Neuravian uses key-based SSH authentication. Place your private key on the machine
+          running the Neuravian backend and enter its absolute path here. The key is never
           stored in the database — only the path is recorded. The remote user must be in the
-          <code className="mx-1 font-mono text-gray-400">docker</code> group so NeuroForge can
+          <code className="mx-1 font-mono text-gray-400">docker</code> group so Neuravian can
           run containers without <code className="font-mono text-gray-400">sudo</code>.
         </p>
       </div>

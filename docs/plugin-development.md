@@ -1,6 +1,6 @@
-# NeuroForge Plugin Development Guide
+# Neuravian Plugin Development Guide
 
-Plugins let you add new pipelines to NeuroForge without modifying its source code.
+Plugins let you add new pipelines to Neuravian without modifying its source code.
 Drop a directory into `plugins/` and restart the backend — your pipeline appears
 automatically in the Pipeline Library, Workflow Builder, and Run Next suggestions.
 
@@ -35,7 +35,7 @@ with status **Active** and zero pipelines registered.
 ## Adding a pipeline
 
 Create a `pipelines/` subdirectory containing one or more YAML manifests.
-Each manifest uses the same JSON Schema as NeuroForge's built-in pipelines
+Each manifest uses the same JSON Schema as Neuravian's built-in pipelines
 (`pipelines/schema/manifest.schema.json`):
 
 ```
@@ -92,7 +92,7 @@ max_runtime_hours: 0.5
 ```
 
 > **Pipeline ID uniqueness** — pipeline `id` must not conflict with any built-in
-> NeuroForge pipeline or any other installed plugin. NeuroForge will refuse to start
+> Neuravian pipeline or any other installed plugin. Neuravian will refuse to start
 > the plugin with a clear error message if a conflict is detected. Prefix your pipeline
 > IDs with your plugin ID to avoid conflicts (e.g. `my-plugin-my-tool`).
 
@@ -111,7 +111,7 @@ plugins/
       my-tool-cli          # Python script or compiled binary
 ```
 
-At startup, NeuroForge automatically:
+At startup, Neuravian automatically:
 1. Sets the execute bit on all files in `backend/`
 2. Prepends `backend/` to `PATH` so `shutil.which("my-tool-cli")` finds it
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
 ## Registering new artifact types
 
-If your pipeline produces a type not in NeuroForge's core vocabulary
+If your pipeline produces a type not in Neuravian's core vocabulary
 (`pipelines/schema/artifact_types.yaml`), register it in an `artifact_types.yaml`
 file at the plugin root:
 
@@ -175,9 +175,9 @@ to avoid conflicts with core types or other plugins.
 
 ## Discovery order
 
-NeuroForge scans the following locations for plugins, in order:
+Neuravian scans the following locations for plugins, in order:
 
-1. Paths listed in `NEUROFORGE_PLUGINS_DIRS` env var (colon-separated)
+1. Paths listed in `NEURAVIAN_PLUGINS_DIRS` env var (colon-separated)
 2. `/plugins-user` (Docker: optional user-supplied volume mount)
 3. `/plugins` (Docker: core plugins shipped with the image)
 4. `<repo-root>/plugins` (local development)
@@ -223,7 +223,7 @@ All fields supported in `plugin.yaml`:
 | `description` | yes | string | Description of what the plugin provides |
 | `homepage` | no | URI | URL to documentation or repository |
 | `license` | no | string | SPDX identifier (e.g. `Apache-2.0`, `MIT`) |
-| `neuroforge_version` | no | string | Required NeuroForge version range (informational only) |
+| `neuravian_version` | no | string | Required Neuravian version range (informational only) |
 | `dependencies` | no | list[string] | Python packages needed (informational; you must install them) |
 | `enabled` | no | boolean | Set to `false` to disable (default: `true`) |
 
@@ -251,7 +251,7 @@ The easiest way to test is during local development (outside Docker):
 
 ```bash
 # From the repository root
-export NEUROFORGE_PLUGINS_DIRS=/path/to/your/plugins
+export NEURAVIAN_PLUGINS_DIRS=/path/to/your/plugins
 
 # Start the backend
 cd backend
@@ -264,7 +264,7 @@ To run the backend test suite against your plugin:
 
 ```bash
 cd backend
-NEUROFORGE_PLUGINS_DIRS=/path/to/your/plugins uv run pytest tests/test_plugin_loader.py -v
+NEURAVIAN_PLUGINS_DIRS=/path/to/your/plugins uv run pytest tests/test_plugin_loader.py -v
 ```
 
 ---
@@ -283,16 +283,16 @@ for details.
 ## Best practices
 
 - **Prefix everything with your plugin id** — pipeline IDs, artifact type slugs, and
-  CLI command names should all be prefixed to avoid conflicts with core NeuroForge
+  CLI command names should all be prefixed to avoid conflicts with core Neuravian
   and other plugins (e.g. `my-plugin-my-tool`, `my_plugin_output_json`).
 - **Use `execution.type: native`** for tools written in Python or shell — no Docker
-  container overhead, works both inside and outside the NeuroForge Docker setup.
+  container overhead, works both inside and outside the Neuravian Docker setup.
 - **Declare `accepts[]` and `produces[]`** — this enables Run Next suggestions in
   the UI and allows your pipeline to participate in automated workflow chaining.
 - **Write `known_errors`** — users will see plain-English error explanations when
   your tool fails. See `pipelines/brainchop.yaml` for examples.
 - **Keep executables self-contained** — scripts in `backend/` should import only
-  packages already in the NeuroForge backend image (`nibabel`, `numpy`, `scipy`,
+  packages already in the Neuravian backend image (`nibabel`, `numpy`, `scipy`,
   etc.) or document their extra dependencies clearly in `plugin.yaml:dependencies`.
 - **Test with the real plugin loader** — call `load_all_plugins()` in your tests
   and assert on `plugin.status == "ok"`. See `backend/tests/test_plugin_loader.py`

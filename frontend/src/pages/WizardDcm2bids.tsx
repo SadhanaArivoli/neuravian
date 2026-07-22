@@ -665,7 +665,7 @@ export default function WizardDcm2bids() {
         </div>
         <p className="text-sm text-gray-400 max-w-xl">
           Convert raw DICOM scans into a BIDS dataset without manually writing a config.json.
-          Start by selecting your DICOM folder — NeuroForge will discover and classify every series automatically.
+          Start by selecting your DICOM folder — Neuravian will discover and classify every series automatically.
         </p>
       </div>
 
@@ -876,7 +876,7 @@ export default function WizardDcm2bids() {
                   </div>
 
                   <p className="text-xs text-gray-500">
-                    NeuroForge will save the generated config and launch dcm2bids in Docker.
+                    Neuravian will save the generated config and launch dcm2bids in Docker.
                     The output BIDS dataset will be available as a run artifact — you can then
                     chain to BIDS Validator directly from the run results page.
                   </p>

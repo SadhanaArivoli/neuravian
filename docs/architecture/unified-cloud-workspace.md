@@ -2,7 +2,7 @@
 
 ## Responsibility model
 
-A NeuroForge deployment is the source of truth. NeuroForge Desktop is a rich
+A Neuravian deployment is the source of truth. Neuravian Desktop is a rich
 client with a small read-through metadata cache and an artifact cache; it does
 not create a second scientific database or duplicate projects, datasets, runs,
 reports, or provenance.
@@ -28,7 +28,7 @@ not a synthetic server project or copied data.
 ## Stable remote identity
 
 The backend exposes `GET /api/workspace/identity`. Its opaque UUID is derived
-from `NEUROFORGE_SERVER_ID` when configured, otherwise from a one-way digest of
+from `NEURAVIAN_SERVER_ID` when configured, otherwise from a one-way digest of
 the deployment machine identity. The source value is never returned.
 
 Desktop resource keys use:
@@ -37,7 +37,7 @@ Desktop resource keys use:
 <workspace UUID>:<resource type>:<server resource ID>
 ```
 
-Integer server IDs therefore cannot collide across two NeuroForge deployments.
+Integer server IDs therefore cannot collide across two Neuravian deployments.
 Changing a profile URL does not change resource identity. If a known profile
 answers with a different workspace UUID, synchronization fails closed.
 

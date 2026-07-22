@@ -28,7 +28,7 @@ from app.schemas.workflow import (
 
 router = APIRouter(tags=["workflows"])
 
-CURRENT_SCHEMA_VERSION = "neuroforge-workflow-v1"
+CURRENT_SCHEMA_VERSION = "neuravian-workflow-v1"
 EXECUTION_STATUSES = {
     "planned", "running-local", "handoff-required", "synchronizing-inputs",
     "starting-remote", "running-remote", "synchronizing-results", "failed", "complete",
@@ -291,7 +291,7 @@ def _transfer_root(execution_uuid: str) -> Path:
 def _workflow_dataset_path(execution_uuid: str) -> Path:
     return (
         Path(settings.backend_datasets_mount)
-        / ".neuroforge-workflow-transfers"
+        / ".neuravian-workflow-transfers"
         / execution_uuid
     )
 
@@ -344,7 +344,7 @@ def materialize_workflow_dataset(
 @router.put("/workflow-executions/{execution_uuid}/inputs/{artifact_key}")
 async def upload_workflow_input(
     execution_uuid: str, artifact_key: str, request: Request,
-    x_neuroforge_sha256: str = Header(...), x_neuroforge_relative_path: str = Header(...),
+    x_neuravian_sha256: str = Header(...), x_neuravian_relative_path: str = Header(...),
     db: Session = Depends(get_db),
 ) -> WorkflowTransferRead:
     execution = db.query(WorkflowExecution).filter_by(execution_uuid=execution_uuid).first()
@@ -352,14 +352,14 @@ async def upload_workflow_input(
         raise HTTPException(status_code=404, detail="Workflow execution not found")
     if not ARTIFACT_KEY.fullmatch(artifact_key):
         raise HTTPException(status_code=400, detail="Invalid artifact key")
-    relative = Path(x_neuroforge_relative_path)
+    relative = Path(x_neuravian_relative_path)
     if relative.is_absolute() or ".." in relative.parts or not relative.name:
         raise HTTPException(status_code=400, detail="Invalid relative artifact path")
-    if not re.fullmatch(r"[0-9a-f]{64}", x_neuroforge_sha256.lower()):
+    if not re.fullmatch(r"[0-9a-f]{64}", x_neuravian_sha256.lower()):
         raise HTTPException(status_code=400, detail="Invalid SHA-256")
     payload = await request.body()
     digest = hashlib.sha256(payload).hexdigest()
-    if digest != x_neuroforge_sha256.lower():
+    if digest != x_neuravian_sha256.lower():
         raise HTTPException(status_code=422, detail="Artifact checksum mismatch")
     existing = db.query(WorkflowTransfer).filter_by(
         execution_id=execution.id, artifact_key=artifact_key,

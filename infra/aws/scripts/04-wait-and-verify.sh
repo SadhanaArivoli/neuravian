@@ -60,7 +60,7 @@ PY
 [[ -s "${KEY_PATH}" ]] || die "CloudShell PEM is missing; use the verified local copy with a LOCAL MAC workflow"
 [[ "$(stat -f '%Lp' "${KEY_PATH}" 2>/dev/null || stat -c '%a' "${KEY_PATH}")" == "400" ]] || die "PEM must have mode 400"
 
-CREDENTIALS_FILE="$(mktemp "${TMPDIR:-/tmp}/neuroforge-sts.XXXXXX")"
+CREDENTIALS_FILE="$(mktemp "${TMPDIR:-/tmp}/neuravian-sts.XXXXXX")"
 chmod 600 "${CREDENTIALS_FILE}"
 aws sts assume-role --role-arn "${DEPLOYER_ROLE_ARN}" --role-session-name "verify-${RESOLVED_DEPLOYMENT_ID}" \
   --duration-seconds 3600 --output json >"${CREDENTIALS_FILE}"
@@ -105,7 +105,7 @@ ssh -i "${KEY_PATH}" -o BatchMode=yes -o ConnectTimeout=20 \
   -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${KNOWN_HOSTS}" \
   "ubuntu@${PUBLIC_IP}" 'python3 -' >"${REMOTE_OUTPUT}" <<'PY'
 import json, os, platform, shutil, subprocess
-marker_path = "/var/lib/neuroforge/bootstrap-complete.json"
+marker_path = "/var/lib/neuravian/bootstrap-complete.json"
 marker = json.load(open(marker_path))
 def command(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout.strip()
@@ -118,7 +118,7 @@ result = {
     "os_release": dict(line.rstrip().split("=", 1) for line in open("/etc/os-release") if "=" in line),
     "docker": command("docker", "--version"),
     "compose": command("docker", "compose", "version"),
-    "git_commit": command("git", "-C", "/home/ubuntu/neuroforge", "rev-parse", "HEAD"),
+    "git_commit": command("git", "-C", "/home/ubuntu/neuravian", "rev-parse", "HEAD"),
     "cpu_count": os.cpu_count(),
     "memory_kib": memory_kib,
     "disk_total_bytes": disk.total,

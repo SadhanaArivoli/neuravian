@@ -58,7 +58,7 @@ def main() -> int:
         if [item.get("GroupId") for item in groups] != [state["security_group_id"]]:
             raise VerifyError("instance must have exactly one owned security group")
         profile = instance.get("IamInstanceProfile", {}).get("Arn", "")
-        if not profile.endswith(f"/NeuroForgeInstance-{state['deployment_id']}"):
+        if not profile.endswith(f"/NeuravianInstance-{state['deployment_id']}"):
             raise VerifyError("instance profile mismatch")
         public_ip = instance.get("PublicIpAddress", "")
         if not public_ip:
@@ -98,7 +98,7 @@ def main() -> int:
             {
                 "FromPort": 22,
                 "IpProtocol": "tcp",
-                "IpRanges": [{"CidrIp": expected_cidr, "Description": "NeuroForge-x86-operator"}],
+                "IpRanges": [{"CidrIp": expected_cidr, "Description": "Neuravian-x86-operator"}],
                 "Ipv6Ranges": [],
                 "PrefixListIds": [],
                 "ToPort": 22,

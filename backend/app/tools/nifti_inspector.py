@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 # ── Matplotlib env setup (before import) ──────────────────────────────────────
-_cache_dir = Path(tempfile.gettempdir()) / "neuroforge-cache"
+_cache_dir = Path(tempfile.gettempdir()) / "neuravian-cache"
 (_cache_dir / "matplotlib").mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_cache_dir / "matplotlib"))
 
@@ -375,7 +375,7 @@ def _write_html_report(
 
 def run(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="neuroforge-nifti-inspector",
+        prog="neuravian-nifti-inspector",
         description="Inspect a NIfTI file: parse header, compute image QC stats, write report.",
     )
     parser.add_argument("--input-file", required=True, help="Path to the NIfTI file (.nii or .nii.gz)")

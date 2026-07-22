@@ -1,6 +1,6 @@
-appId: org.neuroforge.desktop
-productName: NeuroForge
-copyright: Copyright © 2026 NeuroForge contributors
+appId: org.neuravian.desktop
+productName: Neuravian
+copyright: Copyright © 2026 Neuravian contributors
 asar: true
 directories:
   output: dist
@@ -8,11 +8,11 @@ files:
   - build/**/*
   - package.json
 extraResources:
-  - from: assets/neuroforge-logo.png
-    to: assets/neuroforge-logo.png
+  - from: assets/neuravian-logo.png
+    to: assets/neuravian-logo.png
 mac:
   category: public.app-category.education
-  icon: assets/NeuroForge.icns
+  icon: assets/Neuravian.icns
   target:
     - target: dir
       arch:

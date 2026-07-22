@@ -1,4 +1,4 @@
-# NeuroForge local desktop prototype verification
+# Neuravian local desktop prototype verification
 
 Verified on 2026-07-14 on Apple Silicon macOS. This document records the final
 milestone evidence; it does not change pipeline code or scientific behavior.
@@ -8,17 +8,17 @@ milestone evidence; it does not change pipeline code or scientific behavior.
 - Framework: Electron 43.1.1. Tauri was rejected for this prototype because the
   host had neither Rust nor the Xcode command-line toolchain, while Electron can
   directly supervise Docker Compose and package an immediately testable `.app`.
-- Bundle: `desktop/dist/mac-arm64/NeuroForge.app`
-- Bundle ID: `org.neuroforge.desktop`
+- Bundle: `desktop/dist/mac-arm64/Neuravian.app`
+- Bundle ID: `org.neuravian.desktop`
 - Packaging: unsigned ARM64 development directory bundle; signing identity is
   explicitly `null`.
-- Logo source: `/Users/arivolitirouvingadame/Downloads/neuroforge-logo.001-removebg-preview.png`
+- Logo source: `/Users/arivolitirouvingadame/Downloads/neuravian-logo.001-removebg-preview.png`
 - Source and retained-copy SHA-256:
   `6a074630ce385e74cba906861af4f3ae8e72840ff53172438f9b888a908d0cf3`
-- Preserved source copies: `neuroforge-logo.png`, `neuroforge-window.png`, and
-  `neuroforge-splash.png` are byte-identical to the supplied 500×500 RGBA PNG.
+- Preserved source copies: `neuravian-logo.png`, `neuravian-window.png`, and
+  `neuravian-splash.png` are byte-identical to the supplied 500×500 RGBA PNG.
 - Generated PNG icons: 16, 32, 64, 128, 256, 512, and 1024 pixels.
-- Generated macOS icon: `desktop/assets/NeuroForge.icns` plus the standard
+- Generated macOS icon: `desktop/assets/Neuravian.icns` plus the standard
   1×/2× `.iconset` entries. Transparency and square aspect ratio are preserved.
 
 ## Startup, privacy, and ownership
@@ -28,7 +28,7 @@ available data-volume disk, repository files, data-directory read/write access,
 Docker CLI, Docker daemon, Compose v2, and ports 8000/3000. It then starts:
 
 ```text
-docker compose --project-name neuroforge-desktop \
+docker compose --project-name neuravian-desktop \
   -f docker-compose.yml \
   -f desktop/docker-compose.desktop.yml \
   up --build --detach
@@ -52,7 +52,7 @@ executor socket.
 - `file:` startup routes and `http://127.0.0.1:3000` routes remain in-app.
 - Other HTTP(S) links open in the system browser; unsafe schemes are rejected.
 - Release builds disable DevTools by default.
-- The NeuroForge menu exposes app/Docker status, data/derivatives/log folders,
+- The Neuravian menu exposes app/Docker status, data/derivatives/log folders,
   diagnostics, restart, stop, quit, and `/api/about` data.
 - Diagnostics redact home paths, usernames, and common credential forms.
 
@@ -67,7 +67,7 @@ Screenshots:
 
 The app combines `/api/runs/queue` with `/api/runs` and treats pending, queued,
 or running work as active. An active run produces the required **Cancel**,
-**Leave NeuroForge services running**, and **Return to NeuroForge** options. If
+**Leave Neuravian services running**, and **Return to Neuravian** options. If
 status cannot be verified, stop/restart/quit fails closed. An idle quit issues
 `docker compose ... stop` only when that app process successfully started the
 services. No code path uses `down`, `down -v`, volume removal, or data deletion.
@@ -151,6 +151,6 @@ the suite's existing conditional skip.
 - Windows launcher process/port/path integration and signed installer.
 - Linux launcher packaging across supported distributions.
 - A future installed-app repository-location strategy; this prototype is built
-  from and operates beside a NeuroForge source checkout (or uses
-  `NEUROFORGE_REPO_ROOT`).
+  from and operates beside a Neuravian source checkout (or uses
+  `NEURAVIAN_REPO_ROOT`).
 - Release automation and update delivery. No auto-updater is included here.

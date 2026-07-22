@@ -1,0 +1,9 @@
+Methods Section
+Copy text
+Download .md
+
+All analyses were performed using Neuravian, an open-source neuroimaging workflow platform (https://github.com/SadhanaArivoli/neuravian), operating on openneuro-ds.
+
+A group-level quality control report was generated using MRIQC Group Report (v24.1.0.dev0+gd5b13cb5.d20240826) executed within a Docker container (nipreps/mriqc:24.0.2). The group report aggregates per-participant IQMs to identify systematic acquisition artifacts or outliers across the dataset.
+
+All pipeline executions were logged with version numbers, container images, parameters, and timestamps to support reproducibility. Detailed provenance records are available as supplementary material.

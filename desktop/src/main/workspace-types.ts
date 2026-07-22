@@ -1,12 +1,12 @@
 // ─── Workspace Replication Engine — core object model ────────────────────────
 //
 // The WRE is pipeline-agnostic, storage-agnostic, and event-driven.
-// It replicates typed NeuroForgeObjects between the desktop (authoritative)
+// It replicates typed NeuravianObjects between the desktop (authoritative)
 // and cloud VMs (ephemeral cache). It never reads pipeline manifests, never
 // hard-codes storage paths, and never holds EC2/Caddy infrastructure concerns.
 
 /** Every domain type the WRE can replicate. */
-export type NeuroForgeObjectType =
+export type NeuravianObjectType =
   | "project"
   | "workflow"
   | "dataset"
@@ -28,7 +28,7 @@ export interface TransportRef {
   sizeBytes?: number;
 }
 
-// ── Payload types (discriminated by NeuroForgeObjectType) ──────────────────
+// ── Payload types (discriminated by NeuravianObjectType) ──────────────────
 
 export interface ProjectPayload {
   title: string;
@@ -86,7 +86,7 @@ export interface RunPayload {
   finishedAt?: string | null;
 }
 
-export type NeuroForgePayload =
+export type NeuravianPayload =
   | ProjectPayload
   | WorkflowPayload
   | DatasetPayload
@@ -96,19 +96,19 @@ export type NeuroForgePayload =
   | PipelineTemplatePayload;
 
 /**
- * The atomic unit of replication. Every domain object is a NeuroForgeObject.
+ * The atomic unit of replication. Every domain object is a NeuravianObject.
  * - `objectId`: UUID assigned by the desktop at creation; the cloud never mints IDs.
  * - `revision`: monotonic counter; the cloud stores whatever revision it received.
  * - `contentHash`: SHA256 of the canonical JSON payload; used for dedup and verification.
  */
-export interface NeuroForgeObject {
+export interface NeuravianObject {
   objectId: string;
-  objectType: NeuroForgeObjectType;
+  objectType: NeuravianObjectType;
   revision: number;
   contentHash: string;
   createdAt: string;
   modifiedAt: string;
-  payload: NeuroForgePayload;
+  payload: NeuravianPayload;
 }
 
 // ── Typed event bus ──────────────────────────────────────────────────────────
@@ -133,14 +133,14 @@ export type WREEvent =
 export interface ReplicationManifest {
   workspaceId: string;
   computedAt: string;
-  toPush: NeuroForgeObject[];
+  toPush: NeuravianObject[];
   toPull: string[];
   inSync: string[];
 }
 
 export interface CloudObjectRef {
   objectId: string;
-  objectType: NeuroForgeObjectType;
+  objectType: NeuravianObjectType;
   revision: number;
   contentHash: string;
 }
@@ -153,19 +153,19 @@ export interface ReplicationSnapshot {
 
 // ── Type guards ──────────────────────────────────────────────────────────────
 
-export function isNeuroForgeObjectType(v: unknown): v is NeuroForgeObjectType {
+export function isNeuravianObjectType(v: unknown): v is NeuravianObjectType {
   return typeof v === "string" && [
     "project", "workflow", "dataset", "run",
     "artifact-manifest", "report", "pipeline-template",
   ].includes(v);
 }
 
-export function isNeuroForgeObject(v: unknown): v is NeuroForgeObject {
+export function isNeuravianObject(v: unknown): v is NeuravianObject {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
     typeof o.objectId === "string" &&
-    isNeuroForgeObjectType(o.objectType) &&
+    isNeuravianObjectType(o.objectType) &&
     typeof o.revision === "number" &&
     typeof o.contentHash === "string" &&
     typeof o.createdAt === "string" &&
@@ -370,7 +370,7 @@ export interface WorkspaceSnapshot {
 // ─── WorkspaceSession ─────────────────────────────────────────────────────────
 //
 // The permanent representation of a researcher's work in one workspace.
-// Survives VM deletion, NeuroForge restarts, and network interruptions.
+// Survives VM deletion, Neuravian restarts, and network interruptions.
 //
 // Key separation from WorkspaceProfile and WRE:
 //   WorkspaceProfile = how to reach the execution environment
@@ -473,7 +473,7 @@ export interface SessionUIState {
 export interface SessionViewerState {
   lastRunId:         number | null;
   openFiles:         string[];
-  viewerPreference:  "freeview" | "mricrogl" | "neuroforge-viewer" | null;
+  viewerPreference:  "freeview" | "mricrogl" | "neuravian-viewer" | null;
 }
 
 export interface SessionSyncStatus {

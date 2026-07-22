@@ -53,9 +53,9 @@ def test_shared_shell_is_dark_parseable_private_and_printable() -> None:
     parser = HTMLParser()
     parser.feed(rendered)
 
-    assert 'data-report-system="neuroforge-report-system-v1"' in rendered
-    assert 'name="neuroforge-report-system"' in rendered
-    assert 'id="neuroforge-report-theme"' in rendered
+    assert 'data-report-system="neuravian-report-system-v1"' in rendered
+    assert 'name="neuravian-report-system"' in rendered
+    assert 'id="neuravian-report-theme"' in rendered
     assert "background:#090d18" in rendered
     assert "color:#e6edf7" in rendered
     assert "color-scheme:dark" in rendered
@@ -117,7 +117,7 @@ def test_safe_display_values_redact_posix_and_windows_paths() -> None:
     rendered = key_value_table({
         "Private": "/private/tmp/study/sub-01.nii.gz",
         "Windows": r"C:\\research\\private\\sub-02.nii.gz",
-        "Sentence": "Loaded /srv/neuroforge/internal/result.tsv successfully",
+        "Sentence": "Loaded /srv/neuravian/internal/result.tsv successfully",
         "Documentation": "https://example.org/neuroimaging/reporting",
     })
     assert "/private/" not in rendered and "C:\\" not in rendered and "/srv/" not in rendered

@@ -10,7 +10,7 @@
     "doi": "10.18112/openneuro.ds000001.v1.0.0",
     "url": "https://openneuro.org/datasets/ds000001/versions/1.0.0",
     "license": "CC0",
-    "local_source_env": "NEUROFORGE_FIXTURE_SOURCE"
+    "local_source_env": "NEURAVIAN_FIXTURE_SOURCE"
   },
   "subject": "sub-01",
   "intended_pipelines": {

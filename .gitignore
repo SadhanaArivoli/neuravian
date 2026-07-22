@@ -30,6 +30,8 @@ backend/tests/data/dicom-structural/dicoms/
 .env.local
 
 # AWS deployment live state and private keys
+.neuravian-aws/
+# Pre-rename live state remains in place for compatibility and must never be committed.
 .neuroforge-aws/
 *.pem
 
@@ -61,3 +63,9 @@ docs/cloud/decommission-runs/*-decommission-report.md
 # Editors
 .idea/
 .vscode/
+
+# Local Claude Code permissions (machine-specific)
+.claude/settings.local.json
+
+# Root-level compiled desktop main (build artifact; Electron entry is desktop/build/main/index.js)
+index.js

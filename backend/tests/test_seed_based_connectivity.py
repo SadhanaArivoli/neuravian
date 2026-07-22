@@ -299,7 +299,7 @@ def test_workflow_template_exists():
     # Path relative to backend/ (container), falls back to host layout
     candidates = [
         Path(__file__).parent.parent.parent / "frontend" / "src" / "lib" / "workflowTemplates.ts",
-        Path("/host-data/neuroforge/frontend/src/lib/workflowTemplates.ts"),
+        Path("/host-data/neuravian/frontend/src/lib/workflowTemplates.ts"),
     ]
     ts_path = next((p for p in candidates if p.exists()), None)
     if ts_path is None:
@@ -315,7 +315,7 @@ def test_methods_template_exists():
     """The seed-based-connectivity methods template must be in methodsEngine.ts."""
     candidates = [
         Path(__file__).parent.parent.parent / "frontend" / "src" / "lib" / "methodsEngine.ts",
-        Path("/host-data/neuroforge/frontend/src/lib/methodsEngine.ts"),
+        Path("/host-data/neuravian/frontend/src/lib/methodsEngine.ts"),
     ]
     ts_path = next((p for p in candidates if p.exists()), None)
     if ts_path is None:

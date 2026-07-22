@@ -6,5 +6,5 @@ DRY_RUN=0
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 cmd=(timeout --signal=TERM --kill-after=30s "${EVIDENCE_TIMEOUT_SECONDS:-1800}"
   "${VERIFY_PYTHON}" "${X86_DIR}/collect_evidence.py" --evidence-dir "${EVIDENCE_DIR}"
-  --output "${X86_DIR}/neuroforge-x86-evidence.zip")
+  --output "${X86_DIR}/neuravian-x86-evidence.zip")
 run_cmd "${cmd[@]}"

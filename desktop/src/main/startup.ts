@@ -95,19 +95,19 @@ export class StartupController {
         this.trace(17, "ready event emitted from main process", "ownership=external", attemptId, this.dependencies.now() - startedAt);
         const externalWarn = await verifyFrontendCommit(FRONTEND_URL);
         if (externalWarn) this.trace("WARN", "frontend commit mismatch", externalWarn, attemptId, this.dependencies.now() - startedAt);
-        this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: externalWarn ?? "Connected to the existing local NeuroForge services.", stage: "ready" });
+        this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: externalWarn ?? "Connected to the existing local Neuravian services.", stage: "ready" });
         return true;
       }
 
       if (facts.occupiedPorts.length) {
         throw new SystemCheckError(
           "port-conflict",
-          `Local port${facts.occupiedPorts.length === 1 ? "" : "s"} ${facts.occupiedPorts.join(", ")} ${facts.occupiedPorts.length === 1 ? "is" : "are"} occupied, but the NeuroForge health checks did not both succeed.`,
+          `Local port${facts.occupiedPorts.length === 1 ? "" : "s"} ${facts.occupiedPorts.join(", ")} ${facts.occupiedPorts.length === 1 ? "is" : "are"} occupied, but the Neuravian health checks did not both succeed.`,
         );
       }
 
       failedStage = "Compose start";
-      this.update(attemptId, startedAt, { state: "starting", title: "Starting NeuroForge", detail: "Starting the existing Docker Compose services on this Mac.", stage: "Compose start" });
+      this.update(attemptId, startedAt, { state: "starting", title: "Starting Neuravian", detail: "Starting the existing Docker Compose services on this Mac.", stage: "Compose start" });
       this.trace(12, "Compose start invoked", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
       await this.compose.start();
 
@@ -125,7 +125,7 @@ export class StartupController {
       this.trace(17, "ready event emitted from main process", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
       const commitWarn = await verifyFrontendCommit(FRONTEND_URL);
       if (commitWarn) this.trace("WARN", "frontend commit mismatch", commitWarn, attemptId, this.dependencies.now() - startedAt);
-      this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: commitWarn ?? "NeuroForge is running locally.", stage: "ready" });
+      this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: commitWarn ?? "Neuravian is running locally.", stage: "ready" });
       return true;
     } catch (error) {
       if (this.currentAttemptId !== attemptId) return false;

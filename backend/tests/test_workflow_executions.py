@@ -26,7 +26,7 @@ def client():
 def workflow(client: TestClient) -> dict:
     response = client.post("/api/workflows", json={
         "name": "Mixed execution", "state": {
-            "schema_version": "neuroforge-workflow-v1",
+            "schema_version": "neuravian-workflow-v1",
             "source": {"kind": "dataset", "datasetId": 1, "runId": ""},
             "nodes": [], "activeTemplateId": None,
         },
@@ -96,7 +96,7 @@ def test_input_upload_is_checksum_verified_and_idempotent(client, tmp_path, monk
     payload = b"required upstream artifact"
     digest = hashlib.sha256(payload).hexdigest()
     url = f"/api/workflow-executions/{execution['execution_uuid']}/inputs/upstream-t1"
-    headers = {"X-NeuroForge-Sha256": digest, "X-NeuroForge-Relative-Path": "inputs/sub-01_T1w.nii.gz"}
+    headers = {"X-Neuravian-Sha256": digest, "X-Neuravian-Relative-Path": "inputs/sub-01_T1w.nii.gz"}
     first = client.put(url, content=payload, headers=headers)
     second = client.put(url, content=payload, headers=headers)
     assert first.status_code == second.status_code == 200
@@ -121,7 +121,7 @@ def test_handoff_dataset_materialization_translates_local_id(client, tmp_path, m
     assert first.json()["id"] != 42
     assert first.json()["workflow_execution_uuid"] == execution["execution_uuid"]
     assert first.json()["path"] == (
-        f"/host-data/.neuroforge-workflow-transfers/{execution['execution_uuid']}"
+        f"/host-data/.neuravian-workflow-transfers/{execution['execution_uuid']}"
     )
 
 
@@ -141,7 +141,7 @@ def test_input_upload_rejects_checksum_mismatch(client, tmp_path, monkeypatch):
     response = client.put(
         f"/api/workflow-executions/{execution['execution_uuid']}/inputs/input",
         content=b"data",
-        headers={"X-NeuroForge-Sha256": "0" * 64, "X-NeuroForge-Relative-Path": "input.nii.gz"},
+        headers={"X-Neuravian-Sha256": "0" * 64, "X-Neuravian-Relative-Path": "input.nii.gz"},
     )
     assert response.status_code == 422
 
@@ -154,8 +154,8 @@ def test_input_upload_rejects_unsafe_paths(client, path):
         f"/api/workflow-executions/{execution['execution_uuid']}/inputs/input",
         content=payload,
         headers={
-            "X-NeuroForge-Sha256": hashlib.sha256(payload).hexdigest(),
-            "X-NeuroForge-Relative-Path": path,
+            "X-Neuravian-Sha256": hashlib.sha256(payload).hexdigest(),
+            "X-Neuravian-Relative-Path": path,
         },
     )
     assert response.status_code == 400

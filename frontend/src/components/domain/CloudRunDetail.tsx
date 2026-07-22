@@ -197,7 +197,7 @@ function ArtifactBrowser({
                     >
                       <span
                         className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${cached ? "bg-emerald-400" : "bg-gray-600"}`}
-                        title={cached ? "Cached locally" : "Cloud only"}
+                        title={cached ? "Available locally" : "Available from workspace"}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-200 truncate" title={artifact.relativePath}>
@@ -275,7 +275,7 @@ export interface CloudRunDetailProps {
 export function CloudRunDetail({
   run, profile, workspaceId, online, inspection: inspectionProp, onClose, onCacheChanged,
 }: CloudRunDetailProps) {
-  const desktop = window.neuroforgeDesktop!;
+  const desktop = window.neuravianDesktop!;
   const navigate = useNavigate();
   const [tab, setTab] = useState<"overview" | "artifacts" | "logs" | "provenance" | "reports">("overview");
   const [downloading, setDownloading] = useState<string[]>([]);
@@ -317,26 +317,26 @@ export function CloudRunDetail({
   const freeviewDefault         = selectDefaultViewerScene(cap.freeview);
   const freeviewCachedDefault   = selectDefaultViewerScene(cap.freeviewCached);
   const mricroglCachedDefault   = selectDefaultViewerScene(cap.mricroglCached);
-  const nvCachedDefault         = selectDefaultViewerScene(cap.neuroforgeViewerCached);
-  const assertDefaultScene = (request: Parameters<NonNullable<NeuroForgeDesktopBridge["assertDefaultViewerScene"]>>[0]) => {
+  const nvCachedDefault         = selectDefaultViewerScene(cap.neuravianViewerCached);
+  const assertDefaultScene = (request: Parameters<NonNullable<NeuravianDesktopBridge["assertDefaultViewerScene"]>>[0]) => {
     if (typeof desktop.assertDefaultViewerScene !== "function") {
-      throw new Error("Desktop preload contract is stale: assertDefaultViewerScene is unavailable. Restart NeuroForge.");
+      throw new Error("Desktop preload contract is stale: assertDefaultViewerScene is unavailable. Restart Neuravian.");
     }
     return desktop.assertDefaultViewerScene(request);
   };
 
   // Determine the best available primary action.
-  // Priority: NeuroForge Viewer > FreeView > MRIcroGL > Cloud Browser.
-  // NeuroForge Viewer is the built-in viewer and requires no external install.
+  // Priority: Neuravian Viewer > FreeView > MRIcroGL > artifact browser.
+  // Neuravian Viewer is the built-in viewer and requires no external install.
   const isFullyCached = run.cacheState === "fully-cached" || run.cacheState === "offline-cached";
   const freeviewCanOpen    = !!(freeview?.installed  && cap.freeview.length > 0        && (online || cap.freeviewCached.length > 0));
   const mricroglCanOpen    = !!(mricrogl?.installed  && cap.mricroglCached.length > 0);
-  const neuroforgeViewerCanOpen = cap.neuroforgeViewerCached.length > 0;
-  const primaryAction: "freeview" | "mricrogl" | "neuroforge-viewer" | "cloud-browser" =
-    neuroforgeViewerCanOpen ? "neuroforge-viewer"
+  const neuravianViewerCanOpen = cap.neuravianViewerCached.length > 0;
+  const primaryAction: "freeview" | "mricrogl" | "neuravian-viewer" | "artifact-browser" =
+    neuravianViewerCanOpen ? "neuravian-viewer"
     : freeviewCanOpen ? "freeview"
     : mricroglCanOpen ? "mricrogl"
-    : "cloud-browser";
+    : "artifact-browser";
 
   // Human-readable explanation of why this primary action was chosen.
   const reasoningLines = ((): string[] => {
@@ -346,16 +346,16 @@ export function CloudRunDetail({
       ? `${run.cachedArtifacts.length} of ${run.artifacts.length} artifacts cached locally.`
       : "Artifacts are not cached locally.";
 
-    if (neuroforgeViewerCanOpen) return [cacheLine, "Artifacts cached locally.", "Primary action: Open in NeuroForge Viewer."];
+    if (neuravianViewerCanOpen) return [cacheLine, "Artifacts cached locally.", "Primary action: Open in Neuravian Viewer."];
     if (freeviewCanOpen) return [cacheLine, "FreeView detected.", "Primary action: Open in FreeView."];
     if (mricroglCanOpen) return [cacheLine, "MRIcroGL detected.", "Primary action: Open in MRIcroGL."];
     if ((freeview?.installed || mricrogl?.installed) && cap.freeview.length === 0 && cap.mricrogl.length === 0) {
-      return [cacheLine, "No viewable artifacts for this pipeline.", "Primary action: Open in Cloud Browser."];
+      return [cacheLine, "No directly viewable artifacts for this run.", "Primary action: Browse artifacts."];
     }
     if (cap.freeviewCached.length === 0 && !online) {
-      return [cacheLine, "Compatible artifacts not yet downloaded.", "Primary action: Open in Cloud Browser."];
+      return [cacheLine, "Compatible artifacts are not available locally yet.", "Primary action: Browse artifacts."];
     }
-    return [cacheLine, "Primary action: Open in Cloud Browser."];
+    return [cacheLine, "Primary action: Browse artifacts."];
   })();
 
   async function openFreeView() {
@@ -461,7 +461,7 @@ export function CloudRunDetail({
     }
     try {
       await assertDefaultScene({
-        viewerId: "neuroforge-viewer", workspaceId, runId: run.id,
+        viewerId: "neuravian-viewer", workspaceId, runId: run.id,
         files: [{ relativePath: artifact.relativePath, intendedRole: "base image" }],
       });
       setBrowserViewerLayers([{
@@ -574,7 +574,7 @@ export function CloudRunDetail({
       className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`Cloud Run #${run.id} — ${run.pipeline_manifest_id}`}
+      aria-label={`Run #${run.id} — ${run.pipeline_manifest_id}`}
     >
       <div className="h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-surface p-6 shadow-2xl">
         <SharedRunDetail
@@ -685,7 +685,7 @@ export function CloudRunDetail({
 
                 {/* Reasoning — explains why the primary action was chosen */}
                 <div className={`mb-4 rounded-lg border px-4 py-3 text-xs space-y-1 ${
-                  primaryAction === "freeview" || primaryAction === "mricrogl" || primaryAction === "neuroforge-viewer"
+                  primaryAction === "freeview" || primaryAction === "mricrogl" || primaryAction === "neuravian-viewer"
                     ? "border-emerald-400/20 bg-emerald-400/5"
                     : "border-white/8 bg-white/3"
                 }`}>
@@ -694,7 +694,7 @@ export function CloudRunDetail({
                       key={i}
                       className={
                         i === reasoningLines.length - 1
-                          ? `font-medium ${primaryAction !== "cloud-browser" ? "text-emerald-200" : "text-gray-300"}`
+                          ? `font-medium ${primaryAction !== "artifact-browser" ? "text-emerald-200" : "text-gray-300"}`
                           : i === 0 && isFullyCached
                           ? "text-emerald-300"
                           : "text-gray-400"
@@ -728,52 +728,52 @@ export function CloudRunDetail({
                     <span className="mt-1 block text-[10px] text-gray-400">Ready from local cache</span>
                   </button>
                 )}
-                {primaryAction === "neuroforge-viewer" && (
+                {primaryAction === "neuravian-viewer" && (
                   <button
                     onClick={() => void (async () => {
                       if (!nvCachedDefault) return;
                       await assertDefaultScene({
-                        viewerId: "neuroforge-viewer", workspaceId, runId: run.id,
+                        viewerId: "neuravian-viewer", workspaceId, runId: run.id,
                         files: [{ relativePath: nvCachedDefault.relativePath, intendedRole: "base image" }],
                       });
                       setShowViewer(true);
                     })().catch((error) => setMessage(error instanceof Error ? error.message : String(error)))}
                     className="w-full rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-5 py-4 text-left transition-colors hover:bg-emerald-400/15"
                   >
-                    <span className="text-sm font-semibold text-emerald-200">Open in NeuroForge Viewer</span>
+                    <span className="text-sm font-semibold text-emerald-200">Open in Neuravian Viewer</span>
                     <span className="mt-1 block text-[10px] text-gray-400">Built-in NiiVue viewer — no external tool required</span>
                   </button>
                 )}
-                {primaryAction === "cloud-browser" && (
+                {primaryAction === "artifact-browser" && (
                   <button
                     onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
                     className="w-full rounded-xl border border-accent/25 bg-accent/10 px-5 py-4 text-left transition-colors hover:bg-accent/15"
                   >
-                    <span className="text-sm font-semibold text-accent">Open in Cloud Browser</span>
+                    <span className="text-sm font-semibold text-accent">Browse artifacts</span>
                     <span className="mt-1 block text-[10px] text-gray-400">Opens run detail in authenticated browser tab</span>
                   </button>
                 )}
 
                 {/* Secondary local viewers — always shown so every viewer is reachable regardless of primary */}
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {/* NeuroForge Viewer */}
+                  {/* Neuravian Viewer */}
                   <button
-                    disabled={!neuroforgeViewerCanOpen || primaryAction === "neuroforge-viewer"}
+                    disabled={!neuravianViewerCanOpen || primaryAction === "neuravian-viewer"}
                     onClick={() => void (async () => {
                       if (!nvCachedDefault) return;
                       await assertDefaultScene({
-                        viewerId: "neuroforge-viewer", workspaceId, runId: run.id,
+                        viewerId: "neuravian-viewer", workspaceId, runId: run.id,
                         files: [{ relativePath: nvCachedDefault.relativePath, intendedRole: "base image" }],
                       });
                       setShowViewer(true);
                     })().catch((error) => setMessage(error instanceof Error ? error.message : String(error)))}
                     className="rounded-lg border border-white/8 bg-white/4 p-3 text-left transition-colors hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    <span className="text-xs font-medium text-gray-400">NeuroForge Viewer</span>
+                    <span className="text-xs font-medium text-gray-400">Neuravian Viewer</span>
                     <span className="mt-0.5 block text-[10px] text-gray-600">
-                      {neuroforgeViewerCanOpen
-                        ? primaryAction === "neuroforge-viewer" ? "Primary (selected above)" : "Built-in NiiVue viewer"
-                        : cap.neuroforgeViewer.length === 0
+                      {neuravianViewerCanOpen
+                        ? primaryAction === "neuravian-viewer" ? "Primary (selected above)" : "Built-in NiiVue viewer"
+                        : cap.neuravianViewer.length === 0
                         ? "No compatible artifacts"
                         : "Artifacts not cached locally"}
                     </span>
@@ -829,7 +829,7 @@ export function CloudRunDetail({
                 </div>
 
                 {/* Cloud section — shown as a secondary option when a local viewer is primary */}
-                {(primaryAction === "freeview" || primaryAction === "mricrogl" || primaryAction === "neuroforge-viewer") && (
+                {(primaryAction === "freeview" || primaryAction === "mricrogl" || primaryAction === "neuravian-viewer") && (
                   <div className="mt-5">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="h-px flex-1 bg-white/8" />
@@ -840,7 +840,7 @@ export function CloudRunDetail({
                       onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
                       className="w-full rounded-lg border border-white/8 bg-white/3 p-3 text-left transition-colors hover:bg-white/6"
                     >
-                      <span className="text-xs font-medium text-gray-500">Open in Cloud Browser</span>
+                      <span className="text-xs font-medium text-gray-500">Browse artifacts</span>
                       <span className="mt-0.5 block text-[10px] text-gray-600">Opens run detail in authenticated browser tab</span>
                     </button>
                   </div>
@@ -943,7 +943,7 @@ export function CloudRunDetail({
                       onClick={() => void desktop.openWorkspaceRun({ profileId: profile.id, runId: run.id })}
                       className="rounded-md border border-accent/20 px-3 py-2 text-xs text-accent hover:bg-accent/5"
                     >
-                      Open in Cloud Browser
+                      Browse artifacts
                     </button>
                   </div>
                   {reportHtml && (
@@ -964,7 +964,7 @@ export function CloudRunDetail({
       </div>
     </div>
 
-    {/* NeuroForge Viewer overlay (default scene from overview tab) */}
+    {/* Neuravian Viewer overlay (default scene from overview tab) */}
     {showViewer && viewerLayers.length > 0 && (
       <CloudNiivueViewer
         workspaceId={workspaceId}
@@ -974,7 +974,7 @@ export function CloudRunDetail({
       />
     )}
 
-    {/* NeuroForge Viewer overlay (single artifact from browser tab) */}
+    {/* Neuravian Viewer overlay (single artifact from browser tab) */}
     {browserViewerLayers && browserViewerLayers.length > 0 && (
       <CloudNiivueViewer
         workspaceId={workspaceId}

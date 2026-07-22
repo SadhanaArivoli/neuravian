@@ -32,7 +32,7 @@ inputs:
 outputs:
   - bids_validation_report
 
-# TODO: Pre-flight integration
+# Dataset compatibility is checked by the shared preflight service before launch.
 # BIDS Validator is currently a standalone pipeline (runs on demand like any
 # other pipeline). A future enhancement would wire it as an automatic pre-flight
 # check in PipelineParameterForm.tsx: before submitting a run for any BIDS-
@@ -83,7 +83,7 @@ parameters:
     help: >
       Output format for the validation report. "text" (default) produces a
       human-readable summary with indented error and warning descriptions —
-      the best choice for reading in NeuroForge's log viewer. "json_pp"
+      the best choice for reading in Neuravian's log viewer. "json_pp"
       produces pretty-printed JSON, useful if you want to parse or import the
       results into another tool. Both formats write to the log console and to
       the outfile (if set).
@@ -174,7 +174,7 @@ max_runtime_hours: 0.25
 #    Contents: single T1w, sub-01/anat/sub-01_T1w.nii.gz (from dcm2niix run 26)
 #    dataset_description.json present; participants.tsv present. Only warnings.
 #    Run 27 confirmed status=success in 7.9s.
-#    UI path for bids-dir: /Users/<you>/Documents/neuroforge/backend/tests/data/bids-valid
+#    UI path for bids-dir: /Users/<you>/Documents/neuravian/backend/tests/data/bids-valid
 #
 # 2. INVALID DATASET (exit 16 → status=failed) — registered as dataset ID 9:
 #    backend/tests/data/bids-invalid
@@ -182,7 +182,7 @@ max_runtime_hours: 0.25
 #    sub- entity in filename, file placed in wrong path.
 #    3 ERRORs: MISSING_DATASET_DESCRIPTION, MISSING_REQUIRED_ENTITY, INVALID_LOCATION.
 #    Run 28 confirmed status=failed in ~8s.
-#    UI path for bids-dir: /Users/<you>/Documents/neuroforge/backend/tests/data/bids-invalid
+#    UI path for bids-dir: /Users/<you>/Documents/neuravian/backend/tests/data/bids-invalid
 # ─────────────────────────────────────────────────────────────────────────────
 
 known_errors:

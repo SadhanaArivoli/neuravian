@@ -14,7 +14,7 @@ input_type: nifti
 
 execution:
   type: native
-  command: neuroforge-statistical-map-explorer
+  command: neuravian-statistical-map-explorer
 
 dataset_positional: false
 compute_profile: local-ok

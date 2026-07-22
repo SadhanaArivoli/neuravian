@@ -17,7 +17,7 @@ class RemoteHost(Base):
     # Path to the SSH private key file accessible to the backend process.
     # We store the path only — the key content is never written to the database.
     key_path: Mapped[str] = mapped_column(String(512), nullable=False)
-    # Base directory on the remote host where NeuroForge will stage run inputs/outputs.
+    # Base directory on the remote host where Neuravian will stage run inputs/outputs.
     remote_work_root: Mapped[str] = mapped_column(String(512), nullable=False)
     # Optional Docker socket override (e.g. "unix:///var/run/docker.sock").
     # When null, Docker uses its default socket on the remote.

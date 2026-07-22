@@ -48,16 +48,16 @@ SSH_OPTIONS=(
 )
 
 ssh "${SSH_OPTIONS[@]}" "ubuntu@${PUBLIC_IP}" 'set -euo pipefail
-  test -s /var/lib/neuroforge/terraform-bootstrap-complete.json
-  test "$(jq -r .status /var/lib/neuroforge/terraform-bootstrap-complete.json)" = complete
-  test "$(jq -r .scientific_pipelines_run /var/lib/neuroforge/terraform-bootstrap-complete.json)" = false
-  systemctl is-active --quiet neuroforge.service
+  test -s /var/lib/neuravian/terraform-bootstrap-complete.json
+  test "$(jq -r .status /var/lib/neuravian/terraform-bootstrap-complete.json)" = complete
+  test "$(jq -r .scientific_pipelines_run /var/lib/neuravian/terraform-bootstrap-complete.json)" = false
+  systemctl is-active --quiet neuravian.service
   curl -fsS http://127.0.0.1:8000/api/health >/dev/null
   curl -fsS http://127.0.0.1:3000/ >/dev/null
   ss -lnt | grep -q "127.0.0.1:3000"
   ss -lnt | grep -q "127.0.0.1:8000"
   ! ss -lnt | grep -Eq "0\.0\.0\.0:(3000|8000)|\[::\]:(3000|8000)"
-  docker compose -f /opt/neuroforge/docker-compose.yml -f /opt/neuroforge/compose.aws-loopback.yaml ps'
+  docker compose -f /opt/neuravian/docker-compose.yml -f /opt/neuravian/compose.aws-loopback.yaml ps'
 
 printf '[%s] Verification passed for %s\n' "${EXECUTION_LOCATION}" "${PUBLIC_IP}"
 printf '[%s] Tunnel: ssh -i %q -L 3000:127.0.0.1:3000 -L 8000:127.0.0.1:8000 ubuntu@%s\n' \

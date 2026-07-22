@@ -90,7 +90,7 @@ def _make_report_data(
         report_id=1,
         dataset_id=1,
         generated_at="2026-07-12T02:00:00+00:00",
-        neuroforge_version="0.1.0",
+        neuravian_version="0.1.0",
         git_commit="abc1234",
         dataset_name="test-bids",
         dataset_path="/data/test-bids",
@@ -278,7 +278,7 @@ class TestHtmlRenderer:
 
     def test_html_contains_cover_metadata(self):
         html = render_html(_make_report_data())
-        assert "NeuroForge report" in html
+        assert "Neuravian report" in html
         assert "abc1234" in html  # git commit
 
     def test_html_contains_reproducibility_checklist(self):
@@ -347,7 +347,7 @@ class TestMarkdownRenderer:
 
     def test_md_contains_reproducibility_footer(self):
         md = render_markdown(_make_report_data())
-        assert "NeuroForge" in md
+        assert "Neuravian" in md
         assert "abc1234" in md  # git commit
 
     def test_md_no_warnings_when_clean(self):
@@ -371,7 +371,7 @@ class TestJsonRenderer:
 
     def test_json_has_required_keys(self):
         result = json.loads(render_json(_make_report_data()))
-        for key in ["report_id", "dataset_id", "generated_at", "neuroforge_version",
+        for key in ["report_id", "dataset_id", "generated_at", "neuravian_version",
                      "runs", "artifacts", "citations", "methods_sections", "warnings"]:
             assert key in result, f"Missing key: {key}"
 
@@ -424,7 +424,7 @@ class TestSupplementZip:
         zip_path = build_supplement_zip(data, tmp_path)
         with zipfile.ZipFile(zip_path) as zf:
             prov = json.loads(zf.read("provenance.json"))
-        assert prov["schema"] == "neuroforge-provenance-v1"
+        assert prov["schema"] == "neuravian-provenance-v1"
         assert prov["report_id"] == 1
         assert isinstance(prov["runs"], list)
 
@@ -512,7 +512,7 @@ class TestPdfGeneration:
 
         html_file = tmp_path / "test.html"
         html_file.write_text(
-            "<html><body><h1>NeuroForge Test</h1><p>PDF test.</p></body></html>"
+            "<html><body><h1>Neuravian Test</h1><p>PDF test.</p></body></html>"
         )
         pdf_file = tmp_path / "out.pdf"
         err = _generate_pdf(html_file, pdf_file)

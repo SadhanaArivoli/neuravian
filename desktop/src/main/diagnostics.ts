@@ -17,7 +17,7 @@ export function formatDiagnostics(input: {
   logTail?: string;
 }): string {
   const lines = [
-    "NeuroForge desktop diagnostics",
+    "Neuravian desktop diagnostics",
     `Status: ${input.update.title}`,
     `Detail: ${input.update.detail}`,
     `Timestamp: ${new Date().toISOString()}`,

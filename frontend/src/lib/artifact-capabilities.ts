@@ -13,9 +13,11 @@
 //     future modality), add one entry to the NIfTI suffix table in
 //     classifyArtifactRole. No UI code needs to change.
 
+import { classifyNeuroArtifact } from "./neuroArtifactView";
+
 // ── Viewer capability ─────────────────────────────────────────────────────────
 
-export type ViewerId = "freeview" | "mricrogl" | "neuroforge-viewer";
+export type ViewerId = "freeview" | "mricrogl" | "neuravian-viewer";
 
 export interface ArtifactCapabilities {
   /** Which viewers can open this artifact. */
@@ -35,31 +37,17 @@ export interface ArtifactCapabilities {
  * viewer compatibility. All extension knowledge lives here.
  */
 export function resolveArtifactCapabilities(relativePath: string): ArtifactCapabilities {
-  const lower = relativePath.toLowerCase();
-
-  // Spatial volumes: NIfTI and FreeSurfer MGZ/MGH
-  if (lower.endsWith(".nii") || lower.endsWith(".nii.gz")) {
-    return { viewableIn: ["freeview", "mricrogl", "neuroforge-viewer"], isVolume: true, isSurface: false, isReport: false };
+  const name = relativePath.split("/").pop() ?? relativePath;
+  const artifact = classifyNeuroArtifact({ name, path: relativePath });
+  if (artifact.kind === "volume") {
+    return { viewableIn: ["freeview", "mricrogl", "neuravian-viewer"], isVolume: true, isSurface: false, isReport: false };
   }
-  if (lower.endsWith(".mgz") || lower.endsWith(".mgh")) {
-    return { viewableIn: ["freeview", "mricrogl", "neuroforge-viewer"], isVolume: true, isSurface: false, isReport: false };
-  }
-
-  // FreeSurfer mesh surfaces — FreeView only (NiivueViewer and MRIcroGL do not render surface meshes)
-  const surfaceExtensions = [
-    ".pial", ".white", ".inflated", ".sphere",
-    ".curv", ".sulc", ".thickness", ".area", ".label",
-  ];
-  if (surfaceExtensions.some((ext) => lower.endsWith(ext))) {
+  if (["surface", "surface-overlay", "annotation"].includes(artifact.kind)) {
     return { viewableIn: ["freeview"], isVolume: false, isSurface: true, isReport: false };
   }
-
-  // HTML reports (e.g. MRIQC, fMRIPrep)
-  if (lower.endsWith(".html")) {
+  if (artifact.kind === "report") {
     return { viewableIn: [], isVolume: false, isSurface: false, isReport: true };
   }
-
-  // Everything else: JSON, TSV, CSV, logs, provenance, etc.
   return { viewableIn: [], isVolume: false, isSurface: false, isReport: false };
 }
 
@@ -70,15 +58,15 @@ export interface RunViewerCapabilities {
   freeview: WorkspaceArtifact[];
   /** All artifacts compatible with MRIcroGL (cached or not). */
   mricrogl: WorkspaceArtifact[];
-  /** All artifacts compatible with the NeuroForge Viewer (cached or not). */
-  neuroforgeViewer: WorkspaceArtifact[];
+  /** All artifacts compatible with the Neuravian Viewer (cached or not). */
+  neuravianViewer: WorkspaceArtifact[];
 
   /** Subset of freeview that are currently cached locally. */
   freeviewCached: WorkspaceArtifact[];
   /** Subset of mricrogl that are currently cached locally. */
   mricroglCached: WorkspaceArtifact[];
-  /** Subset of neuroforgeViewer that are currently cached locally. */
-  neuroforgeViewerCached: WorkspaceArtifact[];
+  /** Subset of neuravianViewer that are currently cached locally. */
+  neuravianViewerCached: WorkspaceArtifact[];
 }
 
 /**
@@ -97,17 +85,17 @@ export function resolveRunViewerCapabilities(
   const mricrogl = run.artifacts.filter((a) =>
     resolveArtifactCapabilities(a.relativePath).viewableIn.includes("mricrogl"),
   );
-  const neuroforgeViewer = run.artifacts.filter((a) =>
-    resolveArtifactCapabilities(a.relativePath).viewableIn.includes("neuroforge-viewer"),
+  const neuravianViewer = run.artifacts.filter((a) =>
+    resolveArtifactCapabilities(a.relativePath).viewableIn.includes("neuravian-viewer"),
   );
 
   return {
     freeview,
     mricrogl,
-    neuroforgeViewer,
+    neuravianViewer,
     freeviewCached:          freeview.filter((a) => cachedSet.has(a.relativePath)),
     mricroglCached:          mricrogl.filter((a) => cachedSet.has(a.relativePath)),
-    neuroforgeViewerCached:  neuroforgeViewer.filter((a) => cachedSet.has(a.relativePath)),
+    neuravianViewerCached:  neuravianViewer.filter((a) => cachedSet.has(a.relativePath)),
   };
 }
 

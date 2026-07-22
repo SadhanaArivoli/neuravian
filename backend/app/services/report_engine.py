@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
 import os
 import zipfile
 from dataclasses import asdict, dataclass, field
@@ -22,14 +23,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.reporting.components import footer
-from app.reporting.html import document_shell, safe_display_value
 from app.models.dataset import Dataset
 from app.models.pipeline import Pipeline
 from app.models.run import Run
+from app.reporting.components import footer
+from app.reporting.html import document_shell, safe_display_value
 from app.services.artifact_registry import resolve_run_artifacts
 from app.services.pipeline import get_registry
+from app.services.pipeline_contract import normalized_contract
 
 log = logging.getLogger(__name__)
 
@@ -260,7 +261,7 @@ class ReportData:
     report_id: int
     dataset_id: int
     generated_at: str
-    neuroforge_version: str
+    neuravian_version: str
     git_commit: str
 
     # Dataset
@@ -410,14 +411,24 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
                                 reho_sections_list.append(md)
                             except Exception as exc:
                                 log.warning("Could not parse ReHo metadata for run %d: %s", run.id, exc)
-                    for png in sorted(out_path.glob("*.png"))[:4]:  # max 4 per run
+                    reporting = normalized_contract(manifest)["reporting"]
+                    figure_paths: dict[str, Path] = {}
+                    for pattern in reporting["figure_globs"]:
+                        for figure in out_path.glob(pattern):
+                            if figure.is_file():
+                                figure_paths[figure.relative_to(out_path).as_posix()] = figure
+                    for _, figure in sorted(figure_paths.items())[:4]:  # max 4 per run
                         try:
-                            data = png.read_bytes()
+                            data = figure.read_bytes()
                             b64 = base64.b64encode(data).decode()
+                            media_type = (
+                                mimetypes.guess_type(figure.name)[0]
+                                or "application/octet-stream"
+                            )
                             figures.append(FigureEmbed(
-                                caption=f"{display_name} — {png.stem}",
-                                alt=png.stem.replace("_", " "),
-                                data_uri=f"data:image/png;base64,{b64}",
+                                caption=f"{display_name} — {figure.stem}",
+                                alt=figure.stem.replace("_", " "),
+                                data_uri=f"data:{media_type};base64,{b64}",
                                 source_run_id=run.id,
                                 pipeline_id=run.pipeline_id or "",
                             ))
@@ -457,7 +468,7 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     methods_sections = _build_methods_sections(run_summaries, registry)
 
     # ── Citations ─────────────────────────────────────────────────────────────
-    citations = _build_citations(seen_pipeline_ids)
+    citations = _build_citations(seen_pipeline_ids, registry)
 
     # ── Warnings ─────────────────────────────────────────────────────────────
     warnings_list: list[str] = []
@@ -476,17 +487,17 @@ def collect_report_data(dataset_id: int, report_id: int, db: Session) -> ReportD
     # ── Version info ──────────────────────────────────────────────────────────
     try:
         import importlib.metadata as _meta
-        nf_version = _meta.version("neuroforge-backend")
+        nf_version = _meta.version("neuravian-backend")
     except Exception:
         nf_version = "0.1.0"
 
-    git_commit = os.environ.get("NEUROFORGE_GIT_COMMIT", "unknown")
+    git_commit = os.environ.get("NEURAVIAN_GIT_COMMIT", "unknown")
 
     return ReportData(
         report_id=report_id,
         dataset_id=dataset_id,
         generated_at=datetime.now(UTC).isoformat(),
-        neuroforge_version=nf_version,
+        neuravian_version=nf_version,
         git_commit=git_commit,
         dataset_name=dataset.name,
         dataset_path=dataset.path,
@@ -545,7 +556,7 @@ _METHODS_PROSE: dict[str, str] = {
         "susceptibility distortion correction, spatial normalisation, and confound estimation."
     ),
     "import-fmriprep-derivatives": (
-        "Previously computed fMRIPrep derivatives were imported into NeuroForge "
+        "Previously computed fMRIPrep derivatives were imported into Neuravian "
         "for downstream analysis."
     ),
     "brainchop": (
@@ -601,11 +612,11 @@ _METHODS_PROSE: dict[str, str] = {
         "coefficient, and betweenness centrality."
     ),
     "nifti-inspector": (
-        "NIfTI image headers and voxel statistics were inspected using NeuroForge's "
+        "NIfTI image headers and voxel statistics were inspected using Neuravian's "
         "built-in NIfTI Inspector."
     ),
     "statistical-map-explorer": (
-        "Statistical thresholding and cluster detection were performed using NeuroForge's "
+        "Statistical thresholding and cluster detection were performed using Neuravian's "
         "Statistical Map Explorer (version {version}). Suprathreshold voxels were identified "
         "by applying an absolute threshold to the statistical map, and contiguous clusters "
         "were delineated using 6-connectivity connected-component labelling (scipy.ndimage). "
@@ -634,7 +645,31 @@ def _build_methods_sections(
         if r.pipeline_id in seen_pipeline_ids:
             continue
         seen_pipeline_ids.add(r.pipeline_id)
+        contract_methods = (
+            (registry.get(r.pipeline_id, {}).get("contract") or {}).get("methods")
+        )
         prose_template = _METHODS_PROSE.get(r.pipeline_id)
+        if contract_methods:
+            execution = (
+                f"in {r.container_image}" if r.container_image else r.execution_type
+            )
+            runtime = (
+                f"{r.runtime_seconds} seconds"
+                if r.runtime_seconds is not None
+                else "not recorded"
+            )
+            text = contract_methods["summary"].format(
+                display_name=r.pipeline_display_name,
+                version=r.pipeline_version or "unknown",
+                execution=execution,
+                runtime=runtime,
+            )
+            sections.append({
+                "pipeline_id": r.pipeline_id,
+                "title": r.pipeline_display_name,
+                "text": text,
+            })
+            continue
         if not prose_template:
             continue
         text = prose_template.format(version=r.pipeline_version or "unknown")
@@ -646,7 +681,9 @@ def _build_methods_sections(
     return sections
 
 
-def _build_citations(pipeline_ids: set[str]) -> list[CitationEntry]:
+def _build_citations(
+    pipeline_ids: set[str], registry: dict[str, Any] | None = None
+) -> list[CitationEntry]:
     entries: list[CitationEntry] = []
     seen_keys: set[str] = set()
     for cit in _CITATIONS:
@@ -664,6 +701,22 @@ def _build_citations(pipeline_ids: set[str]) -> list[CitationEntry]:
             doi=cit.get("doi", ""),
             rrid=cit.get("rrid"),
         ))
+    for pipeline_id in sorted(pipeline_ids):
+        manifest = (registry or {}).get(pipeline_id, {})
+        methods = (manifest.get("contract") or {}).get("methods") or {}
+        for cit in methods.get("citations", []):
+            if cit["key"] in seen_keys:
+                continue
+            seen_keys.add(cit["key"])
+            entries.append(CitationEntry(
+                key=cit["key"],
+                tool=manifest.get("display_name", pipeline_id),
+                apa=_format_apa(cit),
+                vancouver=_format_vancouver(cit),
+                bibtex=_format_bibtex(cit),
+                doi=cit.get("doi", ""),
+                rrid=cit.get("rrid"),
+            ))
     return entries
 
 
@@ -897,7 +950,7 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
          "All pipelines ran in containers (reproducible environment)"),
         ("Pass" if d.citations else "Not available", "Software citations available"),
         ("Pass", "Provenance logged (run IDs, parameters, timestamps)"),
-        ("Pass", "Report generated by NeuroForge with version tracking"),
+        ("Pass", "Report generated by Neuravian with version tracking"),
     ]
     repro_html = "<ul class='repro-list'>" + "\n".join(
         f"<li><span class='repro-icon'>{icon}</span> {text}</li>"
@@ -907,7 +960,7 @@ def _html_vars(d: ReportData) -> dict[str, Any]:
     return {
         "title": title,
         "generated_at": d.generated_at[:19].replace("T", " ") + " UTC",
-        "neuroforge_version": d.neuroforge_version,
+        "neuravian_version": d.neuravian_version,
         "git_commit": d.git_commit,
         "report_id": d.report_id,
         "dataset_id": d.dataset_id,
@@ -945,7 +998,7 @@ def render_html(data: ReportData) -> str:
         ("Reproducibility Checklist", v["repro_html"]),
     ]
     body = "".join(f"<section><h2>{title}</h2>{content}</section>" for title, content in sections)
-    subtitle = f'Generated {v["generated_at"]} · NeuroForge {v["neuroforge_version"]} · Report {v["report_id"]} · Dataset {v["dataset_id"]}'
+    subtitle = f'Generated {v["generated_at"]} · Neuravian {v["neuravian_version"]} · Report {v["report_id"]} · Dataset {v["dataset_id"]}'
     return document_shell(f'Study Report — {v["title"]}', subtitle, body, footer_html=footer(f'Commit {v["git_commit"]}. No AI-generated scientific interpretation is included.'))
 
 
@@ -955,7 +1008,7 @@ def render_markdown(data: ReportData) -> str:
 
     lines += [
         f"# Study Report: {data.dataset_name or data.dataset_path or 'Dataset'}",
-        f"\n*Generated by NeuroForge {data.neuroforge_version} on "
+        f"\n*Generated by Neuravian {data.neuravian_version} on "
         f"{data.generated_at[:10]}*\n",
         "---\n",
         "## Dataset Summary\n",
@@ -1054,13 +1107,13 @@ def render_markdown(data: ReportData) -> str:
     lines += [
         "---",
         "## Reproducibility\n",
-        f"- NeuroForge version: {data.neuroforge_version}",
+        f"- Neuravian version: {data.neuravian_version}",
         f"- Git commit: {data.git_commit}",
         f"- Report ID: {data.report_id}",
         f"- Dataset ID: {data.dataset_id}",
         f"- Generated: {data.generated_at}",
         "",
-        "*This report was generated automatically by NeuroForge. "
+        "*This report was generated automatically by Neuravian. "
         "No AI-generated scientific interpretation is included. "
         "All values are derived from recorded pipeline outputs.*",
     ]
@@ -1106,11 +1159,11 @@ def build_supplement_zip(data: ReportData, report_dir: Path) -> Path:
 
         # Include provenance JSON
         prov = {
-            "schema": "neuroforge-provenance-v1",
+            "schema": "neuravian-provenance-v1",
             "report_id": data.report_id,
             "dataset_id": data.dataset_id,
             "generated_at": data.generated_at,
-            "neuroforge_version": data.neuroforge_version,
+            "neuravian_version": data.neuravian_version,
             "git_commit": data.git_commit,
             "runs": [
                 {

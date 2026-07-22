@@ -2,7 +2,7 @@ id: nifti-inspector
 display_name: NIfTI Inspector
 description: >
   Universal NIfTI header and image QC tool. Reads any NIfTI file already
-  produced by NeuroForge (brain masks, skull-stripped images, connectivity
+  produced by Neuravian (brain masks, skull-stripped images, connectivity
   maps, defaced images, etc.) and reports dimensions, voxel spacing,
   orientation, datatype, intensity statistics, and a warning summary.
   Read-only — no data are modified.
@@ -14,7 +14,7 @@ inputs: []
 
 execution:
   type: native
-  command: neuroforge-nifti-inspector
+  command: neuravian-nifti-inspector
 
 dataset_positional: false
 compute_profile: local-ok

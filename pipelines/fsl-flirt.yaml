@@ -13,8 +13,8 @@ description: >
   multi-subject group studies.
   MNI152 1mm and 2mm templates are built into the container — no template files
   need to be manually located.
-  Requires the NeuroForge FSL FLIRT wrapper image — build it once with
-  "docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7
+  Requires the Neuravian FSL FLIRT wrapper image — build it once with
+  "docker build --platform linux/amd64 -t neuravian/fsl-flirt:6.0.7
   docker/fsl-flirt/" before submitting a run.
 homepage: https://fsl.fmrib.ox.ac.uk/fsl/docs/#/registration/flirt
 category: registration
@@ -25,7 +25,7 @@ input_type: nifti
 # FLIRT to 1mm takes 3-15 minutes natively; 30-90 min under emulation.
 # Classified as local-slow to trigger the preflight warning dialog.
 # FSL 6.0.7 via brainlife/fsl@sha256:e17b13fe4af7ec79643595bb2de16584193234b99cb2fafbd7c786a1dc8b8d43.
-# Wrapper image: ghcr.io/neuroforge/fsl-flirt:6.0.7
+# Wrapper image: neuravian/fsl-flirt:6.0.7
 compute_profile: local-slow
 
 preflight:
@@ -46,13 +46,13 @@ preflight:
     output_space_gb: 1
 
 container:
-  # NeuroForge wrapper image built from docker/fsl-flirt/Dockerfile.
+  # Neuravian wrapper image built from docker/fsl-flirt/Dockerfile.
   # Derives from brainlife/fsl (FSL 6.0.7.22, Ubuntu 22.04) and adds a thin
-  # /usr/local/bin/neuroforge-flirt wrapper script that resolves reference image
-  # presets and translates NeuroForge flags into FLIRT's convention.
+  # /usr/local/bin/neuravian-flirt wrapper script that resolves reference image
+  # presets and translates Neuravian flags into FLIRT's convention.
   # MNI152 templates are bundled inside the FSL base image — no external files needed.
-  # Build locally: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
-  image: ghcr.io/neuroforge/fsl-flirt
+  # Build locally: docker build --platform linux/amd64 -t neuravian/fsl-flirt:6.0.7 docker/fsl-flirt/
+  image: neuravian/fsl-flirt
   tag: "6.0.7"
   engine: docker
 
@@ -316,12 +316,12 @@ max_runtime_hours: 2
 # ── Manual testing reference ──────────────────────────────────────────────────────
 # Input: skull-stripped brain from FSL BET run (brain.nii.gz)
 # Reference: MNI152_T1_2mm.nii.gz (built into FSL container)
-# Build: docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+# Build: docker build --platform linux/amd64 -t neuravian/fsl-flirt:6.0.7 docker/fsl-flirt/
 # CLI verified:
 #   docker run --rm --platform linux/amd64 \
 #     -v <skull_stripped.nii.gz>:/inputs/input/brain.nii.gz:ro \
 #     -v <out_dir>:/out:rw \
-#     ghcr.io/neuroforge/fsl-flirt:6.0.7 \
+#     neuravian/fsl-flirt:6.0.7 \
 #     --input /inputs/input/brain.nii.gz \
 #     --ref-preset mni152_2mm \
 #     --output-base /out/registered \
@@ -343,16 +343,16 @@ known_errors:
       skull-stripped the image — FLIRT registers much more reliably on brain-extracted
       images than on images containing skull or neck tissue.
 
-  - pattern: "neuroforge-flirt: error: --input is required"
+  - pattern: "neuravian-flirt: error: --input is required"
     explanation: >
       The FLIRT run was submitted without an input file path. This should not
-      happen in normal operation — the NeuroForge pipeline form marks this field
+      happen in normal operation — the Neuravian pipeline form marks this field
       as required.
     fix_hint: >
       Open the pipeline form and fill in the "input" field with the full path
       to your structural NIfTI file, then resubmit.
 
-  - pattern: "neuroforge-flirt: error: --ref-file is required when --ref-preset=custom"
+  - pattern: "neuravian-flirt: error: --ref-file is required when --ref-preset=custom"
     explanation: >
       The ref-preset was set to "custom" but no ref-file path was provided.
     fix_hint: >
@@ -365,8 +365,8 @@ known_errors:
       FLIRT could not find the MNI152 template inside the container. This indicates
       the container image was built incorrectly or the FSL data directory is missing.
     fix_hint: >
-      Rebuild the FLIRT wrapper image from the NeuroForge repository:
-        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+      Rebuild the FLIRT wrapper image from the Neuravian repository:
+        docker build --platform linux/amd64 -t neuravian/fsl-flirt:6.0.7 docker/fsl-flirt/
       The brainlife/fsl base image includes the FSL standard templates at
       /usr/local/fsl/data/standard/. If the build still fails, check that the
       FSL base image digest matches the one in the Dockerfile.
@@ -385,7 +385,7 @@ known_errors:
 
   - pattern: "Run stopped automatically after.*maximum runtime"
     explanation: >
-      The NeuroForge watchdog stopped this FLIRT run after it exceeded the
+      The Neuravian watchdog stopped this FLIRT run after it exceeded the
       2-hour maximum. FLIRT should complete in 1-15 minutes on x86_64 hardware.
       An extremely long runtime indicates the container stalled, or 1mm
       registration is being run under Rosetta 2 emulation.
@@ -395,13 +395,13 @@ known_errors:
       For 1mm registration, use the EC2 cloud execution target. Ensure Docker
       Desktop has at least 8 GB of memory allocated.
 
-  - pattern: "pull access denied|not found.*ghcr.io/neuroforge/fsl-flirt|manifest unknown"
+  - pattern: "pull access denied|not found.*neuravian/fsl-flirt|manifest unknown"
     explanation: >
-      Docker could not find the NeuroForge FSL FLIRT wrapper image locally or on
-      any registry. This image must be built locally from the NeuroForge repository
+      Docker could not find the Neuravian FSL FLIRT wrapper image locally or on
+      any registry. This image must be built locally from the Neuravian repository
       before first use.
     fix_hint: >
-      From the NeuroForge project root, run:
-        docker build --platform linux/amd64 -t ghcr.io/neuroforge/fsl-flirt:6.0.7 docker/fsl-flirt/
+      From the Neuravian project root, run:
+        docker build --platform linux/amd64 -t neuravian/fsl-flirt:6.0.7 docker/fsl-flirt/
       This takes ~30 seconds and only needs to be done once per machine.
       After the build completes, resubmit the run.

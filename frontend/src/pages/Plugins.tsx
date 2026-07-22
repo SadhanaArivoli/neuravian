@@ -71,10 +71,10 @@ function PluginCard({ plugin }: { plugin: PluginInfo }) {
             <p className="text-gray-300">{plugin.license}</p>
           </div>
         )}
-        {plugin.neuroforge_version && (
+        {plugin.neuravian_version && (
           <div>
-            <span className="text-gray-500">Requires NeuroForge</span>
-            <p className="text-gray-300">{plugin.neuroforge_version}</p>
+            <span className="text-gray-500">Requires Neuravian</span>
+            <p className="text-gray-300">{plugin.neuravian_version}</p>
           </div>
         )}
       </div>
@@ -142,7 +142,7 @@ export default function Plugins() {
       <div className="shrink-0 border-b border-white/10 p-6 sm:p-8">
         <h1 className="text-xl font-semibold text-gray-100">Plugins</h1>
         <p className="text-xs text-gray-500 mt-0.5">
-          Extend NeuroForge with additional pipelines by adding a plugin directory to{" "}
+          Extend Neuravian with additional pipelines by adding a plugin directory to{" "}
           <code className="font-mono text-gray-400">plugins/</code>.
         </p>
       </div>
@@ -164,7 +164,7 @@ export default function Plugins() {
             <p className="text-sm text-gray-400">No plugins installed.</p>
             <p className="text-xs text-gray-500 max-w-sm">
               Drop a plugin directory into <code className="font-mono text-gray-400">plugins/</code> at
-              the NeuroForge project root. Each plugin must contain a{" "}
+              the Neuravian project root. Each plugin must contain a{" "}
               <code className="font-mono text-gray-400">plugin.yaml</code> file.
             </p>
           </div>

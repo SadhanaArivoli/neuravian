@@ -59,6 +59,7 @@ import { WorkspaceSessionStore } from "./workspace-session-store.js";
 import { RunHistoryStore } from "./workspace-run-history.js";
 import type { SessionRunHistoryEntry } from "./workspace-types.js";
 import { LocalWorkspaceStore } from "./local-workspace.js";
+import { configureUserDataCompatibility } from "./user-data-compatibility.js";
 import { rmdir, rm } from "node:fs/promises";
 
 let mainWindow: BrowserWindow | null = null;
@@ -79,8 +80,9 @@ let workspaceSessionStore: WorkspaceSessionStore | null = null;
 let workspaceRunHistoryStore: RunHistoryStore | null = null;
 let localWorkspaceStore: LocalWorkspaceStore | null = null;
 const startupState = new StartupStateStore({ state: "checking-system", title: "Checking system", detail: "Preparing the desktop launcher.", stage: "Electron app ready", elapsedMs: 0 });
-const capturePath = process.env.NEUROFORGE_CAPTURE_PATH;
-const captureState = process.env.NEUROFORGE_CAPTURE_STATE;
+const capturePath = process.env.NEURAVIAN_CAPTURE_PATH;
+const captureState = process.env.NEURAVIAN_CAPTURE_STATE;
+const userDataCompatibility = configureUserDataCompatibility(app);
 
 function showMessage(options: MessageBoxOptions): Promise<MessageBoxReturnValue> {
   return mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options);
@@ -228,9 +230,9 @@ async function loadMainApplication(): Promise<void> {
     applicationLoaded = true;
     trace({ attemptId, stage: 19, name: "app URL loaded into main window", detail: FRONTEND_URL, elapsedMs: Date.now() - startedAt });
     trace({ attemptId, stage: 20, name: "startup shell removed", elapsedMs: Date.now() - startedAt });
-    const visible = await mainWindow.webContents.executeJavaScript("Boolean(document.body && document.body.innerText.includes('NeuroForge'))", true).catch(() => false) as boolean;
-    if (!visible) throw new Error("The NeuroForge document loaded but its main UI was not visible.");
-    trace({ attemptId, stage: 21, name: "main NeuroForge UI visible", elapsedMs: Date.now() - startedAt });
+    const visible = await mainWindow.webContents.executeJavaScript("Boolean(document.body && document.body.innerText.includes('Neuravian'))", true).catch(() => false) as boolean;
+    if (!visible) throw new Error("The Neuravian document loaded but its main UI was not visible.");
+    trace({ attemptId, stage: 21, name: "main Neuravian UI visible", elapsedMs: Date.now() - startedAt });
   } catch (error) {
     applicationLoadStarted = false;
     applicationLoaded = false;
@@ -270,9 +272,9 @@ async function confirmNoActiveRun(action: string): Promise<boolean> {
     await showMessage({
       type: "warning",
       title: "Scientific run active",
-      message: `NeuroForge cannot ${action} while a scientific run is active.`,
-      detail: `Active or queued run IDs: ${activity.runIds.join(", ")}. Return to NeuroForge and let the run finish.`,
-      buttons: ["Return to NeuroForge"],
+      message: `Neuravian cannot ${action} while a scientific run is active.`,
+      detail: `Active or queued run IDs: ${activity.runIds.join(", ")}. Return to Neuravian and let the run finish.`,
+      buttons: ["Return to Neuravian"],
     });
     mainWindow?.show();
     return false;
@@ -280,9 +282,9 @@ async function confirmNoActiveRun(action: string): Promise<boolean> {
     await showMessage({
       type: "warning",
       title: "Run status unavailable",
-      message: `NeuroForge did not ${action} because it could not verify that pipeline execution is idle.`,
+      message: `Neuravian did not ${action} because it could not verify that pipeline execution is idle.`,
       detail: error instanceof Error ? error.message : String(error),
-      buttons: ["Return to NeuroForge"],
+      buttons: ["Return to Neuravian"],
     });
     return false;
   }
@@ -295,7 +297,7 @@ async function stopServices(): Promise<void> {
   applicationLoaded = false;
   applicationLoadStarted = false;
   await mainWindow?.loadFile(path.join(__dirname, "../renderer/index.html"));
-  publish({ state: "failed", title: "Services stopped", detail: "NeuroForge services are stopped. Select Retry to start them again.", recoverable: true });
+  publish({ state: "failed", title: "Services stopped", detail: "Neuravian services are stopped. Select Retry to start them again.", recoverable: true });
 }
 
 async function restartServices(): Promise<void> {
@@ -308,7 +310,7 @@ async function restartServices(): Promise<void> {
 }
 
 async function showAbout(): Promise<void> {
-  let detail = "Thin local desktop launcher for the existing NeuroForge application.";
+  let detail = "Thin local desktop launcher for the existing Neuravian application.";
   try {
     const response = await fetch("http://127.0.0.1:8000/api/about", { signal: AbortSignal.timeout(4_000) });
     if (response.ok) {
@@ -316,18 +318,18 @@ async function showAbout(): Promise<void> {
       detail = `Version ${about.version ?? app.getVersion()}\nBackend ${about.backend_version ?? "unknown"}\nCommit ${about.git_commit ?? "unknown"}\n${about.license ?? "Apache 2.0"}`;
     }
   } catch { /* The launcher remains identifiable if services are stopped. */ }
-  await showMessage({ title: "About NeuroForge", message: "NeuroForge", detail, icon: assetPath("neuroforge-logo.png") });
+  await showMessage({ title: "About Neuravian", message: "Neuravian", detail, icon: assetPath("neuravian-logo.png") });
 }
 
 function installMenu(): void {
   const statusLabel = startupState.get().title;
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
-      label: "NeuroForge",
+      label: "Neuravian",
       submenu: [
-        { label: "About NeuroForge", click: () => { void showAbout(); } },
+        { label: "About Neuravian", click: () => { void showAbout(); } },
         { type: "separator" },
-        { label: `NeuroForge: ${statusLabel}`, enabled: false },
+        { label: `Neuravian: ${statusLabel}`, enabled: false },
         { label: `Docker services: ${compose?.serviceOwnership ?? "none"}`, enabled: false },
         { type: "separator" },
         { label: "Open Data Folder", click: () => { void openFolder("data"); } },
@@ -338,7 +340,7 @@ function installMenu(): void {
         { label: "Restart Services", click: () => { void restartServices(); } },
         { label: "Stop Services", click: () => { void stopServices(); } },
         { type: "separator" },
-        { label: "Quit NeuroForge", accelerator: "Command+Q", click: () => { void requestQuit(); } },
+        { label: "Quit Neuravian", accelerator: "Command+Q", click: () => { void requestQuit(); } },
       ],
     },
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
@@ -361,17 +363,17 @@ async function requestQuit(): Promise<void> {
     catch (error) {
       await showMessage({
         type: "warning", title: "Run status unavailable",
-        message: "NeuroForge will remain open because active-run status could not be verified.",
-        detail: error instanceof Error ? error.message : String(error), buttons: ["Return to NeuroForge"],
+        message: "Neuravian will remain open because active-run status could not be verified.",
+        detail: error instanceof Error ? error.message : String(error), buttons: ["Return to Neuravian"],
       });
       return;
     }
     if (activity.active) {
       const result = await showMessage({
         type: "warning", title: "Scientific run active",
-        message: "A scientific run is active. NeuroForge will not stop its services by default.",
+        message: "A scientific run is active. Neuravian will not stop its services by default.",
         detail: `Active or queued run IDs: ${activity.runIds.join(", ")}`,
-        buttons: ["Cancel", "Leave NeuroForge services running", "Return to NeuroForge"],
+        buttons: ["Cancel", "Leave Neuravian services running", "Return to Neuravian"],
         defaultId: 0, cancelId: 0,
       });
       if (result.response !== 1) { mainWindow?.show(); return; }
@@ -393,8 +395,8 @@ async function createWindow(): Promise<void> {
   const stateFile = path.join(app.getPath("userData"), "window-state.json");
   const bounds = await loadWindowBounds(stateFile);
   mainWindow = new BrowserWindow({
-    title: "NeuroForge", ...bounds, minWidth: 1024, minHeight: 700, show: false,
-    backgroundColor: "#090d18", icon: assetPath("neuroforge-logo.png"),
+    title: "Neuravian", ...bounds, minWidth: 1024, minHeight: 700, show: false,
+    backgroundColor: "#090d18", icon: assetPath("neuravian-logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"), contextIsolation: true,
       nodeIntegration: false, sandbox: true, devTools: !app.isPackaged,
@@ -903,9 +905,9 @@ ipcMain.handle("workspaces:replicate-objects", async (
   const profile = (await profiles.list()).find((item) => item.id === input.profileId);
   if (!profile) throw new Error("Workspace profile not found.");
   const credential = await profiles.credential(input.profileId);
-  const { isNeuroForgeObject } = await import("./workspace-types.js");
-  const valid = input.objects.filter(isNeuroForgeObject);
-  if (valid.length !== input.objects.length) throw new Error("One or more objects failed NeuroForgeObject validation.");
+  const { isNeuravianObject } = await import("./workspace-types.js");
+  const valid = input.objects.filter(isNeuravianObject);
+  if (valid.length !== input.objects.length) throw new Error("One or more objects failed NeuravianObject validation.");
   return await wre.pushObjects(profile, credential, valid);
 });
 ipcMain.handle("workspaces:launch-pipeline", async (
@@ -1126,7 +1128,7 @@ ipcMain.handle("workspaces:pull-to-local", async (
   });
   if (!response.ok) {
     const text = await response.text().catch(() => response.statusText);
-    throw new Error(`Local NeuroForge returned HTTP ${response.status}: ${text}`);
+    throw new Error(`Local Neuravian returned HTTP ${response.status}: ${text}`);
   }
   return response.json();
 });
@@ -1151,7 +1153,7 @@ ipcMain.handle("viewers:launch-local", async (_event, request: LocalViewerLaunch
     ? path.join(repositoryRoot, "data", run.output_dir.slice(containerPrefix.length))
     : path.resolve(run.output_dir ?? "");
   const derivativesRoot = path.join(repositoryRoot, "data", "derivatives");
-  if (!outputRoot.startsWith(`${derivativesRoot}${path.sep}`)) throw new Error("Local run output is outside NeuroForge derivatives.");
+  if (!outputRoot.startsWith(`${derivativesRoot}${path.sep}`)) throw new Error("Local run output is outside Neuravian derivatives.");
   const detection = await detectViewer(request.viewerId, process.platform as DesktopPlatform);
   if (!detection.installed || !detection.executable) throw new Error(detection.reason ?? "Viewer is not installed.");
   const command = commandForLocalPreset(request, detection.executable, outputRoot);
@@ -1181,6 +1183,13 @@ ipcMain.handle(VIEWER_CHANNELS.launch, async (_event, request: ViewerLaunchReque
 app.whenReady().then(async () => {
   app.setAppLogsPath();
   logger = await DesktopLogger.create(app.getPath("logs"));
+  await logger.trace({
+    stage: "user-data",
+    name: userDataCompatibility.mode === "canonical" ? "Neuravian user data selected" : "Legacy user data retained",
+    detail: userDataCompatibility.mode === "canonical"
+      ? `path=${userDataCompatibility.activePath}`
+      : `legacy_path=${userDataCompatibility.activePath}; canonical_path=${userDataCompatibility.canonicalPath}`,
+  });
   trace({ stage: 1, name: "Electron app ready", detail: `version=${app.getVersion()} architecture=${process.arch}` });
   installMenu();
   await createWindow();

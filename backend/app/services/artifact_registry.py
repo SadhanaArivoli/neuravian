@@ -82,6 +82,11 @@ class ResolvedArtifact:
     multiple: bool = False
     """Whether the produce slot declared multiple: true."""
 
+    family: str = "other"
+    role: str = "unknown"
+    media_type: str = "application/octet-stream"
+    extensions: list[str] = field(default_factory=list)
+
     @property
     def path(self) -> str | None:
         """Convenience: the single resolved path, or None."""
@@ -129,6 +134,13 @@ def resolve_run_artifacts(
             paths=[],
             multiple=multiple,
         )
+        type_definition = describe_artifact_type(artifact_type)
+        artifact.family = type_definition.get("family", "other")
+        artifact.role = type_definition.get("role", "unknown")
+        artifact.media_type = type_definition.get(
+            "media_type", "application/octet-stream"
+        )
+        artifact.extensions = type_definition.get("extensions", [])
 
         if status != "success":
             # Do not attempt path resolution for non-successful runs.

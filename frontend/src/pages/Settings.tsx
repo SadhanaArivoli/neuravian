@@ -1,12 +1,15 @@
+import { Link } from "react-router-dom";
 import { useOnboarding } from "../context/OnboardingContext";
+import { Page, PageHeader } from "../components/primitives";
 
 export default function Settings() {
   const { state, restart, setHints } = useOnboarding();
 
   return (
-    <div className="p-8 max-w-lg">
-      <h1 className="text-2xl font-semibold mb-1">Settings</h1>
-      <p className="text-sm text-gray-400 mb-8">Application preferences and onboarding controls.</p>
+    <Page className="max-w-2xl">
+      <PageHeader title="Settings" subtitle="Personalize guidance and review application details." />
+
+      <div className="mt-8">
 
       {/* Onboarding */}
       <section className="mb-8">
@@ -57,12 +60,26 @@ export default function Settings() {
         </div>
       </section>
 
+      <section className="mb-8">
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Cloud workspaces</h3>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-white/8 bg-surface-raised px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray-200">Connections and synchronization</p>
+            <p className="mt-0.5 text-xs text-gray-500">Manage cloud workspaces, connection details, and cached metadata in one place.</p>
+          </div>
+          <Link to="/workspaces" className="shrink-0 rounded-md border border-white/15 px-3 py-1.5 text-sm text-gray-300 hover:border-white/30 hover:text-white">
+            Open workspaces
+          </Link>
+        </div>
+      </section>
+
       {/* Version info */}
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">About</h3>
         <div className="rounded-lg border border-white/8 bg-surface-raised px-4 py-3 space-y-1.5">
           {[
-            { label: "Version", value: "0.1.0-alpha" },
+            { label: "Release", value: "Early Access" },
+            { label: "Version", value: "0.1.0" },
             { label: "License", value: "Apache 2.0" },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
@@ -72,9 +89,10 @@ export default function Settings() {
           ))}
         </div>
         <p className="text-xs text-gray-600 mt-3">
-          For full version details, open <span className="text-gray-500">Help → About NeuroForge</span>.
+          For full version details, open <span className="text-gray-500">Help → About Neuravian</span>.
         </p>
       </section>
-    </div>
+      </div>
+    </Page>
   );
 }

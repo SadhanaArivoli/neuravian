@@ -1,6 +1,6 @@
-# image-statistics — NeuroForge Plugin Example
+# image-statistics — Neuravian Plugin Example
 
-This plugin ships with NeuroForge as a reference implementation for plugin developers.
+This plugin ships with Neuravian as a reference implementation for plugin developers.
 It adds one pipeline: **Image Statistics**, which reads any NIfTI file and writes a
 JSON summary of basic voxelwise intensity statistics.
 
@@ -44,14 +44,14 @@ Writes `image_statistics.json` to the run's output directory:
 1. Copy this directory to `plugins/your-plugin-name/`
 2. Edit `plugin.yaml`: change `id`, `name`, `version`, `author`, `description`
 3. Edit `pipelines/your-pipeline.yaml`: change `id`, `display_name`, update `accepts`/`produces`
-4. Replace `backend/neuroforge-image-statistics` with your own executable
+4. Replace `backend/neuravian-image-statistics` with your own executable
 5. Edit `artifact_types.yaml` if your pipeline produces a new artifact type
 
 See [docs/plugin-development.md](../../docs/plugin-development.md) for the full SDK guide.
 
 ## Dependencies
 
-- `nibabel` — NIfTI file reading (standard NeuroForge backend dependency)
-- `numpy` — numerical operations (standard NeuroForge backend dependency)
+- `nibabel` — NIfTI file reading (standard Neuravian backend dependency)
+- `numpy` — numerical operations (standard Neuravian backend dependency)
 
 No additional packages required.

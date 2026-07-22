@@ -6,13 +6,13 @@ description: >
   maximum, and non-zero voxel count. Uses nibabel and numpy — no extra
   dependencies required. This pipeline ships as part of the image-statistics
   example plugin and is a reference implementation for plugin developers.
-homepage: "https://github.com/neuroimaging-lab/neuroforge"
+homepage: "https://github.com/neuroimaging-lab/neuravian"
 category: quality_control
 input_type: nifti
 
 execution:
   type: native
-  command: neuroforge-image-statistics
+  command: neuravian-image-statistics
 
 dataset_positional: false
 
@@ -70,12 +70,12 @@ produces:
 max_runtime_hours: 0.1
 
 known_errors:
-  - pattern: "neuroforge-image-statistics.*not found|command not found"
+  - pattern: "neuravian-image-statistics.*not found|command not found"
     explanation: >
       The image-statistics plugin executable is not on PATH. This usually
       means the plugin was not loaded correctly at startup.
     fix_hint: >
-      Check the Plugins page in the NeuroForge UI. The image-statistics
+      Check the Plugins page in the Neuravian UI. The image-statistics
       plugin status should be "ok". If it shows an error, check the
       backend logs for details. Restarting the backend container reloads
       all plugins.
@@ -83,7 +83,7 @@ known_errors:
   - pattern: "nibabel|numpy|ImportError"
     explanation: >
       nibabel or numpy is not installed in the backend Python environment.
-      Both packages are standard NeuroForge dependencies and should always
+      Both packages are standard Neuravian dependencies and should always
       be present.
     fix_hint: >
       Rebuild the backend container with 'docker compose build backend'.

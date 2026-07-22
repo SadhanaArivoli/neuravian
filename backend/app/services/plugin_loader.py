@@ -1,6 +1,6 @@
-"""Plugin discovery and loading for NeuroForge.
+"""Plugin discovery and loading for Neuravian.
 
-Plugins extend NeuroForge without modifying core source code. Each plugin
+Plugins extend Neuravian without modifying core source code. Each plugin
 is a directory containing:
 
   plugin.yaml        — required: plugin identity and metadata
@@ -10,7 +10,7 @@ is a directory containing:
   README.md          — optional: developer documentation
 
 Discovery order (first-found wins for conflicts):
-  1. Paths listed in NEUROFORGE_PLUGINS_DIRS env var (colon-separated)
+  1. Paths listed in NEURAVIAN_PLUGINS_DIRS env var (colon-separated)
   2. /plugins-user  (Docker: user-supplied volume mount)
   3. /plugins       (Docker: core plugins shipped with the image)
   4. <repo-root>/plugins  (local dev)
@@ -54,7 +54,7 @@ def _candidate_plugin_roots() -> list[Path]:
     """Return ordered list of directories to scan for plugin sub-directories."""
     candidates: list[Path] = []
 
-    env_dirs = os.environ.get("NEUROFORGE_PLUGINS_DIRS", "")
+    env_dirs = os.environ.get("NEURAVIAN_PLUGINS_DIRS", "")
     if env_dirs:
         for p in env_dirs.split(":"):
             p = p.strip()
@@ -100,7 +100,7 @@ def _find_plugin_dirs() -> list[Path]:
 
 @dataclass
 class PluginInfo:
-    """Everything NeuroForge learned about an installed plugin."""
+    """Everything Neuravian learned about an installed plugin."""
 
     plugin_dir: Path
 
@@ -111,7 +111,7 @@ class PluginInfo:
     author: str
     description: str
     homepage: str | None = None
-    neuroforge_version: str | None = None
+    neuravian_version: str | None = None
     license: str | None = None
     dependencies: list[str] = field(default_factory=list)
     enabled: bool = True
@@ -212,7 +212,7 @@ def _load_plugin_manifests(
         pid = manifest["id"]
         if pid in known_core_ids:
             raise PluginError(
-                f"Pipeline id '{pid}' in {yaml_path.name} conflicts with a core NeuroForge pipeline. "
+                f"Pipeline id '{pid}' in {yaml_path.name} conflicts with a core Neuravian pipeline. "
                 f"Rename it to avoid the conflict (e.g. '{plugin_dir.name}-{pid}')."
             )
         if pid in known_plugin_ids:
@@ -246,7 +246,7 @@ def _load_plugin_artifact_types(
         if slug in known_core_slugs:
             raise PluginError(
                 f"Artifact type slug '{slug}' in {plugin_dir.name}/artifact_types.yaml "
-                f"conflicts with a core NeuroForge artifact type."
+                f"conflicts with a core Neuravian artifact type."
             )
         if slug in known_plugin_slugs:
             raise PluginError(
@@ -300,7 +300,7 @@ def load_plugin(
         author=meta["author"],
         description=meta["description"],
         homepage=meta.get("homepage"),
-        neuroforge_version=meta.get("neuroforge_version"),
+        neuravian_version=meta.get("neuravian_version"),
         license=meta.get("license"),
         dependencies=meta.get("dependencies", []),
         enabled=meta.get("enabled", True),

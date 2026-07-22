@@ -65,7 +65,7 @@ export interface LocalWorkspaceData {
 
 export interface CombinedWorkspaceRun {
   key: string; id: number; pipeline: string; status: string;
-  workspace: "Local NeuroForge" | "Cloud"; local: boolean;
+  workspace: "Local Neuravian" | "Cloud"; local: boolean;
 }
 
 export function combineWorkspaceRuns(
@@ -77,7 +77,7 @@ export function combineWorkspaceRuns(
       id: run.id,
       pipeline: sv(run.pipeline_manifest_id),
       status: sv(run.status),
-      workspace: "Local NeuroForge" as const,
+      workspace: "Local Neuravian" as const,
       local: true,
     })),
     ...cloud.runs.map((run) => ({
@@ -193,7 +193,7 @@ function WorkspaceProfileCard({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Workspaces() {
-  const desktop = window.neuroforgeDesktop;
+  const desktop = window.neuravianDesktop;
   const workspace = useWorkspace();
   const [params, setParams] = useSearchParams();
   const requestedView = params.get("view") as WorkspaceView | null;
@@ -374,7 +374,7 @@ export default function Workspaces() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `neuroforge-workspace-${profileId.slice(0, 8)}.json`;
+      a.download = `neuravian-workspace-${profileId.slice(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -415,7 +415,7 @@ export default function Workspaces() {
   if (!desktop) return (
     <Page>
       <h1 className="text-xl font-semibold text-white">Workspace</h1>
-      <p className="mt-2 text-sm text-gray-400">Unified cloud workspaces are available in NeuroForge Desktop.</p>
+      <p className="mt-2 text-sm text-gray-400">Unified cloud workspaces are available in Neuravian Desktop.</p>
     </Page>
   );
 
@@ -427,7 +427,7 @@ export default function Workspaces() {
       <PageHeader
         eyebrow="Workspace"
         title={
-          showsLocal && !showsCloud ? "Local NeuroForge"
+          showsLocal && !showsCloud ? "Local Neuravian"
           : scope === "all" ? "All Workspaces"
           : activeProfile?.name ?? "Cloud Workspace"
         }
@@ -487,7 +487,7 @@ export default function Workspaces() {
           <form onSubmit={(e) => void addWorkspace(e)} className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-400">
               Workspace name
-              <input required value={formName} onChange={(e) => setFormName(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="My NeuroForge Server" />
+              <input required value={formName} onChange={(e) => setFormName(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="My Neuravian Server" />
             </label>
             <label className="text-xs text-gray-400">
               Connection mode
@@ -571,7 +571,7 @@ export default function Workspaces() {
         <div className="mt-8">
           <EmptyState
             title="No cloud workspaces"
-            subtitle="Add an HTTPS NeuroForge deployment to see its projects, datasets, and runs."
+            subtitle="Add an HTTPS Neuravian deployment to see its projects, datasets, and runs."
             action={<PrimaryButton onClick={() => setShowForm(true)}>Add Workspace</PrimaryButton>}
           />
         </div>
@@ -679,10 +679,10 @@ function Ec2StatusRow({ health }: { health: Ec2ConnectionHealth }) {
       <div><span className="text-gray-500">Updated: </span><span className="text-gray-400">{new Date(health.lastUpdated).toLocaleTimeString()}</span></div>
       {health.error && <div className="w-full text-red-400">{health.error}</div>}
       {health.instanceState === "stopped" && (
-        <div className="w-full text-amber-300">Instance is stopped — start it on AWS to reconnect. NeuroForge will detect the new IP automatically.</div>
+        <div className="w-full text-amber-300">Instance is stopped — start it on AWS to reconnect. Neuravian will detect the new IP automatically.</div>
       )}
       {health.instanceState === "pending" && (
-        <div className="w-full text-accent">Instance is starting up… NeuroForge will reconnect automatically. This usually takes 1–2 minutes.</div>
+        <div className="w-full text-accent">Instance is starting up… Neuravian will reconnect automatically. This usually takes 1–2 minutes.</div>
       )}
     </div>
   );
@@ -887,7 +887,7 @@ function DatasetDrawer({
   onClose: () => void;
   onPulledToLocal: () => void;
 }) {
-  const desktop = window.neuroforgeDesktop!;
+  const desktop = window.neuravianDesktop!;
   const [pullMsg, setPullMsg] = useState<string | null>(null);
 
   async function pullToLocal() {
@@ -897,7 +897,7 @@ function DatasetDrawer({
         type: "project",
         data: { title: sv(dataset.name, `Dataset ${dataset.id}`), description: dataset.description ?? null },
       });
-      setPullMsg("Pulled to local NeuroForge.");
+      setPullMsg("Pulled to local Neuravian.");
       onPulledToLocal();
     } catch (err) {
       setPullMsg(err instanceof Error ? err.message : String(err));
@@ -999,7 +999,7 @@ function LocalWorkspaceView({
       <Card className="border-emerald-400/15 bg-emerald-400/5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">Local NeuroForge</h2>
+            <h2 className="text-lg font-semibold text-white">Local Neuravian</h2>
             <p className="mt-1 text-sm text-emerald-300">Local · Available offline</p>
           </div>
           <Badge tone="success">Available offline</Badge>
