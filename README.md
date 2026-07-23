@@ -106,6 +106,8 @@ and GPU/toolkit diagnostics only when a researcher selects a GPU option.
 
 ## Researcher quick start
 
+New to Neuravian? Read [**First 5 Minutes**](docs/FIRST_5_MINUTES.md) for a step-by-step walkthrough: launch, dataset root setup, BIDS import, and BrainChop skull-stripping.
+
 The workflow is designed to be understood in a few minutes; scientific execution
 time depends on the dataset and pipeline.
 

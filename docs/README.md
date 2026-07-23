@@ -5,6 +5,7 @@ Use this page as the documentation index for the Early Access release.
 | Start here | Purpose |
 |---|---|
 | [Installation](installation.md) | Install, configure storage, start, update, and stop Neuravian safely |
+| [First 5 Minutes](FIRST_5_MINUTES.md) | Launch, set your dataset root, import a BIDS dataset, and run BrainChop |
 | [Quick Start](quickstart.md) | Create a project, import BIDS data, and complete a first run |
 | [Pipeline Status](pipeline-status.md) | Canonical integration and qualification status for every registered manifest |
 | [Known Limitations](known-limitations.md) | Platform, qualification, and operational boundaries |
