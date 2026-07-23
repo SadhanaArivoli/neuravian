@@ -26,7 +26,14 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN playwright install --with-deps chromium
 
 ARG GIT_COMMIT=unknown
+ARG RELEASE_VERSION=unknown
 ENV NEURAVIAN_GIT_COMMIT=${GIT_COMMIT}
+ENV NEURAVIAN_RELEASE_VERSION=${RELEASE_VERSION}
+LABEL org.neuravian.component=backend \
+      org.neuravian.git-commit=$GIT_COMMIT \
+      org.neuravian.release-version=$RELEASE_VERSION \
+      org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.revision=$GIT_COMMIT
 
 COPY . .
 # Re-install the local package itself (non-editable) so console scripts can

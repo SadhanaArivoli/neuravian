@@ -14,10 +14,13 @@
  *  6. Compile Electron TypeScript + copy renderer.
  *  7. electron-builder package.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createReleaseManifest, loadReleaseConfig, validateReleaseContract, verifyImageMetadata,
+} from "./release-metadata.mjs";
 
 const RESET  = "\x1b[0m";
 const BOLD   = "\x1b[1m";
@@ -48,10 +51,8 @@ const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot   = resolve(desktopDir, "..");
 const frontendDir = resolve(repoRoot, "frontend");
 const buildDir   = resolve(desktopDir, "build");
-const VERSION = JSON.parse(await import("node:fs").then(m => m.promises.readFile(resolve(desktopDir, "package.json"), "utf8"))).version;
-const frontendImageLatest = "neuravian-frontend:latest";
-const frontendImageVersioned = `neuravian-frontend:${VERSION}`;
-const backendImageVersioned = `neuravian-backend:${VERSION}`;
+const releaseConfig = await loadReleaseConfig(desktopDir);
+const VERSION = releaseConfig.version;
 
 // ── Step 1: HEAD commit ───────────────────────────────────────────────────────
 step(1, 7, "Resolving HEAD commit");
@@ -65,8 +66,13 @@ console.log(`${GREEN}  commit = ${commit}${RESET}`);
 
 const dirty = capture("git status --porcelain", repoRoot);
 if (dirty) {
-  console.warn(`${YELLOW}  ⚠ Working tree has uncommitted changes.${RESET}`);
-  console.warn(`${YELLOW}    The packaged app will embed ${commit} but the source may differ.${RESET}`);
+  fail("Release builds require a clean working tree so image metadata identifies the exact source.");
+}
+const manifest = createReleaseManifest(releaseConfig, commit);
+try {
+  await validateReleaseContract({ repoRoot, desktopDir, manifest });
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
 
 // ── Step 2: Vite build ────────────────────────────────────────────────────────
@@ -74,34 +80,29 @@ step(2, 7, "React → Vite → frontend/dist");
 run("npm run build", frontendDir);
 
 // ── Step 3: Docker images (frontend + backend) ───────────────────────────────
-step(3, 7, "Docker: rebuild frontend and backend images");
-run("docker compose build", repoRoot, { GIT_COMMIT: commit });
-// Tag both services with the versioned tag consumed by docker-compose.packaged.yml.
-run(`docker tag ${frontendImageLatest} ${frontendImageVersioned}`, repoRoot);
-run(`docker tag neuravian-backend:latest ${backendImageVersioned}`, repoRoot);
-console.log(`${GREEN}  Tagged: ${frontendImageVersioned}, ${backendImageVersioned}${RESET}`);
+step(3, 7, "Docker: build exact packaged GHCR image references locally");
+const buildEnvironment = { ...process.env };
+execFileSync("docker", ["build", "--build-arg", `GIT_COMMIT=${commit}`, "--build-arg", `RELEASE_VERSION=${VERSION}`,
+  "-t", manifest.frontend.versionRef, "-t", manifest.frontend.commitRef,
+  "-f", "frontend/Dockerfile", "."], { cwd: repoRoot, stdio: "inherit", env: buildEnvironment });
+execFileSync("docker", ["build", "--build-arg", `GIT_COMMIT=${commit}`, "--build-arg", `RELEASE_VERSION=${VERSION}`,
+  "-t", manifest.backend.versionRef, "-t", manifest.backend.commitRef,
+  "."], { cwd: resolve(repoRoot, "backend"), stdio: "inherit", env: buildEnvironment });
+console.log(`${GREEN}  Built locally without pushing: ${manifest.frontend.versionRef}, ${manifest.backend.versionRef}${RESET}`);
 
 // ── Step 4: Build-time verification ──────────────────────────────────────────
-step(4, 7, "Verifying Docker image commit label");
-let imageLabel;
-try {
-  imageLabel = capture(
-    `docker image inspect ${frontendImageVersioned} --format '{{index .Config.Labels "org.neuravian.git-commit"}}'`,
-    repoRoot,
-  );
-} catch {
-  fail("Could not inspect the Compose frontend image. Docker build may have failed.");
+step(4, 7, "Verifying frontend and backend release metadata");
+for (const component of ["frontend", "backend"]) {
+  for (const ref of [manifest[component].versionRef, manifest[component].commitRef]) {
+    try {
+      const image = JSON.parse(execFileSync("docker", ["image", "inspect", ref], { cwd: repoRoot, encoding: "utf8" }))[0];
+      verifyImageMetadata(image, manifest, component);
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  }
 }
-
-if (imageLabel !== commit) {
-  fail(
-    `Frontend image commit mismatch.\n` +
-    `  Expected : ${commit}\n` +
-    `  Image has: ${imageLabel || "(none)"}\n` +
-    `\n  Re-run "npm run dist:mac" to rebuild from HEAD.`,
-  );
-}
-console.log(`${GREEN}  ✓ Image label matches HEAD (${frontendImageVersioned})${RESET}`);
+console.log(`${GREEN}  ✓ Both images match release ${VERSION} at ${commit}${RESET}`);
 
 // ── Step 5: Write build/commit.json ──────────────────────────────────────────
 step(5, 7, "Writing build/commit.json (included in asar)");
@@ -111,6 +112,7 @@ await writeFile(
   JSON.stringify({ commit, builtAt: new Date().toISOString() }, null, 2) + "\n",
   "utf8",
 );
+await writeFile(resolve(buildDir, "release.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
 console.log(`${GREEN}  ✓ Wrote build/commit.json${RESET}`);
 
 // ── Step 6: Compile Electron TypeScript ───────────────────────────────────────

@@ -1,4 +1,4 @@
-import { BACKEND_HEALTH_URL, FRONTEND_URL, probeService, waitForService, verifyFrontendCommit, type HealthProbe } from "./health.js";
+import { BACKEND_HEALTH_URL, FRONTEND_URL, probeService, waitForService, verifyFrontendCommit, verifyRuntimeIdentity, type HealthProbe, type RuntimeIdentity } from "./health.js";
 import { SystemCheckError, runSystemChecks, type SystemCheckContext } from "./system-checks.js";
 import type { DesktopCompose } from "./compose.js";
 import type { StartupUpdate, SystemFacts } from "./types.js";
@@ -15,6 +15,7 @@ export interface StartupDependencies {
   probe: (url: string) => Promise<HealthProbe>;
   now: () => number;
   makeAttemptId: () => string;
+  runtimeIdentity: typeof verifyRuntimeIdentity;
 }
 
 const defaults: StartupDependencies = {
@@ -25,6 +26,7 @@ const defaults: StartupDependencies = {
   probe: async (url) => await probeService(url),
   now: Date.now,
   makeAttemptId: () => randomUUID(),
+  runtimeIdentity: verifyRuntimeIdentity,
 };
 
 export class StartupController {
@@ -80,14 +82,42 @@ export class StartupController {
       this.compose.setDockerPath(facts.dockerPath);
       this.trace(6, "system checks completed", undefined, attemptId, this.dependencies.now() - startedAt);
 
-      failedStage = "existing service detection";
+      // Pull first in packaged mode. Stack compatibility compares running image
+      // IDs with the just-pulled release images, so a mutable/stale local tag
+      // cannot be mistaken for the packaged app's expected stack.
+      if (this.compose.ctx.packaged) {
+        failedStage = "image pull";
+        this.update(attemptId, startedAt, {
+          state: "starting", title: "Downloading Neuravian images",
+          detail: "Checking the packaged backend and frontend images.", stage: "image pull",
+        });
+        await this.compose.pull();
+      }
+
+      failedStage = "existing stack detection";
+      const stack = await this.compose.inspectStack();
+      this.trace(11.7, "stack detected", JSON.stringify({
+        project: stack.project, detected: stack.detected, ownership: stack.detected ? "neuravian-managed" : "none",
+        compatible: stack.compatible, running: stack.running,
+        containers: stack.containers.map((item) => ({ service: item.service, image: item.image, imageId: item.imageId })),
+      }), attemptId, this.dependencies.now() - startedAt);
       const [backendExisting, frontendExisting] = await Promise.all([
         this.dependencies.probe(BACKEND_HEALTH_URL),
         this.dependencies.probe(FRONTEND_URL),
       ]);
-      if (backendExisting.healthy && frontendExisting.healthy) {
+      let runtimeIdentity: RuntimeIdentity | null = null;
+      if (stack.detected && stack.compatible && backendExisting.healthy && frontendExisting.healthy) {
+        runtimeIdentity = await this.dependencies.runtimeIdentity(
+          FRONTEND_URL, BACKEND_HEALTH_URL, stack.expectedVersion, this.compose.ctx.packaged,
+        );
+      }
+      if (stack.detected && stack.compatible && runtimeIdentity?.compatible) {
         this.compose.attachExternal();
-        this.trace(12, "existing healthy stack detected", `${BACKEND_HEALTH_URL}=${backendExisting.status}; ${FRONTEND_URL}=${frontendExisting.status}`, attemptId, this.dependencies.now() - startedAt);
+        this.trace(12, "compatible managed stack attached", JSON.stringify({
+          ownership: "neuravian-managed", frontendCommit: runtimeIdentity.frontendCommit,
+          backendVersion: runtimeIdentity.backendVersion,
+          images: stack.containers.map((item) => ({ service: item.service, imageId: item.imageId })),
+        }), attemptId, this.dependencies.now() - startedAt);
         this.trace(13, "backend health polling started", BACKEND_HEALTH_URL, attemptId, this.dependencies.now() - startedAt);
         this.trace(14, "backend health succeeded", `status=${backendExisting.status}`, attemptId, this.dependencies.now() - startedAt);
         this.trace(15, "frontend health polling started", FRONTEND_URL, attemptId, this.dependencies.now() - startedAt);
@@ -99,32 +129,34 @@ export class StartupController {
         return true;
       }
 
-      if (facts.occupiedPorts.length) {
-        throw new SystemCheckError(
-          "port-conflict",
-          `Local port${facts.occupiedPorts.length === 1 ? "" : "s"} ${facts.occupiedPorts.join(", ")} ${facts.occupiedPorts.length === 1 ? "is" : "are"} occupied, but the Neuravian health checks did not both succeed.`,
-        );
+      const recreationReasons = [
+        ...stack.reasons,
+        ...(runtimeIdentity?.reasons ?? []),
+      ];
+      const recreateManaged = stack.detected && (
+        !stack.compatible
+        || Boolean(backendExisting.healthy && frontendExisting.healthy && runtimeIdentity && !runtimeIdentity.compatible)
+      );
+      if (recreateManaged) {
+        this.trace(11.8, "managed stack recreation required", JSON.stringify({
+          ownership: "neuravian-managed", reasons: recreationReasons,
+        }), attemptId, this.dependencies.now() - startedAt);
       }
 
-      // In packaged mode pull images first so the user sees progress rather than
-      // a silent hang while Docker downloads neuravian-backend and neuravian-frontend.
-      if (this.compose.ctx.packaged) {
-        failedStage = "image pull";
-        this.update(attemptId, startedAt, {
-          state: "starting",
-          title: "Downloading Neuravian images",
-          detail: "Pulling neuravian-backend and neuravian-frontend from ghcr.io. This may take a few minutes on the first launch.",
-          stage: "image pull",
-        });
-        this.trace(11.5, "image pull started", "ghcr.io/sadhanaarivoli/neuravian-*:0.1.0", attemptId, this.dependencies.now() - startedAt);
-        await this.compose.pull();
-        this.trace(11.6, "image pull complete", undefined, attemptId, this.dependencies.now() - startedAt);
+      if (facts.occupiedPorts.length && (
+        !stack.detected
+        || (!stack.running && !backendExisting.healthy && !frontendExisting.healthy)
+      )) {
+        throw new SystemCheckError(
+          "port-conflict",
+          `Local port${facts.occupiedPorts.length === 1 ? "" : "s"} ${facts.occupiedPorts.join(", ")} ${facts.occupiedPorts.length === 1 ? "is" : "are"} occupied by services that are not recognized as the compatible Neuravian-managed Compose stack.`,
+        );
       }
 
       failedStage = "Compose start";
       this.update(attemptId, startedAt, { state: "starting", title: "Starting Neuravian", detail: "Starting the local Docker services.", stage: "Compose start" });
       this.trace(12, "Compose start invoked", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
-      await this.compose.start();
+      await this.compose.start(recreateManaged);
 
       failedStage = "backend health";
       this.update(attemptId, startedAt, { state: "backend-starting", title: "Backend starting", detail: `Waiting for ${BACKEND_HEALTH_URL}.`, stage: "backend health" });
@@ -137,10 +169,20 @@ export class StartupController {
       this.trace(15, "frontend health polling started", FRONTEND_URL, attemptId, this.dependencies.now() - startedAt);
       await this.dependencies.wait("frontend", FRONTEND_URL, { timeoutMs: STARTUP_TIMEOUTS.frontendHealthMs, signal });
       this.trace(16, "frontend health succeeded", FRONTEND_URL, attemptId, this.dependencies.now() - startedAt);
+      const startedIdentity = await this.dependencies.runtimeIdentity(
+        FRONTEND_URL, BACKEND_HEALTH_URL, stack.expectedVersion, this.compose.ctx.packaged,
+      );
+      if (!startedIdentity.compatible) {
+        throw new Error(`Recreated Neuravian stack identity check failed: ${startedIdentity.reasons.join("; ")}`);
+      }
       this.trace(17, "ready event emitted from main process", "ownership=desktop", attemptId, this.dependencies.now() - startedAt);
       const commitWarn = await verifyFrontendCommit(FRONTEND_URL);
       if (commitWarn) this.trace("WARN", "frontend commit mismatch", commitWarn, attemptId, this.dependencies.now() - startedAt);
       this.update(attemptId, startedAt, { state: "ready", title: "Ready", detail: commitWarn ?? "Neuravian is running locally.", stage: "ready" });
+      const finalStack = await this.compose.inspectStack();
+      this.trace(17.5, "final managed image identities", JSON.stringify(finalStack.containers.map((item) => ({
+        service: item.service, image: item.image, imageId: item.imageId,
+      }))), attemptId, this.dependencies.now() - startedAt);
       return true;
     } catch (error) {
       if (this.currentAttemptId !== attemptId) return false;

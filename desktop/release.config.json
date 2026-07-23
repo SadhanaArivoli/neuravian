@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "registry": "ghcr.io",
+  "namespace": "sadhanaarivoli",
+  "frontendRepository": "neuravian-frontend",
+  "backendRepository": "neuravian-backend"
+}

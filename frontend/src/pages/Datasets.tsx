@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import type { Dataset } from "../api/client";
 import { DatasetImportForm } from "../components/domain/DatasetImportForm";
@@ -12,7 +12,19 @@ import { useAllCloudSnapshots } from "../hooks/useAllCloudSnapshots";
 export default function Datasets() {
   const { selected } = useWorkspace();
   const { data: datasets, isLoading } = useDatasets();
-  const [showImport, setShowImport] = useState(false);
+  const [, setShowImport] = useState(false);
+  const [datasetsRoot, setDatasetsRoot] = useState<string | null>(null);
+  const desktop = typeof window !== "undefined" ? window.neuravianDesktop : undefined;
+
+  useEffect(() => {
+    desktop?.getDatasetsRoot?.().then((root) => setDatasetsRoot(root)).catch(() => undefined);
+  }, [desktop]);
+
+  async function handleChangeRoot() {
+    if (!desktop?.chooseDatasetsRoot) return;
+    const chosen = await desktop.chooseDatasetsRoot();
+    if (chosen) setDatasetsRoot(chosen);
+  }
   const isCloud = Boolean(window.neuravianDesktop) && selected.startsWith("cloud:");
   const isAll = Boolean(window.neuravianDesktop) && selected === "all";
   const cloud = useCloudWorkspace();
@@ -204,59 +216,55 @@ export default function Datasets() {
 
   return (
     <div className="p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Datasets</h1>
-          <p className="text-sm text-muted mt-1">
-            Import a BIDS dataset folder to validate and index it.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowImport((v) => !v)}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
-        >
-          {showImport ? "Cancel" : "+ Import dataset"}
-        </button>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">Datasets</h1>
+        <p className="text-sm text-muted mt-1">
+          Import a BIDS dataset folder to validate and index it.
+        </p>
       </div>
 
-      {showImport && (
-        <div className="mb-8 rounded-md border border-white/10 bg-surface-raised p-5">
-          <h3 className="mb-3 text-sm font-medium text-gray-200">
-            Import a BIDS dataset
-          </h3>
-          <p className="mb-4 text-xs text-gray-400">
-            Type the full path to your BIDS dataset folder exactly as it appears on
-            your Mac — for example{" "}
-            <code className="bg-surface-overlay px-1 rounded">
-              /Users/you/Documents/my-study
-            </code>
-            . The path must be inside the directory set as{" "}
-            <code className="bg-surface-overlay px-1 rounded">HOST_DATASETS_DIR</code>{" "}
-            in your <code className="bg-surface-overlay px-1 rounded">.env</code> file
-            (default: <code className="bg-surface-overlay px-1 rounded">~/Documents</code>).
-            Your files are never modified.
-          </p>
-          <DatasetImportForm onImported={handleImported} />
+      {/* Dataset root card */}
+      <div className="mb-6 rounded-md border border-white/10 bg-surface-raised px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-gray-400">Dataset root</p>
+            <p className="mt-0.5 truncate font-mono text-xs text-gray-200">
+              {datasetsRoot ?? "Resolving…"}
+            </p>
+          </div>
+          {desktop?.chooseDatasetsRoot && (
+            <button
+              onClick={() => void handleChangeRoot()}
+              className="shrink-0 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              Change…
+            </button>
+          )}
         </div>
-      )}
+        <p className="mt-2 text-[11px] text-gray-500">
+          Restart Neuravian after changing the dataset root so running services use the new location.
+        </p>
+      </div>
+
+      {/* Import form — always visible */}
+      <div className="mb-8 rounded-md border border-white/10 bg-surface-raised p-5">
+        <h3 className="mb-3 text-sm font-medium text-gray-200">Import a BIDS dataset</h3>
+        <p className="mb-4 text-xs text-gray-400">
+          Enter the full path to a BIDS dataset folder, or click <strong>Browse…</strong> to pick
+          one. The dataset must be inside the dataset root above. Your files are never modified.
+        </p>
+        <DatasetImportForm onImported={handleImported} onDatasetsRootChanged={setDatasetsRoot} />
+      </div>
 
       {isLoading && (
         <p className="text-sm text-gray-400 animate-pulse">Loading datasets…</p>
       )}
 
-      {datasets && datasets.length === 0 && !showImport && (
+      {datasets && datasets.length === 0 && !isLoading && (
         <EmptyState
           title="No datasets yet."
           description="Import a BIDS dataset folder to validate and index it."
-          action={
-            <button
-              onClick={() => setShowImport(true)}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
-            >
-              Import your first dataset
-            </button>
-          }
-          hint="Tip: Click '+ Import dataset' above and enter the full path to your BIDS folder on disk."
+          action={null}
         />
       )}
 
@@ -270,9 +278,7 @@ export default function Datasets() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="font-medium text-gray-100 truncate">
-                    {d.name ?? d.path}
-                  </p>
+                  <p className="font-medium text-gray-100 truncate">{d.name ?? d.path}</p>
                   <p className="text-xs text-gray-500 truncate mt-0.5">{d.path}</p>
                   <p className="text-xs text-gray-500 mt-1">
                     {d.subject_count} subject{d.subject_count !== 1 ? "s" : ""}

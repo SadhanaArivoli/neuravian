@@ -15,19 +15,20 @@ extraResources:
 
   # Runtime assets bundled into Contents/Resources/app-resources/
   # Resolved at runtime via process.resourcesPath + "app-resources".
-  - from: ../docker-compose.yml
-    to: app-resources/docker-compose.yml
+  #
+  # NOTE: docker-compose.yml (the dev file with build: contexts) is intentionally
+  # NOT copied here.  Its presence in app-resources would allow Docker Compose to
+  # auto-discover it as a project/override file when cwd happens to be app-resources.
   - from: docker-compose.desktop.yml
     to: app-resources/desktop/docker-compose.desktop.yml
   - from: docker-compose.packaged.yml
     to: app-resources/desktop/docker-compose.packaged.yml
   - from: ../pipelines
     to: app-resources/pipelines
-    filter:
-      - "**/*.yaml"
-      - "**/*.yml"
   - from: ../plugins
     to: app-resources/plugins
+  - from: build/release.json
+    to: app-resources/release.json
 
 mac:
   category: public.app-category.education

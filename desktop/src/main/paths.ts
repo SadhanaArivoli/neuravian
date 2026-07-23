@@ -27,6 +27,16 @@ export interface RuntimePaths {
   resourcesRoot: string;
   /** Writable directory for the SQLite database, run logs, and derivatives. */
   dataDir: string;
+  /**
+   * Directory Docker can mount for read-only resources (pipelines, plugins).
+   *
+   * Packaged: userData/resources — always under ~/Library/Application Support,
+   *   which Docker Desktop shares by default. Content is copied from the app
+   *   bundle at startup because /Applications is not in Docker's default share list.
+   *
+   * Development: same as resourcesRoot (repo root is already under /Users/).
+   */
+  dockerResourcesDir: string;
   /** True when running from a packaged .app; false in development. */
   packaged: boolean;
 }
@@ -35,12 +45,14 @@ export interface RuntimePaths {
  * Resolve the correct runtime paths for both packaged and development modes.
  *
  * Packaged (.app):
- *   - resourcesRoot  = Contents/Resources/app-resources  (extraResources destination)
- *   - dataDir        = ~/Library/Application Support/neuravian-desktop/data
+ *   - resourcesRoot      = Contents/Resources/app-resources  (extraResources destination)
+ *   - dataDir            = ~/Library/Application Support/neuravian-desktop/data
+ *   - dockerResourcesDir = ~/Library/Application Support/neuravian-desktop/resources
  *
  * Development (source checkout):
- *   - resourcesRoot  = repository root (located by walking up from __dirname)
- *   - dataDir        = <repositoryRoot>/data
+ *   - resourcesRoot      = repository root (located by walking up from __dirname)
+ *   - dataDir            = <repositoryRoot>/data
+ *   - dockerResourcesDir = repository root (pipelines/ and plugins/ live there)
  */
 export function resolveRuntimePaths(options: {
   isPackaged: boolean;
@@ -53,7 +65,8 @@ export function resolveRuntimePaths(options: {
   if (isPackaged) {
     const resourcesRoot = path.join(resourcesPath, "app-resources");
     const dataDir = path.join(userDataPath, "data");
-    return { resourcesRoot, dataDir, packaged: true };
+    const dockerResourcesDir = path.join(userDataPath, "resources");
+    return { resourcesRoot, dataDir, dockerResourcesDir, packaged: true };
   }
 
   // Development: walk up from __dirname to find the repository root.
@@ -62,6 +75,7 @@ export function resolveRuntimePaths(options: {
   return {
     resourcesRoot: repoRoot,
     dataDir: path.join(repoRoot, "data"),
+    dockerResourcesDir: repoRoot,
     packaged: false,
   };
 }

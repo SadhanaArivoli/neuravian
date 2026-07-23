@@ -54,6 +54,64 @@ export class HealthTimeoutError extends Error {
 export const BACKEND_HEALTH_URL = "http://127.0.0.1:8000/api/health";
 export const FRONTEND_URL = "http://127.0.0.1:3000";
 
+export interface RuntimeIdentity {
+  compatible: boolean;
+  reasons: string[];
+  frontendCommit: string | null;
+  backendVersion: string | null;
+  frontendVersion?: string | null;
+  backendReleaseVersion?: string | null;
+}
+
+export async function expectedFrontendCommit(): Promise<string | null> {
+  try {
+    const raw = await readFile(path.join(__dirname, "..", "commit.json"), "utf8");
+    return (JSON.parse(raw) as { commit?: string }).commit ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyRuntimeIdentity(
+  frontendUrl: string,
+  backendUrl: string,
+  expectedVersion: string | null,
+  packaged: boolean,
+): Promise<RuntimeIdentity> {
+  const expectedCommit = await expectedFrontendCommit();
+  let frontendCommit: string | null = null;
+  let backendVersion: string | null = null;
+  let frontendVersion: string | null = null;
+  let backendReleaseVersion: string | null = null;
+  const reasons: string[] = [];
+  try {
+    const response = await fetch(`${frontendUrl}/version.json`, { cache: "no-store", signal: AbortSignal.timeout(5_000) });
+    if (response.ok) {
+      const data = await response.json() as { commit?: string; releaseVersion?: string; version?: string };
+      frontendCommit = data.commit ?? null;
+      frontendVersion = data.releaseVersion ?? data.version ?? null;
+    }
+  } catch { /* recorded as a mismatch below in packaged mode */ }
+  try {
+    const response = await fetch(backendUrl.replace(/\/api\/health$/, "/api/about"), {
+      cache: "no-store", signal: AbortSignal.timeout(5_000),
+    });
+    if (response.ok) {
+      const data = await response.json() as { version?: string; backend_version?: string; release_version?: string };
+      backendVersion = data.backend_version ?? data.version ?? null;
+      backendReleaseVersion = data.release_version ?? null;
+    }
+  } catch { /* recorded as a mismatch below */ }
+  if (packaged && (!expectedCommit || frontendCommit !== expectedCommit)) reasons.push("frontend commit differs or is unavailable");
+  if (expectedVersion && backendVersion !== expectedVersion) reasons.push("backend version differs or is unavailable");
+  if (packaged && expectedVersion && frontendVersion !== expectedVersion) reasons.push("frontend release version differs or is unavailable");
+  if (packaged && expectedVersion && backendReleaseVersion !== expectedVersion) reasons.push("backend release version differs or is unavailable");
+  return {
+    compatible: reasons.length === 0, reasons, frontendCommit, backendVersion,
+    frontendVersion, backendReleaseVersion,
+  };
+}
+
 export interface HealthProbe {
   healthy: boolean;
   status?: number;

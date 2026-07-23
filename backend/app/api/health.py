@@ -1,4 +1,5 @@
 import platform
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,9 @@ async def health() -> dict[str, str]:
 
 
 def _git_commit() -> str:
+    configured = os.environ.get("NEURAVIAN_GIT_COMMIT", "").strip()
+    if configured:
+        return configured
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -39,6 +43,7 @@ async def about() -> dict:
         "app_name": "Neuravian",
         "version": "0.1.0",
         "backend_version": _package_version(),
+        "release_version": os.environ.get("NEURAVIAN_RELEASE_VERSION", _package_version()),
         "frontend_version": "0.1.0",
         "git_commit": _git_commit(),
         "python_version": sys.version.split()[0],

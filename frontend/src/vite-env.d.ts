@@ -163,6 +163,14 @@ interface NeuravianDesktopBridge {
     };
   }): Promise<Record<string, unknown>>;
   browseForViewer(viewerId: string): Promise<string | null>;
+  getDatasetsRoot?(): Promise<string>;
+  chooseDatasetsRoot?(): Promise<string | null>;
+  browseForDatasetFolder?(): Promise<{
+    datasetPath: string;
+    rootChanged: boolean;
+    requiresRestart: boolean;
+    datasetsRoot?: string;
+  } | null>;
   saveViewerConfig(input: { viewerId: string; executablePath: string | null }): Promise<boolean>;
   viewerRuntimeBuild?: string;
   readArtifact(input: import("../../desktop/src/preload/viewer-api-contract").ReadArtifactRequest): Promise<Uint8Array>;

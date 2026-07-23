@@ -68,6 +68,11 @@ contextBridge.exposeInMainWorld("neuravianDesktop", {
   launchLocalViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch-local", request),
   launchViewer: (request: unknown) => ipcRenderer.invoke("viewers:launch", request),
   browseForViewer: (viewerId: string) => ipcRenderer.invoke("viewers:browse-for-executable", viewerId),
+  getDatasetsRoot: () => ipcRenderer.invoke("datasets:get-root") as Promise<string>,
+  chooseDatasetsRoot: () => ipcRenderer.invoke("datasets:choose-root") as Promise<string | null>,
+  browseForDatasetFolder: () => ipcRenderer.invoke("datasets:browse-for-folder") as Promise<{
+    datasetPath: string; rootChanged: boolean; requiresRestart: boolean; datasetsRoot?: string;
+  } | null>,
   saveViewerConfig: (input: { viewerId: string; executablePath: string | null }) => ipcRenderer.invoke("viewers:save-configured", input),
   pushCloudProject: (input: unknown) => ipcRenderer.invoke("workspaces:push-project", input),
   pushCloudWorkflow: (input: unknown) => ipcRenderer.invoke("workspaces:push-workflow", input),

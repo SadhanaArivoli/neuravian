@@ -4,11 +4,14 @@
 # docker-compose.desktop.yml are NOT loaded alongside this file.
 # This avoids volume-list merge ambiguity and build-context references.
 #
-# Environment variables injected by the Electron main process before compose runs:
-#   NEURAVIAN_DATA_DIR      — writable userData/data directory (database, outputs)
-#   NEURAVIAN_RESOURCES_DIR — Contents/Resources/app-resources (pipelines, plugins)
-#   HOST_DATASETS_DIR       — user's dataset root (default ~/Documents)
-#   HOST_UID / HOST_GID     — host user identity for spawned pipeline containers
+# Environment variables injected by the Electron main process before compose runs.
+# BOTH paths are always under ~/Library/Application Support (i.e. /Users/…),
+# which Docker Desktop shares by default — /Applications is never used.
+#
+#   NEURAVIAN_DATA_DIR       — writable userData/data   (database, outputs, plugins-user)
+#   NEURAVIAN_RESOURCES_DIR  — userData/resources       (pipelines, plugins — copied from bundle)
+#   HOST_DATASETS_DIR        — user's dataset root (default ~/Documents)
+#   HOST_UID / HOST_GID      — host user identity for spawned pipeline containers
 
 name: neuravian-desktop
 
@@ -22,33 +25,35 @@ services:
       - type: bind
         source: ${NEURAVIAN_DATA_DIR}
         target: /app/data
-      # Read-only pipeline manifests from the app bundle
+      # Read-only pipeline manifests (copied from bundle → userData/resources/pipelines)
       - type: bind
         source: ${NEURAVIAN_RESOURCES_DIR}/pipelines
         target: /pipelines
         read_only: true
-      # Bundled core plugins from the app bundle
+      # Bundled core plugins (copied from bundle → userData/resources/plugins)
       - type: bind
         source: ${NEURAVIAN_RESOURCES_DIR}/plugins
         target: /plugins
         read_only: true
-      # User-installed third-party plugins (empty dir on first launch is fine)
+      # User-installed third-party plugins (writable, empty dir on first launch is fine)
       - type: bind
         source: ${NEURAVIAN_DATA_DIR}/plugins-user
         target: /plugins-user
-        read_only: true
-      # Host datasets directory — read-only, mounted for import
+      # Host datasets directory — read-only, mounted for import.
+      # HOST_DATASETS_DIR is always injected by the Electron main process as an
+      # absolute resolved path (no tilde — Docker Compose does not expand shell
+      # shortcuts, so the Electron process resolves app.getPath("documents") first).
       - type: bind
-        source: ${HOST_DATASETS_DIR:-~/Documents}
-        target: /host-data
+        source: ${HOST_DATASETS_DIR}
+        target: /datasets
         read_only: true
       # Docker socket — lets the backend spawn sibling pipeline containers
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       DATABASE_URL: sqlite:////app/data/neuravian.db
       DATA_DIR: /app/data
-      HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR:-~/Documents}
-      BACKEND_DATASETS_MOUNT: /host-data
+      HOST_DATASETS_MOUNT: ${HOST_DATASETS_DIR}
+      BACKEND_DATASETS_MOUNT: /datasets
       HOST_UID: ${HOST_UID:-0}
       HOST_GID: ${HOST_GID:-0}
     healthcheck:

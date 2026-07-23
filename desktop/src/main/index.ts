@@ -4,7 +4,7 @@ import {
   type DefaultViewerSceneRequest,
   type ReadArtifactRequest,
 } from "../preload/viewer-api-contract.js";
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, constants as fsConstants, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 // ── viewer settings helpers ────────────────────────────────────────────────────
@@ -30,8 +30,10 @@ async function saveViewerSetting(userData: string, viewerId: string, executableP
   await writeFile(file, JSON.stringify(current, null, 2));
 }
 
+import { loadDesktopConfig, saveDesktopConfig } from "./desktop-config.js";
+import { canonicalDirectory, isPathWithin } from "./dataset-root.js";
 import { queryActiveRuns } from "./activity.js";
-import { DesktopCompose } from "./compose.js";
+import { DesktopCompose, composeArguments } from "./compose.js";
 import { formatDiagnostics } from "./diagnostics.js";
 import { FRONTEND_URL } from "./health.js";
 import { isInternalUrl, shouldOpenExternally } from "./navigation.js";
@@ -67,6 +69,7 @@ let startup: StartupController | null = null;
 let compose: DesktopCompose | null = null;
 let runtimeResourcesRoot = "";
 let runtimeDataDir = "";
+let runtimeDatasetsDir = "";
 let allowQuit = false;
 let quitInProgress = false;
 let applicationLoaded = false;
@@ -472,12 +475,126 @@ async function createWindow(): Promise<void> {
   runtimeResourcesRoot = runtimePaths.resourcesRoot;
   runtimeDataDir = runtimePaths.dataDir;
 
-  console.log("[startup] packaged           :", runtimePaths.packaged);
-  console.log("[startup] resourcesRoot      :", runtimeResourcesRoot);
-  console.log("[startup] dataDir            :", runtimeDataDir);
-  console.log("[startup] compose files from :", path.join(runtimeResourcesRoot, "docker-compose.yml"));
+  // Load (or initialize) the per-user desktop config from userData/config.json.
+  // This resolves the dataset root at runtime using the current OS user's home
+  // directory and resets any stale path from a previous user or dev install.
+  const desktopConfig = await loadDesktopConfig(app.getPath("userData"), {
+    documentsPath: app.getPath("documents"),
+    homePath: app.getPath("home"),
+    onMigration: (message) => {
+      console.warn(`[config] ${message}`);
+      trace({ stage: "config-migration", name: "stale dataset root migrated", detail: message });
+    },
+  });
+  runtimeDatasetsDir = desktopConfig.datasetsDir;
 
-  const ctx = { resourcesRoot: runtimeResourcesRoot, dataDir: runtimeDataDir, packaged: runtimePaths.packaged };
+  // ── Packaged-mode pre-flight ────────────────────────────────────────────────
+  // Docker Desktop on macOS only shares /Users, /Volumes, /tmp, /private by
+  // default — /Applications is NOT on that list.  We must:
+  //   1. Create writable dirs under userData (always under ~/Library → /Users/).
+  //   2. Refresh read-only bundle resources (pipelines, plugins) into userData
+  //      on every launch so stale Application Support dirs from older app versions
+  //      are always overwritten with the current bundle's content.
+  //   3. Validate that required schema files actually exist after the copy.
+  if (runtimePaths.packaged) {
+    // 1. Writable dirs that Docker bind-mounts.
+    await mkdir(runtimeDataDir, { recursive: true });
+    await mkdir(path.join(runtimeDataDir, "plugins-user"), { recursive: true });
+
+    // 2. Copy managed resources from the app bundle to userData/resources.
+    //    force:true overwrites every existing file so that stale or truncated
+    //    files from a previous (possibly broken) installation are always replaced.
+    //    User-created data lives under dataDir, not here, so nothing user-facing
+    //    is deleted.
+    const dockerResourcesDir = runtimePaths.dockerResourcesDir;
+    await mkdir(dockerResourcesDir, { recursive: true });
+
+    for (const resource of ["pipelines", "plugins"] as const) {
+      const src = path.join(runtimeResourcesRoot, resource);
+      const dst = path.join(dockerResourcesDir, resource);
+      try {
+        await cp(src, dst, { recursive: true, force: true, errorOnExist: false });
+        console.log(`[startup] refreshed ${resource}: ${src} → ${dst}`);
+      } catch (err) {
+        const msg = `Bundle resource '${resource}' is missing or unreadable at ${src}`;
+        console.error("[startup]", msg, err);
+        publish({ state: "failed", title: "App bundle incomplete", detail: msg, stage: "resource copy", recoverable: false });
+        return;
+      }
+    }
+
+    // 3. Validate that required files are present after the copy.
+    //    These are checked before starting Docker so errors are reported clearly
+    //    instead of letting the backend container crash on FileNotFoundError.
+    const requiredAfterCopy: string[] = [
+      path.join(dockerResourcesDir, "pipelines", "schema", "manifest.schema.json"),
+      path.join(dockerResourcesDir, "pipelines", "schema", "plugin.schema.json"),
+    ];
+    for (const required of requiredAfterCopy) {
+      try {
+        await access(required, fsConstants.R_OK);
+      } catch {
+        const msg = `Required packaged resource is missing after copy: ${required}`;
+        console.error("[startup]", msg);
+        publish({ state: "failed", title: "App bundle incomplete", detail: msg, stage: "resource validation", recoverable: false });
+        return;
+      }
+    }
+    console.log("[startup] packaged resource validation passed");
+  }
+
+  const ctx = {
+    resourcesRoot: runtimeResourcesRoot,
+    dataDir: runtimeDataDir,
+    dockerResourcesDir: runtimePaths.dockerResourcesDir,
+    datasetsDir: runtimeDatasetsDir,
+    packaged: runtimePaths.packaged,
+  };
+
+  // Compute and validate the compose file list before constructing anything.
+  const fullArgs = composeArguments(ctx);
+  const composeFiles: string[] = [];
+  for (let i = 0; i < fullArgs.length; i++) {
+    if (fullArgs[i] === "-f" && i + 1 < fullArgs.length) composeFiles.push(fullArgs[i + 1]);
+  }
+
+  // Packaged-mode invariant: exactly one file, must be docker-compose.packaged.yml,
+  // must live inside the app bundle (not a user-writeable path).
+  if (runtimePaths.packaged) {
+    const invalid = composeFiles.length !== 1 || !composeFiles[0].endsWith("docker-compose.packaged.yml");
+    if (invalid) {
+      const msg = `Packaged mode selected wrong compose files: ${composeFiles.join(", ")}`;
+      console.error("[startup]", msg);
+      publish({ state: "failed", title: "Startup configuration error", detail: msg, stage: "path resolution", recoverable: false });
+      return;
+    }
+    if (!composeFiles[0].startsWith(process.resourcesPath)) {
+      const msg = `Packaged compose file is outside app bundle: ${composeFiles[0]}`;
+      console.error("[startup]", msg);
+      publish({ state: "failed", title: "Startup configuration error", detail: msg, stage: "path resolution", recoverable: false });
+      return;
+    }
+    // Invariant: volume sources must never point into /Applications.
+    const appsGuard = [ctx.dataDir, ctx.dockerResourcesDir].find((p) => p.startsWith("/Applications"));
+    if (appsGuard) {
+      const msg = `Docker volume source is inside /Applications (not Docker-sharable): ${appsGuard}`;
+      console.error("[startup]", msg);
+      publish({ state: "failed", title: "Startup configuration error", detail: msg, stage: "path resolution", recoverable: false });
+      return;
+    }
+  }
+
+  console.log("[startup] packaged              :", runtimePaths.packaged);
+  console.log("[startup] home dir              :", (await import("node:os")).homedir());
+  console.log("[startup] userData              :", app.getPath("userData"));
+  console.log("[startup] resourcesRoot         :", runtimeResourcesRoot);
+  console.log("[startup] NEURAVIAN_DATA_DIR    :", ctx.dataDir);
+  console.log("[startup] NEURAVIAN_RESOURCES_DIR:", ctx.dockerResourcesDir);
+  console.log("[startup] HOST_DATASETS_DIR     :", ctx.datasetsDir);
+  console.log("[startup] datasets root exists  :", await import("node:fs/promises").then(({ access, constants: c }) => access(ctx.datasetsDir, c.R_OK).then(() => true).catch(() => false)));
+  console.log("[startup] compose files:");
+  for (const f of composeFiles) console.log("[startup]   -", f);
+
   compose = new DesktopCompose(ctx);
   startup = new StartupController(
     ctx,
@@ -570,6 +687,46 @@ ipcMain.handle(VIEWER_CHANNELS.assertDefaultScene, async (
   }
   return true;
 });
+// ── Dataset root configuration ─────────────────────────────────────────────────
+ipcMain.handle("datasets:get-root", () => runtimeDatasetsDir);
+
+ipcMain.handle("datasets:choose-root", async () => {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined!, {
+    title: "Choose dataset root folder",
+    message: "Select the folder that contains your BIDS datasets. Neuravian will mount this folder for import.",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const chosen = await canonicalDirectory(result.filePaths[0]);
+  runtimeDatasetsDir = chosen;
+  await saveDesktopConfig(app.getPath("userData"), { datasetsDir: chosen });
+  return chosen;
+});
+
+ipcMain.handle("datasets:browse-for-folder", async () => {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined!, {
+    title: "Select BIDS dataset folder",
+    defaultPath: runtimeDatasetsDir,
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const datasetPath = await canonicalDirectory(result.filePaths[0]);
+  const root = await canonicalDirectory(runtimeDatasetsDir);
+  if (isPathWithin(datasetPath, root)) return { datasetPath, rootChanged: false, requiresRestart: false };
+  const choice = await showMessage({
+    type: "warning",
+    title: "Dataset is outside the configured root",
+    message: "The selected BIDS dataset is outside the folder currently shared with Neuravian.",
+    detail: `Configured root: ${root}\nSelected dataset: ${datasetPath}\n\nSet the dataset root to the selected dataset's parent folder and restart Neuravian to use it.`,
+    buttons: ["Cancel", "Use parent folder"], defaultId: 1, cancelId: 0,
+  });
+  if (choice.response !== 1) return null;
+  const parent = await canonicalDirectory(path.dirname(datasetPath));
+  runtimeDatasetsDir = parent;
+  await saveDesktopConfig(app.getPath("userData"), { datasetsDir: parent });
+  return { datasetPath, rootChanged: true, requiresRestart: true, datasetsRoot: parent };
+});
+
 ipcMain.handle("workspaces:list", async () => await workspaceServices().profiles.list());
 ipcMain.handle("workspaces:local-identity", async () => await localWorkspace().get());
 ipcMain.handle("workspaces:save", async (

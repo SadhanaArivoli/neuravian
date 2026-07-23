@@ -9,7 +9,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "npm run build && electron .",
-    "dist:mac": "node scripts/build-full.mjs"
+    "dist:mac": "node scripts/build-full.mjs",
+    "release:local": "node scripts/build-full.mjs",
+    "release:publish": "node scripts/publish-images.mjs",
+    "release:verify-remote": "node scripts/verify-release-images.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

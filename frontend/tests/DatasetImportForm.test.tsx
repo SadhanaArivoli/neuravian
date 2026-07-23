@@ -75,4 +75,22 @@ describe("DatasetImportForm", () => {
       expect(screen.getByText(/path does not exist/i)).toBeInTheDocument()
     );
   });
+
+  it("uses the native picker and blocks import until restart when the root changes", async () => {
+    window.neuravianDesktop = {
+      browseForDatasetFolder: vi.fn().mockResolvedValue({
+        datasetPath: "/Users/testuser/Documents/OpenNeuro/ds000001",
+        rootChanged: true,
+        requiresRestart: true,
+        datasetsRoot: "/Users/testuser/Documents/OpenNeuro",
+      }),
+    } as unknown as NeuravianDesktopBridge;
+    const user = userEvent.setup();
+    render(<DatasetImportForm />, { wrapper });
+    await user.click(screen.getByRole("button", { name: /browse/i }));
+    expect(screen.getByDisplayValue("/Users/testuser/Documents/OpenNeuro/ds000001")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/restart Neuravian/i);
+    expect(screen.getByRole("button", { name: /import/i })).toBeDisabled();
+    delete window.neuravianDesktop;
+  });
 });

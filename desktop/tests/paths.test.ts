@@ -91,6 +91,8 @@ describe("resolveRuntimePaths — development", () => {
     expect(result.packaged).toBe(false);
     expect(result.resourcesRoot).toBe(root);
     expect(result.dataDir).toBe(path.join(root, "data"));
+    // In dev mode, dockerResourcesDir is the repo root (already under /Users/).
+    expect(result.dockerResourcesDir).toBe(root);
   });
 
   it("throws when no repository root can be found in development", async () => {
@@ -117,10 +119,11 @@ describe("resolveRuntimePaths — development", () => {
 // ---------------------------------------------------------------------------
 describe("resolveRuntimePaths — packaged", () => {
   it("uses resourcesPath/app-resources and userData/data when packaged", () => {
+    const userData = "/Users/researcher/Library/Application Support/neuravian-desktop";
     const result = resolveRuntimePaths({
       isPackaged: true,
       resourcesPath: "/Applications/Neuravian.app/Contents/Resources",
-      userDataPath: "/Users/researcher/Library/Application Support/neuravian-desktop",
+      userDataPath: userData,
       dirname: "/Applications/Neuravian.app/Contents/Resources/app.asar/build/main",
     });
 
@@ -128,9 +131,10 @@ describe("resolveRuntimePaths — packaged", () => {
     expect(result.resourcesRoot).toBe(
       "/Applications/Neuravian.app/Contents/Resources/app-resources",
     );
-    expect(result.dataDir).toBe(
-      "/Users/researcher/Library/Application Support/neuravian-desktop/data",
-    );
+    expect(result.dataDir).toBe(`${userData}/data`);
+    // dockerResourcesDir must be under userData (/Users/…), never under /Applications.
+    expect(result.dockerResourcesDir).toBe(`${userData}/resources`);
+    expect(result.dockerResourcesDir).not.toContain("/Applications");
   });
 
   it("does not attempt repository root search when packaged", () => {
@@ -153,5 +157,19 @@ describe("resolveRuntimePaths — packaged", () => {
     });
     expect(result.resourcesRoot).toContain("Contents/Resources");
     expect(result.resourcesRoot).not.toContain("neuravian-desktop/build");
+  });
+
+  it("both Docker volume paths are under /Users when packaged", () => {
+    const result = resolveRuntimePaths({
+      isPackaged: true,
+      resourcesPath: "/Applications/Neuravian.app/Contents/Resources",
+      userDataPath: "/Users/researcher/Library/Application Support/neuravian-desktop",
+      dirname: "/Applications/Neuravian.app/Contents/Resources/app.asar/build/main",
+    });
+    // Neither Docker mount source may point into /Applications.
+    expect(result.dataDir.startsWith("/Applications")).toBe(false);
+    expect(result.dockerResourcesDir.startsWith("/Applications")).toBe(false);
+    expect(result.dataDir.startsWith("/Users")).toBe(true);
+    expect(result.dockerResourcesDir.startsWith("/Users")).toBe(true);
   });
 });

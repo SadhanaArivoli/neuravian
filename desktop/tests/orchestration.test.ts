@@ -11,7 +11,7 @@ import { DesktopLogger } from "../src/main/logger.js";
 import type { StartupUpdate, SystemFacts } from "../src/main/types.js";
 
 const root = path.join(os.tmpdir(), "neuravian-fixture");
-const ctx = { resourcesRoot: root, dataDir: path.join(root, "data"), packaged: false };
+const ctx = { resourcesRoot: root, dataDir: path.join(root, "data"), dockerResourcesDir: root, packaged: false };
 const facts: SystemFacts = {
   macOSVersion: "15.5", architecture: "arm64", memoryGiB: 16, diskAvailableGiB: 100,
   dockerVersion: "Docker 27", dockerPath: "/usr/local/bin/docker", composeVersion: "Compose v2", repositoryRoot: root, occupiedPorts: [],
@@ -19,12 +19,16 @@ const facts: SystemFacts = {
 
 function composeMock(packaged = false) {
   return {
-    ctx,
+    ctx: { ...ctx, packaged },
     start: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     stop: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     pull: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     attachExternal: vi.fn(),
     setDockerPath: vi.fn(),
+    inspectStack: vi.fn(async () => ({
+      detected: false, project: "neuravian-desktop", compatible: false, running: false,
+      reasons: ["no managed containers detected"], expectedVersion: null, containers: [],
+    })),
     // Allow tests to simulate packaged mode without constructing a real DesktopCompose.
     get ownsServices() { return false; },
     _packaged: packaged,
@@ -38,6 +42,7 @@ function dependencies(overrides: Partial<StartupDependencies> = {}): StartupDepe
     probe: vi.fn(async (url) => ({ healthy: false, url })),
     now: (() => { let time = 0; return () => ++time; })(),
     makeAttemptId: vi.fn(() => "attempt-1"),
+    runtimeIdentity: vi.fn(async () => ({ compatible: true, reasons: [], frontendCommit: "current", backendVersion: "0.1.0" })),
     ...overrides,
   };
 }
@@ -55,7 +60,7 @@ describe("Compose orchestration", () => {
   });
 
   it("includes packaged overlay in packaged mode", () => {
-    const packedCtx = { resourcesRoot: root, dataDir: path.join(root, "data"), packaged: true };
+    const packedCtx = { resourcesRoot: root, dataDir: path.join(root, "data"), dockerResourcesDir: root, packaged: true };
     const args = composeArguments(packedCtx).join(" ");
     expect(args).toContain("docker-compose.packaged.yml");
     expect(args).not.toContain("--build");
@@ -78,6 +83,20 @@ describe("Compose orchestration", () => {
     expect(calls[1].at(-1)).toBe("stop");
     expect(calls.flat()).not.toContain("down");
     expect(calls.flat()).not.toContain("-v");
+  });
+
+  it("force-recreates containers without down or volume removal", async () => {
+    const calls: string[][] = [];
+    const command = vi.fn(async (_command: string, args: readonly string[]) => {
+      calls.push([...args]);
+      return { stdout: "ok", stderr: "", exitCode: 0 };
+    });
+    const compose = new DesktopCompose(ctx, command, "/usr/local/bin/docker");
+    await compose.start(true);
+    expect(calls[0]).toContain("--force-recreate");
+    expect(calls[0]).not.toContain("down");
+    expect(calls[0]).not.toContain("-v");
+    expect(calls[0]).not.toContain("--volumes");
   });
 });
 
@@ -119,9 +138,13 @@ describe("health checks and startup", () => {
     expect(wait.mock.calls[1].slice(0, 2)).toEqual(["frontend", FRONTEND_URL]);
   });
 
-  it("attaches immediately when backend and frontend already run", async () => {
+  it("attaches only to a compatible current managed stack", async () => {
     const warmFacts = { ...facts, occupiedPorts: [8000, 3000] };
     const compose = composeMock();
+    vi.mocked(compose.inspectStack).mockResolvedValue({
+      detected: true, project: "neuravian-desktop", compatible: true, running: true,
+      reasons: [], expectedVersion: "0.1.0", containers: [],
+    });
     const updates: StartupUpdate[] = [];
     const deps = dependencies({
       systemChecks: vi.fn(async () => warmFacts),
@@ -131,6 +154,49 @@ describe("health checks and startup", () => {
     expect(compose.attachExternal).toHaveBeenCalledTimes(1);
     expect(compose.start).not.toHaveBeenCalled();
     expect(updates.at(-1)).toMatchObject({ state: "ready", detail: expect.stringContaining("existing") });
+  });
+
+  it.each([
+    ["stale frontend image", "frontend image ID differs"],
+    ["stale backend image", "backend image ID differs"],
+    ["changed Compose configuration", "backend Compose configuration differs"],
+  ])("force-recreates a managed stack with %s", async (_label, reason) => {
+    const compose = composeMock();
+    vi.mocked(compose.inspectStack)
+      .mockResolvedValueOnce({ detected: true, project: "neuravian-desktop", compatible: false, running: true, reasons: [reason], expectedVersion: "0.1.0", containers: [] })
+      .mockResolvedValueOnce({ detected: true, project: "neuravian-desktop", compatible: true, running: true, reasons: [], expectedVersion: "0.1.0", containers: [] });
+    await expect(controller(compose, [], dependencies({
+      systemChecks: vi.fn(async () => ({ ...facts, occupiedPorts: [8000, 3000] })),
+      probe: vi.fn(async (url) => ({ healthy: true, status: 200, url })),
+    })).run()).resolves.toBe(true);
+    expect(compose.start).toHaveBeenCalledWith(true);
+    expect(compose.attachExternal).not.toHaveBeenCalled();
+  });
+
+  it("rejects unrelated healthy services occupying the ports", async () => {
+    const compose = composeMock();
+    const result = await controller(compose, [], dependencies({
+      systemChecks: vi.fn(async () => ({ ...facts, occupiedPorts: [8000, 3000] })),
+      probe: vi.fn(async (url) => ({ healthy: true, status: 200, url })),
+    })).run();
+    expect(result).toBe(false);
+    expect(compose.attachExternal).not.toHaveBeenCalled();
+    expect(compose.start).not.toHaveBeenCalled();
+  });
+
+  it("recreates stopped old Neuravian containers", async () => {
+    const compose = composeMock();
+    vi.mocked(compose.inspectStack)
+      .mockResolvedValueOnce({ detected: true, project: "neuravian-desktop", compatible: false, running: false, reasons: ["frontend image ID differs"], expectedVersion: "0.1.0", containers: [] })
+      .mockResolvedValueOnce({ detected: true, project: "neuravian-desktop", compatible: true, running: true, reasons: [], expectedVersion: "0.1.0", containers: [] });
+    await controller(compose).run();
+    expect(compose.start).toHaveBeenCalledWith(true);
+  });
+
+  it("does not force recreation when no managed containers exist", async () => {
+    const compose = composeMock();
+    await controller(compose).run();
+    expect(compose.start).toHaveBeenCalledWith(false);
   });
 
   it("handles a frontend that is ready before backend polling completes", async () => {

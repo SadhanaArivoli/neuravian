@@ -66,8 +66,14 @@ export async function runSystemChecks(
     : ["docker-compose.yml", "backend", "frontend", "pipelines", "plugins", "desktop/docker-compose.desktop.yml"];
 
   for (const relative of required) {
-    try { await access(path.join(ctx.resourcesRoot, relative), constants.R_OK); }
-    catch { throw new SystemCheckError("system", `Required ${ctx.packaged ? "app resource" : "repository item"} is missing or unreadable: ${relative}`); }
+    const absolute = path.join(ctx.resourcesRoot, relative);
+    try { await access(absolute, constants.R_OK); }
+    catch {
+      throw new SystemCheckError(
+        "system",
+        `Required ${ctx.packaged ? "app resource" : "repository item"} is missing or unreadable: ${relative}\nExpected at: ${absolute}`,
+      );
+    }
   }
 
   const dataDirectory = ctx.dataDir;

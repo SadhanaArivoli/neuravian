@@ -12,8 +12,14 @@ FROM nginx:alpine
 # It busts the Docker layer cache when the commit changes and is written
 # to version.json so the Electron app can verify the frontend is current.
 ARG GIT_COMMIT=unknown
-LABEL org.neuravian.git-commit=$GIT_COMMIT
+ARG RELEASE_VERSION=unknown
+LABEL org.neuravian.component=frontend \
+      org.neuravian.git-commit=$GIT_COMMIT \
+      org.neuravian.release-version=$RELEASE_VERSION \
+      org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.revision=$GIT_COMMIT
 COPY --from=builder /app/dist /usr/share/nginx/html
-RUN printf '{"commit":"%s"}\n' "$GIT_COMMIT" > /usr/share/nginx/html/version.json
+RUN printf '{"commit":"%s","version":"%s","releaseVersion":"%s","component":"frontend"}\n' \
+    "$GIT_COMMIT" "$RELEASE_VERSION" "$RELEASE_VERSION" > /usr/share/nginx/html/version.json
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 3000
