@@ -1423,9 +1423,11 @@ app.whenReady().then(async () => {
   logger = await DesktopLogger.create(app.getPath("logs"));
   await logger.trace({
     stage: "user-data",
-    name: userDataCompatibility.mode === "canonical" ? "Neuravian user data selected" : "Legacy user data retained",
+    name: userDataCompatibility.mode === "canonical"
+      ? (userDataCompatibility.migrated ? "Neuravian user data selected (migrated from legacy)" : "Neuravian user data selected")
+      : "Legacy user data retained",
     detail: userDataCompatibility.mode === "canonical"
-      ? `path=${userDataCompatibility.activePath}`
+      ? `path=${userDataCompatibility.activePath}; migrated=${userDataCompatibility.migrated}; legacy_path=${userDataCompatibility.legacyPath ?? "none"}`
       : `legacy_path=${userDataCompatibility.activePath}; canonical_path=${userDataCompatibility.canonicalPath}`,
   });
   trace({ stage: 1, name: "Electron app ready", detail: `version=${app.getVersion()} architecture=${process.arch}` });
