@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -269,5 +269,220 @@ describe("configureUserDataCompatibility", () => {
     const result = configureUserDataCompatibility(setup.app);
     expect(result).toMatchObject({ mode: "canonical", legacyPath: null, migrated: false });
     expect(setup.selected()).toBe(setup.canonical);
+  });
+
+  // ── Per-profile state migration (sessions, run history, offline metadata) ──────────────────
+
+  it("migrates workspace-sessions/<profileId>.json alongside the profile files on first migration", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    const sessionData = { schemaVersion: 1, selectedRunId: 42, lastSyncedAt: "2026-07-20T10:00:00.000Z" };
+    mkdirSync(path.join(legacy, "workspace-sessions"), { recursive: true });
+    writeFileSync(path.join(legacy, "workspace-sessions", `${profileId}.json`), JSON.stringify(sessionData));
+
+    configureUserDataCompatibility(setup.app);
+
+    const migratedSession = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-sessions", `${profileId}.json`), "utf8"),
+    );
+    expect(migratedSession).toEqual(sessionData);
+  });
+
+  it("migrates workspace-run-history/<profileId>.json alongside the profile files on first migration", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    const historyData = {
+      entries: [
+        { runId: 7,  pipelineId: "fastsurfer", status: "success", createdAt: "2026-07-16T12:00:00.000Z" },
+        { runId: 5,  pipelineId: "fmriprep",   status: "success", createdAt: "2026-07-16T10:00:00.000Z" },
+        { runId: 4,  pipelineId: "pydeface",   status: "success", createdAt: "2026-07-16T09:00:00.000Z" },
+      ],
+    };
+    mkdirSync(path.join(legacy, "workspace-run-history"), { recursive: true });
+    writeFileSync(
+      path.join(legacy, "workspace-run-history", `${profileId}.json`),
+      JSON.stringify(historyData),
+    );
+
+    configureUserDataCompatibility(setup.app);
+
+    const migratedHistory = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-run-history", `${profileId}.json`), "utf8"),
+    );
+    expect(migratedHistory.entries).toHaveLength(3);
+    expect(migratedHistory.entries[0].pipelineId).toBe("fastsurfer");
+  });
+
+  it("recursively migrates workspace-metadata/<profileId>/ tree alongside profile files on first migration", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    const metadataSnapshot = { runs: [{ runId: 4, pipelineId: "pydeface" }, { runId: 5, pipelineId: "fmriprep" }] };
+    const metaDir = path.join(legacy, "workspace-metadata", profileId);
+    mkdirSync(metaDir, { recursive: true });
+    writeFileSync(path.join(metaDir, "metadata.json"), JSON.stringify(metadataSnapshot));
+    // Nested subdirectory to verify recursion.
+    mkdirSync(path.join(metaDir, "sub"), { recursive: true });
+    writeFileSync(path.join(metaDir, "sub", "extra.json"), JSON.stringify({ key: "value" }));
+
+    configureUserDataCompatibility(setup.app);
+
+    const migratedMeta = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-metadata", profileId, "metadata.json"), "utf8"),
+    );
+    expect(migratedMeta.runs).toHaveLength(2);
+    const nested = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-metadata", profileId, "sub", "extra.json"), "utf8"),
+    );
+    expect(nested.key).toBe("value");
+  });
+
+  it("also migrates per-profile state when canonical already has profiles (post-3386212 upgrade path)", async () => {
+    // This is exactly the situation a user faces after updating to the build that introduced the
+    // rebrand migration (commit 3386212) but BEFORE this fix: workspace-profiles.json was already
+    // copied into canonical, so hasWorkspaceProfiles(canonical) is true and the legacy branch was
+    // never entered — leaving workspace-run-history and workspace-metadata absent.
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    // Simulate: profiles already migrated in a previous launch.
+    writeProfiles(setup.canonical, AWS_PROFILE);
+    // Legacy has per-profile state that was never migrated.
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    const historyData = { entries: [{ runId: 11, pipelineId: "fastsurfer", status: "success" }] };
+    mkdirSync(path.join(legacy, "workspace-run-history"), { recursive: true });
+    writeFileSync(
+      path.join(legacy, "workspace-run-history", `${profileId}.json`),
+      JSON.stringify(historyData),
+    );
+    const metadataSnapshot = { runs: [{ runId: 11, pipelineId: "fastsurfer" }] };
+    const metaDir = path.join(legacy, "workspace-metadata", profileId);
+    mkdirSync(metaDir, { recursive: true });
+    writeFileSync(path.join(metaDir, "metadata.json"), JSON.stringify(metadataSnapshot));
+
+    const result = configureUserDataCompatibility(setup.app);
+
+    expect(result).toMatchObject({ mode: "canonical", migrated: false }); // profile files were NOT re-migrated
+    // Per-profile state must now be present in canonical.
+    const migratedHistory = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-run-history", `${profileId}.json`), "utf8"),
+    );
+    expect(migratedHistory.entries[0].pipelineId).toBe("fastsurfer");
+    const migratedMeta = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-metadata", profileId, "metadata.json"), "utf8"),
+    );
+    expect(migratedMeta.runs[0].runId).toBe(11);
+  });
+
+  it("does not overwrite existing per-profile state already present in canonical", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    // Canonical already has its own run history (e.g. written by a newer Neuravian launch).
+    writeProfiles(setup.canonical, AWS_PROFILE);
+    mkdirSync(path.join(setup.canonical, "workspace-run-history"), { recursive: true });
+    const existingHistory = { entries: [{ runId: 99, pipelineId: "mriqc", status: "success" }] };
+    writeFileSync(
+      path.join(setup.canonical, "workspace-run-history", `${profileId}.json`),
+      JSON.stringify(existingHistory),
+    );
+    // Legacy has different (older) history.
+    mkdirSync(path.join(legacy, "workspace-run-history"), { recursive: true });
+    writeFileSync(
+      path.join(legacy, "workspace-run-history", `${profileId}.json`),
+      JSON.stringify({ entries: [{ runId: 1, pipelineId: "pydeface" }] }),
+    );
+
+    configureUserDataCompatibility(setup.app);
+
+    // Canonical's own history must be preserved.
+    const preserved = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-run-history", `${profileId}.json`), "utf8"),
+    );
+    expect(preserved.entries[0].runId).toBe(99);
+    expect(preserved.entries[0].pipelineId).toBe("mriqc");
+  });
+
+  it("handles missing per-profile state directories gracefully (source may simply not exist)", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    // No workspace-sessions, workspace-run-history, or workspace-metadata directories in legacy.
+
+    expect(() => configureUserDataCompatibility(setup.app)).not.toThrow();
+
+    // None of the per-profile state directories should be created in canonical either.
+    const profileId = AWS_PROFILE[0].id;
+    expect(existsSync(path.join(setup.canonical, "workspace-sessions", `${profileId}.json`))).toBe(false);
+    expect(existsSync(path.join(setup.canonical, "workspace-run-history", `${profileId}.json`))).toBe(false);
+    expect(existsSync(path.join(setup.canonical, "workspace-metadata", profileId))).toBe(false);
+  });
+
+  it("migrates per-profile state for every profile when there are multiple cloud profiles", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    const secondProfile = { ...AWS_PROFILE[0], id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", name: "Second workspace" };
+    const profiles = [AWS_PROFILE[0], secondProfile];
+    writeProfiles(legacy, profiles);
+    for (const profile of profiles) {
+      mkdirSync(path.join(legacy, "workspace-run-history"), { recursive: true });
+      writeFileSync(
+        path.join(legacy, "workspace-run-history", `${profile.id}.json`),
+        JSON.stringify({ entries: [{ runId: 1, pipelineId: "mriqc", profileId: profile.id }] }),
+      );
+    }
+
+    configureUserDataCompatibility(setup.app);
+
+    for (const profile of profiles) {
+      const history = JSON.parse(
+        readFileSync(path.join(setup.canonical, "workspace-run-history", `${profile.id}.json`), "utf8"),
+      );
+      expect(history.entries[0].profileId).toBe(profile.id);
+    }
+  });
+
+  it("per-profile migration is idempotent: running twice produces identical files and no duplicates", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const profileId = AWS_PROFILE[0].id;
+    const historyData = { entries: [{ runId: 4, pipelineId: "pydeface" }] };
+    mkdirSync(path.join(legacy, "workspace-run-history"), { recursive: true });
+    writeFileSync(
+      path.join(legacy, "workspace-run-history", `${profileId}.json`),
+      JSON.stringify(historyData),
+    );
+
+    configureUserDataCompatibility(setup.app);
+    configureUserDataCompatibility(setup.app);
+
+    const history = JSON.parse(
+      readFileSync(path.join(setup.canonical, "workspace-run-history", `${profileId}.json`), "utf8"),
+    );
+    expect(history.entries).toHaveLength(1);
+    expect(history.entries[0].runId).toBe(4);
+  });
+
+  it("does NOT migrate run-cache (artifact binary files — re-downloadable on demand)", async () => {
+    const setup = await fixture();
+    const legacy = path.join(setup.appData, "neuroforge-desktop");
+    writeProfiles(legacy, AWS_PROFILE);
+    const serverIdentity = AWS_PROFILE[0].serverIdentity;
+    // Write a fake run-cache entry in legacy.
+    const cacheDir = path.join(legacy, "run-cache", serverIdentity, "run-7", "artifacts");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(path.join(cacheDir, "output.nii.gz"), Buffer.from("fake-nifti-data"));
+
+    configureUserDataCompatibility(setup.app);
+
+    // run-cache must not appear in canonical.
+    expect(existsSync(path.join(setup.canonical, "run-cache"))).toBe(false);
   });
 });
