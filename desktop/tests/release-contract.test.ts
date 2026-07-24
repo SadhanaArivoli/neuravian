@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -31,14 +32,30 @@ function imageFor(release: Awaited<ReturnType<typeof manifest>>, component: "fro
 }
 
 describe("release contract", () => {
-  it("keeps packaged Compose references identical to release image references", async () => {
+  it("keeps packaged Compose statically referencing the injected image env vars", async () => {
     const release = await manifest();
     await expect(validateReleaseContract({ repoRoot, desktopDir, manifest: release })).resolves.toMatchObject({
       release: release.version, desktop: release.version, frontend: release.version, backend: release.version,
     });
     const compose = await readFile(path.join(desktopDir, "docker-compose.packaged.yml"), "utf8");
-    expect(compose).toContain(`image: ${release.frontend.versionRef}`);
-    expect(compose).toContain(`image: ${release.backend.versionRef}`);
+    expect(compose).toContain("image: ${NEURAVIAN_FRONTEND_IMAGE}");
+    expect(compose).toContain("image: ${NEURAVIAN_BACKEND_IMAGE}");
+  });
+
+  it("rejects a packaged Compose file that hardcodes an image tag instead of the env var", async () => {
+    const release = await manifest();
+    const fixtureDir = await mkdtemp(path.join(os.tmpdir(), "neuravian-release-contract-"));
+    try {
+      const desktopPackage = JSON.parse(await readFile(path.join(desktopDir, "package.json"), "utf8"));
+      await writeFile(path.join(fixtureDir, "package.json"), JSON.stringify(desktopPackage));
+      const hardcoded = (await readFile(path.join(desktopDir, "docker-compose.packaged.yml"), "utf8"))
+        .replace("image: ${NEURAVIAN_FRONTEND_IMAGE}", `image: ${release.frontend.versionRef}`);
+      await writeFile(path.join(fixtureDir, "docker-compose.packaged.yml"), hardcoded);
+      await expect(validateReleaseContract({ repoRoot, desktopDir: fixtureDir, manifest: release }))
+        .rejects.toThrow(/must reference \$\{NEURAVIAN_FRONTEND_IMAGE\}/);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
   });
 
   it("uses one consistent application version", async () => {

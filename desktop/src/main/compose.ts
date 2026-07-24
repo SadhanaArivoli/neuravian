@@ -1,8 +1,20 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { runCommand } from "./command.js";
+import { CommandError, runCommand } from "./command.js";
 import type { CommandResult } from "./types.js";
 import { STARTUP_TIMEOUTS } from "./timeouts.js";
+
+/** Commit-pinned image references for the two packaged services, resolved from release.json. */
+export interface ReleaseImageReferences {
+  frontend: string;
+  backend: string;
+}
+
+interface ReleaseManifestFile {
+  version?: string;
+  frontend?: { commitRef?: string };
+  backend?: { commitRef?: string };
+}
 
 export const DESKTOP_PROJECT_NAME = "neuravian-desktop";
 
@@ -98,7 +110,31 @@ export class DesktopCompose {
     return this.dockerPath;
   }
 
+  /**
+   * Reads release.json (written by build-full.mjs, copied to app-resources/release.json at
+   * package time). Returns null in dev mode or if the file is missing/corrupt — callers must
+   * not assume a packaged app always has it (e.g. a damaged install).
+   */
+  private async releaseManifest(): Promise<ReleaseManifestFile | null> {
+    if (!this.ctx.packaged) return null;
+    try {
+      return JSON.parse(await readFile(path.join(this.ctx.resourcesRoot, "release.json"), "utf8")) as ReleaseManifestFile;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Resolves the exact commit-pinned image references this build was packaged with. */
+  private async imageReferences(): Promise<ReleaseImageReferences | null> {
+    const manifest = await this.releaseManifest();
+    const frontend = manifest?.frontend?.commitRef;
+    const backend = manifest?.backend?.commitRef;
+    if (!frontend || !backend) return null;
+    return { frontend, backend };
+  }
+
   private async environment(): Promise<NodeJS.ProcessEnv> {
+    const images = await this.imageReferences();
     return {
       ...process.env,
       HOST_UID: String(process.getuid?.() ?? 0),
@@ -112,6 +148,9 @@ export class DesktopCompose {
       // HOST_DATASETS_DIR must be a fully resolved absolute path — Docker Compose does not
       // expand shell tildes, so we always supply the resolved value from app.getPath().
       HOST_DATASETS_DIR: this.ctx.datasetsDir,
+      // Commit-pinned image references consumed by docker-compose.packaged.yml. Unset in dev
+      // mode, where the base compose file builds from source instead of pulling an image.
+      ...(images ? { NEURAVIAN_FRONTEND_IMAGE: images.frontend, NEURAVIAN_BACKEND_IMAGE: images.backend } : {}),
     };
   }
 
@@ -146,12 +185,20 @@ export class DesktopCompose {
       services?: Record<string, { image?: string }>;
     };
     const expectedServices = composeConfig.services ?? {};
+    // In packaged mode the image tag is now the exact git commit (see imageReferences()), not a
+    // semantic version, so the release's version comes from release.json directly. Dev mode has
+    // no release.json and falls back to the prior heuristic of reading it off the resolved
+    // image tag suffix (build-context services rarely have one, so this is usually null there,
+    // same as before).
+    const manifestVersion = (await this.releaseManifest())?.version ?? null;
     const imageVersions = Object.values(expectedServices)
       .map((service) => service.image?.match(/:([^/:]+)$/)?.[1])
       .filter((value): value is string => Boolean(value));
-    const expectedVersion = imageVersions.length && imageVersions.every((value) => value === imageVersions[0])
-      ? imageVersions[0]
-      : null;
+    const expectedVersion = manifestVersion ?? (
+      imageVersions.length && imageVersions.every((value) => value === imageVersions[0])
+        ? imageVersions[0]
+        : null
+    );
     const listed = await this.runDocker([
       "ps", "-a", "--filter", `label=com.docker.compose.project=${DESKTOP_PROJECT_NAME}`,
       "--format", "{{.ID}}",
@@ -240,13 +287,44 @@ export class DesktopCompose {
     };
   }
 
-  async pull(): Promise<CommandResult> {
-    const env = await this.environment();
-    return this.command(
-      this.dockerCommand(),
-      [...composeArguments(this.ctx), "pull", "--quiet"],
-      { cwd: this.composeCwd(), env, timeoutMs: STARTUP_TIMEOUTS.composeStartMs },
-    );
+  /** True if `docker image inspect <ref>` finds the exact image locally, without contacting a registry. */
+  private async imagePresentLocally(image: string): Promise<boolean> {
+    try {
+      await this.runDocker(["image", "inspect", image], 10_000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ensures the exact commit-pinned images this build expects are present locally, pulling only
+   * what's missing. A locally-built, unpublished image (matching the exact commit tag) is never
+   * touched — it already satisfies the reference, so no network access happens at all. This is
+   * what makes a freshly `npm run dist:mac`-built DMG runnable offline on the machine that built
+   * it, while a genuine end-user install still pulls the real thing on first launch.
+   */
+  async pull(): Promise<void> {
+    if (!this.ctx.packaged) return;
+    const images = await this.imageReferences();
+    if (!images) {
+      throw new Error(
+        "Could not determine which Docker images this release expects (release.json is missing or invalid). " +
+        "Reinstalling Neuravian should resolve this.",
+      );
+    }
+    for (const [service, image] of [["frontend", images.frontend], ["backend", images.backend]] as const) {
+      if (await this.imagePresentLocally(image)) continue;
+      try {
+        await this.runDocker(["pull", image], STARTUP_TIMEOUTS.composeStartMs);
+      } catch (error) {
+        const detail = error instanceof CommandError && error.result?.stderr ? error.result.stderr : String(error);
+        throw new Error(
+          `Could not download the ${service} image for this release ("${image}"). ` +
+          `It may not have been published yet, or the network is unavailable. Docker reported: ${detail}`,
+        );
+      }
+    }
   }
 
   async start(forceRecreate = false): Promise<CommandResult> {

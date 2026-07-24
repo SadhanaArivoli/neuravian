@@ -12,12 +12,20 @@
 #   NEURAVIAN_RESOURCES_DIR  — userData/resources       (pipelines, plugins — copied from bundle)
 #   HOST_DATASETS_DIR        — user's dataset root (default ~/Documents)
 #   HOST_UID / HOST_GID      — host user identity for spawned pipeline containers
+#   NEURAVIAN_FRONTEND_IMAGE — exact commit-pinned frontend image (see release.json), e.g.
+#                              ghcr.io/sadhanaarivoli/neuravian-frontend:<git-commit>
+#   NEURAVIAN_BACKEND_IMAGE  — exact commit-pinned backend image, same scheme
+#
+# These image references are commit tags, never the mutable :<version> tag — a movable tag can
+# be silently repointed at the registry independently of what this exact build shipped with,
+# which previously let `docker compose pull` overwrite a freshly-built local image with an
+# older, already-live one. See compose.ts pull()/imageReferences() for how these are resolved.
 
 name: neuravian-desktop
 
 services:
   backend:
-    image: ghcr.io/sadhanaarivoli/neuravian-backend:0.1.0
+    image: ${NEURAVIAN_BACKEND_IMAGE}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -64,7 +72,7 @@ services:
       start_period: 30s
 
   frontend:
-    image: ghcr.io/sadhanaarivoli/neuravian-frontend:0.1.0
+    image: ${NEURAVIAN_FRONTEND_IMAGE}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

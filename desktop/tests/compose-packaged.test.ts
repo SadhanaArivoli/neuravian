@@ -67,25 +67,24 @@ describe("docker-compose.packaged.yml — content", () => {
     expect(text).not.toMatch(/[.]{1,2}\/frontend:/);
   });
 
-  it("uses the ghcr.io backend image", async () => {
+  it("resolves the backend image from NEURAVIAN_BACKEND_IMAGE, not a hardcoded tag", async () => {
     const text = await content();
-    expect(text).toContain("ghcr.io/sadhanaarivoli/neuravian-backend:");
+    expect(text).toContain("image: ${NEURAVIAN_BACKEND_IMAGE}");
+    expect(text).not.toMatch(/image:\s*ghcr\.io\/\S*backend\S*/);
   });
 
-  it("uses the ghcr.io frontend image", async () => {
+  it("resolves the frontend image from NEURAVIAN_FRONTEND_IMAGE, not a hardcoded tag", async () => {
     const text = await content();
-    expect(text).toContain("ghcr.io/sadhanaarivoli/neuravian-frontend:");
+    expect(text).toContain("image: ${NEURAVIAN_FRONTEND_IMAGE}");
+    expect(text).not.toMatch(/image:\s*ghcr\.io\/\S*frontend\S*/);
   });
 
-  it("matches the checked-in release image references exactly", async () => {
+  it("stays static — never hardcodes the version or commit tag", async () => {
+    // The whole point of the fix: this file must never contain a literal ghcr.io/.../:<tag>
+    // reference. The exact commit-pinned image is injected by Electron at startup via env vars
+    // (see compose.ts imageReferences()), derived from release.json, not templated into this file.
     const text = await content();
-    const config = JSON.parse(await readFile(path.join(DESKTOP_DIR, "release.config.json"), "utf8")) as {
-      version: string; registry: string; namespace: string;
-      backendRepository: string; frontendRepository: string;
-    };
-    const prefix = `${config.registry}/${config.namespace}`;
-    expect(text).toContain(`image: ${prefix}/${config.backendRepository}:${config.version}`);
-    expect(text).toContain(`image: ${prefix}/${config.frontendRepository}:${config.version}`);
+    expect(text).not.toMatch(/image:\s*ghcr\.io\/\S+:\S+/);
   });
 
   it("binds ports to 127.0.0.1 only (not 0.0.0.0)", async () => {
@@ -158,7 +157,7 @@ describe("built .app bundle", () => {
     // If the file exists, also verify it has no build: directives (same as source).
     const text = await readFile(DIST_APP, "utf8");
     expect(text).not.toMatch(/^\s*build:/m);
-    expect(text).toContain("ghcr.io/sadhanaarivoli/neuravian-backend:");
+    expect(text).toContain("image: ${NEURAVIAN_BACKEND_IMAGE}");
   });
 });
 

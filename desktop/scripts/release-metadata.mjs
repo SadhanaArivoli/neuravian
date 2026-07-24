@@ -41,13 +41,17 @@ export async function validateReleaseContract({ repoRoot, desktopDir, manifest }
   if (new Set(Object.values(versions)).size !== 1) {
     throw new Error(`Release version mismatch: ${JSON.stringify(versions)}`);
   }
-  for (const [component, expected] of [
-    ["frontend", manifest.frontend.versionRef],
-    ["backend", manifest.backend.versionRef],
+  // docker-compose.packaged.yml stays static and never hardcodes a tag — it references these
+  // env vars, which the Electron main process resolves to the exact commit-pinned image at
+  // startup (see compose.ts imageReferences()). This check only guards against the file
+  // regressing back to a hardcoded (and therefore mutable-tag-vulnerable) image reference.
+  for (const [component, envVar] of [
+    ["frontend", "NEURAVIAN_FRONTEND_IMAGE"],
+    ["backend", "NEURAVIAN_BACKEND_IMAGE"],
   ]) {
-    const match = packagedCompose.match(new RegExp(`^\\s*image:\\s*(\\S*${component}\\S*)\\s*$`, "m"));
-    if (match?.[1] !== expected) {
-      throw new Error(`Packaged Compose ${component} image mismatch: expected ${expected}; found ${match?.[1] ?? "missing"}`);
+    const expected = `image: \${${envVar}}`;
+    if (!packagedCompose.includes(expected)) {
+      throw new Error(`Packaged Compose ${component} image must reference \${${envVar}}, not a hardcoded tag.`);
     }
   }
   return versions;

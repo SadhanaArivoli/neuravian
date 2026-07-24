@@ -82,9 +82,10 @@ export class StartupController {
       this.compose.setDockerPath(facts.dockerPath);
       this.trace(6, "system checks completed", undefined, attemptId, this.dependencies.now() - startedAt);
 
-      // Pull first in packaged mode. Stack compatibility compares running image
-      // IDs with the just-pulled release images, so a mutable/stale local tag
-      // cannot be mistaken for the packaged app's expected stack.
+      // Ensure the exact commit-pinned images this build expects are present locally before
+      // inspecting the stack. compose.pull() only fetches what's missing — a locally-built,
+      // unpublished image already satisfies its own commit tag and is never touched — so this
+      // is safe to run every launch without forcing a network round-trip on a dev build.
       if (this.compose.ctx.packaged) {
         failedStage = "image pull";
         this.update(attemptId, startedAt, {
