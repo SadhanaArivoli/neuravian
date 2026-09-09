@@ -288,7 +288,7 @@ Quit with the active-run guard.
   redaction markers.
 - The application makes no HIPAA, GDPR, clinical, or legal-compliance claim.
 - The original logo remains unchanged at
-  `/Users/arivolitirouvingadame/Downloads/neuravian-logo.001-removebg-preview.png`.
+  `/Users/researcher/Downloads/neuravian-logo.001-removebg-preview.png`.
   It is a 500 × 500 PNG with alpha; a copy will be placed under desktop assets
   during the scaffold milestone.
 

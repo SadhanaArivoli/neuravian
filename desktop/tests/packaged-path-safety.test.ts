@@ -1,10 +1,23 @@
 import { access, readFile, readdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const desktopDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(desktopDir, "..");
-const forbidden = ["/Users/sadhanaarivoli", "/Users/arivolitirouvingadame"];
+
+// Derive the strings that must never appear in packaged output from the current
+// environment rather than hard-coding any developer's name. This protects
+// whoever runs the build (locally or in CI) without embedding personal
+// identifiers in the repository.
+const username = os.userInfo().username;
+const forbidden = Array.from(
+  new Set(
+    [os.homedir(), `/Users/${username}`, `/home/${username}`].filter(
+      (value) => value && value !== "/" && value !== "/Users/" && value !== "/home/",
+    ),
+  ),
+);
 
 async function collectFiles(root: string): Promise<string[]> {
   const files: string[] = [];

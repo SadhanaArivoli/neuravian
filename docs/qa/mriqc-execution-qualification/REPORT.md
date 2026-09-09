@@ -53,7 +53,7 @@ fixture but is not a public scientific qualification dataset.
 Participant run 124 command:
 
 ```text
-docker run --rm -v /Users/arivolitirouvingadame/Documents/openneuro-ds:/data:ro -v /Users/arivolitirouvingadame/Documents/neuravian/data/derivatives/mriqc/124:/out:rw -v /Users/arivolitirouvingadame/Documents/neuravian/data/work/mriqc/5:/work:rw nipreps/mriqc:24.0.2 /data /out participant --participant-label 13 --modalities T1w --nprocs 1 --omp-nthreads 1 --ants-float --work-dir /work --no-sub
+docker run --rm -v /Users/researcher/Documents/openneuro-ds:/data:ro -v /Users/researcher/Documents/neuravian/data/derivatives/mriqc/124:/out:rw -v /Users/researcher/Documents/neuravian/data/work/mriqc/5:/work:rw nipreps/mriqc:24.0.2 /data /out participant --participant-label 13 --modalities T1w --nprocs 1 --omp-nthreads 1 --ants-float --work-dir /work --no-sub
 ```
 
 Run 124 started `2026-07-21T22:04:21Z`, finished

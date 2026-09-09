@@ -136,7 +136,7 @@ The complete remaining repository-path inventory at migration validation was:
 - `docs/screenshots/unified-multi-workspace/aws-neuroforge.png` and
   `docs/screenshots/unified-multi-workspace/local-neuroforge.png` — tracked,
   immutable historical screenshots, explicitly labeled historical where linked.
-- The local checkout directory `/Users/arivolitirouvingadame/Documents/neuroforge`
+- The local checkout directory `/Users/researcher/Documents/neuroforge`
   — external to repository contents; rename the checkout only after tools and
   shell sessions no longer depend on its absolute path.
 
