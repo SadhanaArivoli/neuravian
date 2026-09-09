@@ -8,7 +8,7 @@ application was used for acceptance.
 ## Backup and identity
 
 - Backup root:
-  `/Users/arivolitirouvingadame/Documents/Neuravian Backups/phase1-20260718T052559Z`
+  `/Users/researcher/Documents/Neuravian Backups/phase1-20260718T052559Z`
 - Original and backup database SHA-256:
   `9cb96314d328c44d555dfaa1f458361a41a7dcbf1dc30943cfb5df88e924f9cc`
 - Local workspace identity:

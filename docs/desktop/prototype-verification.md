@@ -12,7 +12,7 @@ milestone evidence; it does not change pipeline code or scientific behavior.
 - Bundle ID: `org.neuravian.desktop`
 - Packaging: unsigned ARM64 development directory bundle; signing identity is
   explicitly `null`.
-- Logo source: `/Users/arivolitirouvingadame/Downloads/neuravian-logo.001-removebg-preview.png`
+- Logo source: `/Users/researcher/Downloads/neuravian-logo.001-removebg-preview.png`
 - Source and retained-copy SHA-256:
   `6a074630ce385e74cba906861af4f3ae8e72840ff53172438f9b888a908d0cf3`
 - Preserved source copies: `neuravian-logo.png`, `neuravian-window.png`, and
